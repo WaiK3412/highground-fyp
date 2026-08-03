@@ -1,0 +1,270 @@
+/* HighGround theme for Django admin — screens 14 (administration) and 19 (audit log).
+ *
+ * ADR-002 makes Django admin part of the product rather than a dev tool, so it
+ * carries the same identity as the rest of the platform: lagoon teal, warm
+ * stone neutrals, Plus Jakarta Sans.
+ *
+ * Django 4+ admin is built on CSS custom properties, so this retheme is a
+ * variable override rather than a fight with its stylesheets — which keeps it
+ * upgrade-safe. Values are the design tokens from
+ * design-prototype-v2/css/tokens.css, kept in sync by hand.
+ *
+ * The admin's theme control has THREE states: light, dark, and "auto" (which
+ * stamps no attribute and follows prefers-color-scheme). All three are defined
+ * below — defining only :root is what made the auto state render half-branded.
+ */
+
+/* ---------- light: the default, and the explicit light choice ---------- */
+
+:root,
+html[data-theme="light"] {
+  --teal-900: #0b3d40;
+  --teal-800: #104e52;
+  --teal-700: #155e63;
+  --teal-600: #1b7179;
+  --teal-300: #8ad5db;
+  --teal-100: #d9f1f2;
+  --teal-50: #f3fafa;
+
+  --grey-900: #221f1b;
+  --grey-700: #4a4440;
+  --grey-500: #746d66;
+  --grey-200: #e8e3db;
+  --grey-100: #f2eee7;
+  --grey-50: #faf7f2;
+
+  --primary: var(--teal-700);
+  --secondary: var(--teal-800);
+  --accent: var(--teal-600);
+  --primary-fg: #ffffff;
+
+  --body-fg: var(--grey-700);
+  --body-bg: var(--grey-50);
+  --body-quiet-color: var(--grey-500);
+  --body-loud-color: var(--grey-900);
+
+  --header-color: rgba(255, 255, 255, 0.85);
+  --header-branding-color: #ffffff;
+  --header-bg: var(--teal-800);
+  --header-link-color: #ffffff;
+
+  --breadcrumbs-fg: var(--teal-100);
+  --breadcrumbs-link-fg: #ffffff;
+  --breadcrumbs-bg: var(--teal-700);
+
+  --link-fg: var(--teal-700);
+  --link-hover-color: var(--teal-900);
+  --link-selected-fg: var(--teal-800);
+
+  --hairline-color: var(--grey-200);
+  --border-color: var(--grey-200);
+
+  --button-bg: var(--teal-700);
+  --button-fg: #ffffff;
+  --button-hover-bg: var(--teal-800);
+  --default-button-bg: var(--teal-800);
+  --default-button-hover-bg: var(--teal-900);
+  --close-button-bg: var(--grey-500);
+  --close-button-hover-bg: var(--grey-700);
+
+  --object-tools-bg: var(--teal-700);
+  --object-tools-hover-bg: var(--teal-900);
+
+  --darkened-bg: var(--grey-100);
+  --selected-bg: var(--teal-50);
+  --selected-row: var(--teal-100);
+
+  --font-family-primary: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ---------- dark: same identity on a warm dark ground ---------- */
+
+html[data-theme="dark"] {
+  --teal-900: #0b3d40;
+  --teal-800: #104e52;
+  --teal-700: #155e63;
+  --teal-600: #1b7179;
+  --teal-300: #8ad5db;
+  --teal-100: #d9f1f2;
+
+  --primary: #2d9aa3;
+  --secondary: #155e63;
+  --accent: #6fc5cc;
+  --primary-fg: #0b1f21;
+
+  --body-fg: #d5cec4;
+  --body-bg: #171412;
+  --body-quiet-color: #9a9188;
+  --body-loud-color: #f5f1ea;
+
+  --header-color: rgba(255, 255, 255, 0.82);
+  --header-branding-color: #ffffff;
+  --header-bg: #0b3d40;
+  --header-link-color: #ffffff;
+
+  --breadcrumbs-fg: #a8cfd2;
+  --breadcrumbs-link-fg: #ffffff;
+  --breadcrumbs-bg: #10383b;
+
+  --link-fg: #8ad5db;
+  --link-hover-color: #d9f1f2;
+  --link-selected-fg: #a8e2e7;
+
+  --hairline-color: #2b2621;
+  --border-color: #332e28;
+
+  --button-bg: #1b7179;
+  --button-fg: #ffffff;
+  --button-hover-bg: #2d9aa3;
+  --default-button-bg: #2d9aa3;
+  --default-button-hover-bg: #6fc5cc;
+  --close-button-bg: #4a4440;
+  --close-button-hover-bg: #746d66;
+
+  --object-tools-bg: #1b7179;
+  --object-tools-hover-bg: #2d9aa3;
+
+  --darkened-bg: #201c19;
+  --selected-bg: #1d2a2a;
+  --selected-row: rgba(45, 154, 163, 0.22);
+
+  --font-family-primary: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ---------- auto: no attribute stamped, so mirror the dark palette ----------
+ * Guarded with :not([data-theme="light"]) so an explicit light choice still
+ * wins on a dark-themed operating system.
+ */
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]) {
+    --primary: #2d9aa3;
+    --secondary: #155e63;
+    --accent: #6fc5cc;
+    --primary-fg: #0b1f21;
+
+    --body-fg: #d5cec4;
+    --body-bg: #171412;
+    --body-quiet-color: #9a9188;
+    --body-loud-color: #f5f1ea;
+
+    --header-color: rgba(255, 255, 255, 0.82);
+    --header-branding-color: #ffffff;
+    --header-bg: #0b3d40;
+    --header-link-color: #ffffff;
+
+    --breadcrumbs-fg: #a8cfd2;
+    --breadcrumbs-link-fg: #ffffff;
+    --breadcrumbs-bg: #10383b;
+
+    --link-fg: #8ad5db;
+    --link-hover-color: #d9f1f2;
+    --link-selected-fg: #a8e2e7;
+
+    --hairline-color: #2b2621;
+    --border-color: #332e28;
+
+    --button-bg: #1b7179;
+    --button-fg: #ffffff;
+    --button-hover-bg: #2d9aa3;
+    --default-button-bg: #2d9aa3;
+    --default-button-hover-bg: #6fc5cc;
+
+    --object-tools-bg: #1b7179;
+    --object-tools-hover-bg: #2d9aa3;
+
+    --darkened-bg: #201c19;
+    --selected-bg: #1d2a2a;
+    --selected-row: rgba(45, 154, 163, 0.22);
+  }
+}
+
+/* ---------- branding ---------- */
+
+#header {
+  padding: 14px 40px;
+  border-bottom: 3px solid var(--teal-600);
+}
+
+#branding h1 {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.hg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  text-decoration: none;
+}
+
+.hg-brand svg {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+
+.hg-brand .hg-name {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.hg-brand .hg-sub {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--teal-100);
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  padding-left: 10px;
+  margin-left: 2px;
+}
+
+/* ---------- squared shape language, matching the prototype ---------- */
+
+.module,
+.module caption,
+#content-related .module,
+.button,
+input[type="submit"],
+.object-tools a {
+  border-radius: 4px;
+}
+
+.module caption {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#content h1,
+.module h2 {
+  font-weight: 700;
+  color: var(--body-loud-color);
+}
+
+/* ---------- priority score reads at a glance, as on screen 07 ---------- */
+
+.field-score_total,
+.column-score_total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* ---------- the audit log is read-only by construction; say so ---------- */
+
+body.model-caseeventlog #content h1::after {
+  content: "append-only";
+  display: inline-block;
+  margin-left: 12px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: var(--selected-row);
+  color: var(--link-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}

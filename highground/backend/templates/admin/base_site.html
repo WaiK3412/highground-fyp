@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{# Screens 14 and 19 of the design contract (ADR-002). The admin is themed to
+   the HighGround identity rather than rebuilt, so administration effort goes
+   into the coordination features instead. #}
+
+{% block title %}{{ title }} | HighGround{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'admin/css/highground.css' %}">
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+  <a class="hg-brand" href="{% url 'admin:index' %}">
+    <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round"
+            d="M2.5 12.5L4 11.5 12 5 20 11.5 21.5 12.5 M3 16q3-2 6 0t6 0t6 0 M3 19.5q3-2 6 0t6 0t6 0" />
+    </svg>
+    <span class="hg-name">HighGround</span>
+    <span class="hg-sub">Administration</span>
+  </a>
+</h1>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

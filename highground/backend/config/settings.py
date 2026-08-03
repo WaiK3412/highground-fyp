@@ -42,6 +42,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'accounts',
+    'cases',
+    'scoring',
 ]
 
 MIDDLEWARE = [
@@ -59,7 +63,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -125,8 +129,44 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Custom user model — must be set before the first migrate (Django docs:
+# "Changing AUTH_USER_MODEL after creating the database is significantly harder").
+# Report §3.6 ERD: user_account is the shared base table for all four roles.
+AUTH_USER_MODEL = "accounts.UserAccount"
+
+
+# Django REST Framework — session authentication, no JWT (ADR-001).
+# Every view sets its own permission_classes; this default is the safe fallback
+# so a view that forgets to declare one denies anonymous users rather than
+# exposing data.
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 50,
+}
+
+# The SPA runs on its own dev-server origin (Vite :5173) and proxies /api to
+# Django, so browser requests arrive with an Origin header Django must trust
+# before it will accept any unsafe method. Dev only — production serves the
+# built SPA from the same origin and needs no entry here.
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+]
+
+# Uploaded evidence for role applications (ADR-012). Kept outside the static
+# tree and never served by the app server in production.
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
