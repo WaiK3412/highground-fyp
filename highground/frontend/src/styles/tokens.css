@@ -1,0 +1,99 @@
+/* ============================================================
+   Design Tokens — Flood Recovery Coordination Platform
+   Personality: Calm + Startup hybrid (trustworthy, clean, structured)
+   Identity iteration 2 (July 2026): lagoon teal ramp, warm stone
+   neutrals, Plus Jakarta Sans, squared shape language, contour motif.
+   ============================================================ */
+
+:root {
+  /* ---- Color: primary (lagoon teal — custom ramp) ---- */
+  --teal-900: #0B3D40;
+  --teal-800: #104E52;   /* primary shade (hover) */
+  --teal-700: #155E63;   /* PRIMARY — 7.5:1 on white */
+  --teal-600: #1B7179;
+  --teal-500: #2D9AA3;   /* water / data-viz mid tone */
+  --teal-300: #8AD5DB;   /* water light tone */
+  --teal-100: #D9F1F2;   /* tint — chips, highlights */
+  --teal-50:  #F3FAFA;   /* tint — section backgrounds */
+
+  /* ---- Color: neutrals (warm stone) ---- */
+  --grey-900: #221F1B;   /* headings */
+  --grey-700: #4A4440;   /* body text — 9.0:1 on page bg */
+  --grey-500: #746D66;   /* muted text — 4.8:1 on page bg */
+  --grey-300: #D6D0C8;   /* strong borders */
+  --grey-200: #E8E3DB;   /* borders */
+  --grey-100: #F2EEE7;   /* hover fills */
+  --grey-50:  #FAF7F2;   /* page background (warm paper) */
+  --paper:    #F6F2EB;   /* brand paper surface (promos, hero tints) */
+  --white:    #FFFFFF;
+
+  /* ---- Color: brand accents (decorative only — never
+     buttons, never status; illustrations, motifs, eyebrows) ---- */
+  --clay-700: #9A4F35;   /* clay text accent — 5.6:1 on page bg */
+  --clay-500: #BC6C4F;   /* clay decorative (shapes, contours) */
+  --sand-200: #E9DCC3;   /* sand decorative fill */
+  --sand-100: #F4EDDF;   /* sand tint */
+
+  /* ---- Color: semantic / status (unchanged in iteration 2) ---- */
+  --danger-600: #DC2626;  /* high priority, urgent, escalated */
+  --danger-100: #FEE2E2;
+  --warning-600: #D97706; /* medium priority (accessible on white) */
+  --warning-500: #F59E0B;
+  --warning-100: #FEF3C7;
+  --success-600: #16A34A; /* resolved, low priority */
+  --success-100: #DCFCE7;
+  --info-600: #2563EB;    /* in progress */
+  --info-100: #DBEAFE;
+  --purple-600: #7C3AED;  /* AI assistant accent */
+  --purple-100: #EDE9FE;
+
+  /* ---- Typography ----
+     Scale: 12 / 14 / 16 / 18 / 20 / 24 / 30 / 36 / 44
+     One typeface family (Plus Jakarta Sans — friendly, modern,
+     distinctly not the AI-default UI font); display headings
+     (h1/h2) use ExtraBold 800 for character. */
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-12: 1.2rem;
+  --fs-14: 1.4rem;
+  --fs-16: 1.6rem;
+  --fs-18: 1.8rem;
+  --fs-20: 2.0rem;
+  --fs-24: 2.4rem;
+  --fs-30: 3.0rem;
+  --fs-36: 3.6rem;
+  --fs-44: 4.4rem;
+
+  /* ---- Spacing (8px system) ---- */
+  --sp-4: 0.4rem;
+  --sp-8: 0.8rem;
+  --sp-12: 1.2rem;
+  --sp-16: 1.6rem;
+  --sp-24: 2.4rem;
+  --sp-32: 3.2rem;
+  --sp-48: 4.8rem;
+  --sp-64: 6.4rem;
+  --sp-96: 9.6rem;
+
+  /* ---- Command surface (coordinator map screens 07/10) ----
+     Light theme; map-first layout. Status colours use the standard
+     tokens (--danger-600 / --warning-500 / --success-600). */
+  --ops-bg:      #FFFFFF;  /* shell background, card bg, pin border */
+  --ops-surface: #FFFFFF;  /* topbar, drawer, popover cards */
+  --ops-raised:  #F2EEE7;  /* hover fills (grey-100) */
+  --ops-border:  #E8E3DB;  /* grey-200 hairline */
+  --ops-text:    #221F1B;  /* grey-900 */
+  --ops-muted:   #746D66;  /* grey-500 */
+
+  /* ---- Shape & depth ----
+     Squared "drafting-table" corners (iteration 2): structured,
+     editorial, deliberately not the rounded-card default.
+     Shadows are reserved for floating elements only
+     (modals, popovers, map pins, mobile sheets); resting
+     cards use hairline borders. */
+  --radius-sm: 0.2rem;    /* inputs, chips, buttons */
+  --radius-md: 0.4rem;    /* cards */
+  --radius-full: 999px;   /* pills, avatars */
+  --shadow-sm: 0 1px 3px rgba(34, 31, 27, 0.08);
+  --shadow-md: 0 4px 12px rgba(34, 31, 27, 0.08);
+  --shadow-lg: 0 10px 30px rgba(34, 31, 27, 0.12);
+}
