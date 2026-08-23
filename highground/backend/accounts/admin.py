@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import UserChangeForm
 
 from django.utils import timezone
 
@@ -42,6 +43,36 @@ def approve_applications(modeladmin, request, queryset):
     )
 
 
+class UserAccountChangeForm(UserChangeForm):
+    """Adds the ADR-012 rule that a rejection must carry a reason.
+
+    reject_application() already refuses a blank note, but it does so with a
+    ValueError, which from inside the admin would reach the user as a 500 page.
+    Checking here instead puts the message beside the field, which is the only
+    place the admin can act on it.
+    """
+
+    class Meta(UserChangeForm.Meta):
+        model = UserAccount
+        fields = "__all__"
+        field_classes = {}
+
+    def clean(self):
+        cleaned = super().clean()
+        S = UserAccount.VerificationStatus
+
+        was = self.initial.get("verification_status")
+        now = cleaned.get("verification_status")
+        note = (cleaned.get("verification_note") or "").strip()
+
+        if was == S.PENDING and now == S.REJECTED and not note:
+            self.add_error(
+                "verification_note",
+                "A rejected applicant is owed a reason (ADR-012).",
+            )
+        return cleaned
+
+
 @admin.register(UserAccount)
 class UserAccountAdmin(UserAdmin):
     """Subclasses Django's UserAdmin so the password renders as the
@@ -56,6 +87,7 @@ class UserAccountAdmin(UserAdmin):
     search_fields = ("email", "full_name")
     actions = [approve_applications]
     inlines = [RegistrationDocumentInline]
+    form = UserAccountChangeForm
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -92,6 +124,47 @@ class UserAccountAdmin(UserAdmin):
             },
         ),
     )
+
+    def save_model(self, request, obj, form, change):
+        """Route a pending application's decision through the model methods.
+
+        By the time this runs the form has already written the new status onto
+        `obj` in memory, so approve_application/reject_application would see a
+        non-pending application and refuse. The pre-edit value is recovered
+        from form.initial and put back, so the guard reads the state the
+        database is actually in.
+
+        Saving the column straight from the form is what this exists to
+        prevent: ADR-012 section 5 requires the deciding admin and the time of
+        the decision to be recorded, and only the model methods do that.
+        """
+        S = UserAccount.VerificationStatus
+
+        was = form.initial.get("verification_status")
+        now = form.cleaned_data.get("verification_status")
+
+        decided = (
+            change
+            and "verification_status" in form.changed_data
+            and was == S.PENDING
+            and now in {S.VERIFIED, S.REJECTED}
+        )
+
+        if not decided:
+            super().save_model(request, obj, form, change)
+            return
+
+        # Persist the rest of the form first with the status still pending, so
+        # an unrelated edit made in the same save is not lost, and the decision
+        # itself is left to the method below.
+        obj.verification_status = was
+        super().save_model(request, obj, form, change)
+
+        note = form.cleaned_data.get("verification_note") or ""
+        if now == S.VERIFIED:
+            obj.approve_application(admin=request.user, note=note)
+        else:
+            obj.reject_application(admin=request.user, note=note)
 
 
 @admin.register(Organization)
