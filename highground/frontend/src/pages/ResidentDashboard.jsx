@@ -1,0 +1,537 @@
+/**
+ * Screen 04 — "My Recovery", the resident's home.
+ *
+ * A resident sees only their own household's cases; that narrowing happens on
+ * the server in visible_cases(), not here, so this screen cannot leak another
+ * household's case by forgetting a filter.
+ *
+ * It also carries the ADR-012 §2 state: an applicant waiting on a role
+ * decision signs in as a resident and is told where the application stands,
+ * rather than being locked out or left guessing.
+ */
+
+import { useEffect, useState } from 'react'
+import { api } from '../api'
+
+// How each case status reads to the household that submitted it. The wording
+// is deliberately about what happens next, not the internal status name.
+const STATUS_UI = {
+  submitted: {
+    badge: 'badge--new',
+    progress: 10,
+    next: 'Waiting for a district officer to review it',
+  },
+  needs_info: {
+    badge: 'badge--escalated',
+    progress: 20,
+    next: 'The district office has asked for more information',
+  },
+  verified: {
+    badge: 'badge--verified',
+    progress: 35,
+    next: 'Verified — waiting for a response team to take it on',
+  },
+  claimed: {
+    badge: 'badge--assigned',
+    progress: 55,
+    next: 'A response team has taken this on',
+  },
+  in_progress: {
+    badge: 'badge--progress',
+    progress: 75,
+    next: 'Work is under way',
+  },
+  pending_confirm: {
+    badge: 'badge--progress',
+    progress: 90,
+    next: 'Waiting for you to confirm the work is finished',
+  },
+  closed: {
+    badge: 'badge--resolved',
+    progress: 100,
+    next: 'Closed',
+  },
+  rejected: {
+    badge: 'badge--escalated',
+    progress: 0,
+    next: 'Not accepted — open the case for the reason given',
+  },
+}
+
+const CLOSED_STATUSES = new Set(['closed', 'rejected'])
+
+function Icon({ path, strokeWidth = 1.5, style }) {
+  return (
+    <svg fill="none" viewBox="0 0 24 24" strokeWidth={strokeWidth} stroke="currentColor" style={style}>
+      <path strokeLinecap="round" strokeLinejoin="round" d={path} />
+    </svg>
+  )
+}
+
+const PATHS = {
+  home: 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75',
+  plus: 'M12 4.5v15m7.5-7.5h-15',
+  folder:
+    'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z',
+  bell: 'M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0',
+  heart: 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z',
+  user: 'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z',
+  logo: 'M2.5 12.5L4 11.5 12 5 20 11.5 21.5 12.5 M3 16q3-2 6 0t6 0t6 0 M3 19.5q3-2 6 0t6 0t6 0',
+  warning:
+    'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z',
+}
+
+/**
+ * ADR-012 §2 — where the role application stands. Only shown while there is
+ * something to say: an ordinary resident who never applied sees nothing.
+ */
+function ApplicationBanner({ user }) {
+  if (user.verification_status === 'pending') {
+    return (
+      <div className="banner banner--info">
+        <Icon path={PATHS.bell} />
+        <span className="body">
+          <span className="title">
+            Your application to join as {user.requested_role_display} is under review.
+          </span>
+          <br />
+          A district administrator is checking the documents you uploaded. Until it is
+          approved this account works as an ordinary resident account — you can submit and
+          track your own household's requests, but not other people's.
+        </span>
+      </div>
+    )
+  }
+
+  if (user.verification_status === 'rejected') {
+    return (
+      <div className="banner banner--warning">
+        <Icon path={PATHS.bell} />
+        <span className="body">
+          <span className="title">Your role application was not approved.</span>
+          <br />
+          {user.verification_note || 'No reason was recorded.'} Your resident account is
+          unaffected and you can continue to use it normally.
+        </span>
+      </div>
+    )
+  }
+
+  return null
+}
+
+function scoreClass(band) {
+  if (band === 'High') return 'score score--high score--sm'
+  if (band === 'Medium') return 'score score--medium score--sm'
+  return 'score score--low score--sm'
+}
+
+// "child_under_5" reads badly to the household it describes.
+const humanise = (flag) => flag.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+
+// The engine writes its reasons for officers, so they carry raw enum members
+// ("urgency: medical_disrupted = 18"). Un-snake them for the household without
+// touching the engine, which other screens also read.
+const readableReason = (reason) =>
+  reason.replace(/[a-z0-9]+(?:_[a-z0-9]+)+/g, (token) => token.replace(/_/g, ' '))
+
+/**
+ * The resident's own case, opened from a card.
+ *
+ * The point of this panel is the score breakdown (FR10). Explainability exists
+ * for the household being ranked, not only for the officer doing the ranking —
+ * someone told their case is Low is owed the reasoning.
+ */
+function CaseDetailPanel({ detail, onClose }) {
+  const ui = STATUS_UI[detail.status] || STATUS_UI.submitted
+  const list = (flags) => (flags?.length ? flags.map(humanise).join(' · ') : '—')
+
+  return (
+    <aside className="stack meta-rail" style={{ gap: '2.4rem' }}>
+      <div className="meta-rail__section">
+        <div className="row--between" style={{ marginBottom: 'var(--sp-8)' }}>
+          <div className="row" style={{ gap: 'var(--sp-8)' }}>
+            <span className="text-strong" style={{ fontSize: 'var(--fs-20)' }}>
+              #{detail.reference}
+            </span>
+            <span className={`badge ${ui.badge}`}>{detail.status_display}</span>
+          </div>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <p className="text-sm text-muted" style={{ marginBottom: 'var(--sp-12)' }}>
+          {ui.next}
+        </p>
+        <p className="text-sm">{detail.description}</p>
+      </div>
+
+      {detail.score_total != null && (
+        <div className="meta-rail__section">
+          <div className="card__header">
+            <h3>Why this priority</h3>
+            {/* The circle is colour-coded by band, so it carries both numbers. */}
+            <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
+          </div>
+
+          {detail.score_components.map((component) => (
+            <div key={component.name}>
+              <div className="score-row">
+                <span>{component.name}</span>
+                <span className="bar progress" style={{ width: '28%' }}>
+                  {/* How much of this criterion's available weight the case scored. */}
+                  <span
+                    className="progress__fill"
+                    style={{
+                      display: 'block',
+                      width: `${Math.round((component.points / component.weight) * 100)}%`,
+                    }}
+                  />
+                </span>
+                <span className="pts">+{component.points}</span>
+              </div>
+              <div
+                className="text-xs text-muted"
+                style={{ marginTop: '-0.4rem', paddingBottom: '0.4rem' }}
+              >
+                {readableReason(component.reason)}
+              </div>
+            </div>
+          ))}
+
+          <hr className="divider" style={{ margin: '1.2rem 0' }} />
+          <div className="row--between">
+            <span className="text-sm text-muted">
+              Rubric v3.0 · rule-based, reviewed by officers
+            </span>
+            <span className="text-strong" style={{ fontSize: 'var(--fs-20)' }}>
+              {detail.score_total}
+              <span className="text-sm text-muted">/100</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="meta-rail__section">
+        <div className="card__header">
+          <h3>Case details</h3>
+        </div>
+        <dl className="kv">
+          <dt>Case ID</dt>
+          <dd>#{detail.reference}</dd>
+          <dt>Type</dt>
+          <dd>{detail.damage_category_display}</dd>
+          <dt>Flood depth</dt>
+          <dd>{detail.flood_depth_display}</dd>
+          <dt>Home liveable</dt>
+          <dd>{detail.liveability_display}</dd>
+          <dt>Urgency</dt>
+          <dd>{detail.urgency_display}</dd>
+          <dt>Access</dt>
+          <dd>{detail.access_level_display}</dd>
+          <dt>Household</dt>
+          <dd>
+            {detail.household_size} {detail.household_size === 1 ? 'member' : 'members'}
+            {detail.vulnerability_flags?.length > 0 &&
+              ` · ${list(detail.vulnerability_flags)}`}
+          </dd>
+          <dt>Essential needs</dt>
+          <dd>{list(detail.needs_flags)}</dd>
+          <dt>Address</dt>
+          <dd>{detail.location.address}</dd>
+        </dl>
+        <p className="text-xs text-muted" style={{ marginTop: 'var(--sp-12)' }}>
+          {detail.location.precision === 'exact'
+            ? 'Your full address is shown to you, and released only to the district office and the organisation that claims your case.'
+            : 'Village-level only.'}
+        </p>
+      </div>
+
+      <div className="banner banner--warning">
+        <Icon path={PATHS.warning} />
+        <span className="body">
+          <span className="title">Situation changed?</span>
+          <br />
+          If your home becomes unsafe or someone needs medical help, report it and your case
+          will be re-prioritised.
+        </span>
+      </div>
+    </aside>
+  )
+}
+
+function CaseCard({ item, onOpen, isOpen }) {
+  const ui = STATUS_UI[item.status] || STATUS_UI.submitted
+  const settled = CLOSED_STATUSES.has(item.status)
+
+  return (
+    <button
+      type="button"
+      className="card card--flat"
+      onClick={() => onOpen(item.id)}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        font: 'inherit',
+        cursor: 'pointer',
+        opacity: settled ? 0.75 : 1,
+        outline: isOpen ? '2px solid var(--teal-700)' : undefined,
+      }}
+    >
+      <div className="row--between" style={{ marginBottom: '1.2rem' }}>
+        <div className="row">
+          <span
+            className={`stat-card__icon ${settled ? 'icon-bg--success' : 'icon-bg--info'}`}
+            style={{ width: '3.6rem', height: '3.6rem' }}
+          >
+            <Icon path={PATHS.home} style={{ width: '1.8rem', height: '1.8rem' }} />
+          </span>
+          <div>
+            <div className="text-strong">{item.damage_category_display}</div>
+            <div className="text-xs text-muted">
+              #{item.reference} · {item.village} ·{' '}
+              {item.days_waiting === 0
+                ? 'submitted today'
+                : `submitted ${item.days_waiting} ${item.days_waiting === 1 ? 'day' : 'days'} ago`}
+            </div>
+          </div>
+        </div>
+        <span className={`badge ${ui.badge}`}>{item.status_display}</span>
+      </div>
+
+      <div className="row--between" style={{ marginBottom: '0.6rem' }}>
+        <span className="text-xs text-muted">{ui.next}</span>
+        {item.score_total != null && (
+          <span className="text-xs text-strong">
+            Priority {item.score_total} · {item.priority_band}
+          </span>
+        )}
+      </div>
+      <div className="progress">
+        <div
+          className={`progress__fill${settled ? '' : ' progress__fill--info'}`}
+          style={{ width: `${ui.progress}%` }}
+        />
+      </div>
+    </button>
+  )
+}
+
+export default function ResidentDashboard({ user, onLogout }) {
+  const [cases, setCases] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [detail, setDetail] = useState(null)
+  const [detailError, setDetailError] = useState(null)
+
+  // The list carries only summary fields; the breakdown, needs and location
+  // come from the detail endpoint, which applies its own visibility rules.
+  async function openCase(id) {
+    setDetailError(null)
+    if (detail?.id === id) {
+      setDetail(null)
+      return
+    }
+    try {
+      setDetail(await api.caseDetail(id))
+    } catch (err) {
+      setDetailError(err.message)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .cases()
+      .then((list) => !cancelled && setCases(list.results))
+      .catch(() => !cancelled && setCases([]))
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const active = cases.filter((c) => !CLOSED_STATUSES.has(c.status))
+  const resolved = cases.filter((c) => c.status === 'closed')
+  const awaiting = cases.filter((c) => c.status === 'submitted' || c.status === 'needs_info')
+
+  const firstName = user.full_name.split(' ')[0]
+  const initials = user.full_name
+    .split(' ')
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <a className="logo" href="#dashboard" onClick={(e) => e.preventDefault()}>
+          <span className="logo__mark">
+            <Icon path={PATHS.logo} strokeWidth={2} />
+          </span>
+          <span>
+            <span className="logo__name">HighGround</span>
+            <br />
+            <span className="logo__role">Resident</span>
+          </span>
+        </a>
+
+        <nav className="side-nav">
+          <a href="#dashboard" className="active" onClick={(e) => e.preventDefault()}>
+            <Icon path={PATHS.home} />
+            Dashboard
+          </a>
+          <a
+            href="#submit"
+            onClick={(e) => e.preventDefault()}
+            title="Not built yet — FR1 is the next feature"
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            <Icon path={PATHS.plus} />
+            Submit a request
+          </a>
+          <a href="#cases" onClick={(e) => e.preventDefault()}>
+            <Icon path={PATHS.folder} />
+            My cases
+            {cases.length > 0 && <span className="side-nav__count">{cases.length}</span>}
+          </a>
+          <a href="#notifications" onClick={(e) => e.preventDefault()}>
+            <Icon path={PATHS.bell} />
+            Notifications
+          </a>
+
+          <span className="side-nav__label">Community</span>
+          <a href="#help" onClick={(e) => e.preventDefault()}>
+            <Icon path={PATHS.heart} />
+            Community Help
+          </a>
+
+          <span className="side-nav__label">Account</span>
+          <a href="#profile" onClick={(e) => e.preventDefault()}>
+            <Icon path={PATHS.user} />
+            My profile
+          </a>
+        </nav>
+
+        <div className="sidebar__user">
+          <span className="avatar">{initials}</span>
+          <div>
+            <div className="text-sm text-strong">{user.full_name}</div>
+            <button
+              className="text-xs text-muted"
+              onClick={onLogout}
+              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main">
+        <div className="page-header">
+          <div>
+            <h1>Selamat datang, {firstName} 👋</h1>
+            <p>Here is the latest on your household&apos;s recovery.</p>
+          </div>
+          {/* Disabled until FR1 exists. Styled inline rather than in styles.css,
+              which is the frozen design contract and is not edited here. */}
+          <button
+            className="btn btn--primary"
+            disabled
+            title="Not built yet — FR1 is the next feature"
+            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+          >
+            <Icon path={PATHS.plus} strokeWidth={2} />
+            Submit a request
+          </button>
+        </div>
+
+        <ApplicationBanner user={user} />
+
+        <div className="stat-strip" style={{ margin: '1.6rem 0' }}>
+          <div className="stat-strip__item stat-strip__item--hero">
+            <div className="stat-strip__value">{active.length}</div>
+            <div className="stat-strip__label">
+              Active {active.length === 1 ? 'case' : 'cases'}
+            </div>
+          </div>
+          <div className="stat-strip__item">
+            <div className="stat-strip__value">{awaiting.length}</div>
+            <div className="stat-strip__label">Awaiting review</div>
+          </div>
+          <div className="stat-strip__item">
+            <div className="stat-strip__value">{resolved.length}</div>
+            <div className="stat-strip__label">
+              Resolved {resolved.length === 1 ? 'case' : 'cases'}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="grid-2"
+          style={{
+            gridTemplateColumns: detail ? '1.5fr 1fr' : '1fr',
+            alignItems: 'start',
+            gap: '1.6rem',
+          }}
+        >
+          <div className="card">
+            <div className="card__header">
+              <h3>My cases</h3>
+              {cases.length > 0 && (
+                <span className="text-xs text-muted">Select a case to see its detail</span>
+              )}
+            </div>
+
+            {detailError && (
+              <div
+                role="alert"
+                className="text-sm"
+                style={{ color: 'var(--danger-600)', fontWeight: 600, marginBottom: '1.2rem' }}
+              >
+                {detailError}
+              </div>
+            )}
+
+            {loading ? (
+              <p className="text-sm text-muted">Loading your cases…</p>
+            ) : cases.length === 0 ? (
+              <p className="text-sm text-muted">
+                You have not submitted a request yet. When you do, it will appear here with its
+                priority score and progress.
+              </p>
+            ) : (
+              <div className="stack" style={{ gap: '1.6rem' }}>
+                {cases.map((item) => (
+                  <CaseCard
+                    key={item.id}
+                    item={item}
+                    onOpen={openCase}
+                    isOpen={detail?.id === item.id}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {detail && <CaseDetailPanel detail={detail} onClose={() => setDetail(null)} />}
+        </div>
+
+        <div className="card" style={{ background: 'var(--sand-100)', marginTop: '1.6rem' }}>
+          <div className="row--between" style={{ gap: '1.6rem', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ marginBottom: '0.4rem' }}>
+                Not affected this season? Your neighbours could use a hand.
+              </h3>
+              <p className="text-sm text-muted">
+                Pledge cleaning kits, bedding or water — or volunteer with a recovery team.
+                Goods and time only, never money.
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}

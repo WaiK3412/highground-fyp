@@ -1,13 +1,22 @@
 /**
  * Screen 03 — Create an account.
  *
- * The role picker is part of the frozen design, but "Organisation" creates
- * nothing: those accounts are issued by the district office. The request never
- * carries a role.
+ * Two paths. A resident registers outright. An organisation *applies*: it names
+ * a requested_role and attaches evidence, but the account is still created as
+ * community_member. Only an admin approving the application grants the role
+ * (ADR-012), so nothing on this screen can hand anyone privilege.
  */
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+
+// system_admin is deliberately not offered, and the backend refuses it too. An
+// approval flow that can mint admins is one bad click from handing over the
+// platform.
+const APPLICABLE_ROLES = [
+  { value: 'ngo_volunteer', label: 'NGO / volunteer team member' },
+  { value: 'disaster_officer', label: 'District disaster officer' },
+]
 
 function HouseIcon() {
   return (
@@ -33,10 +42,109 @@ function BuildingIcon() {
   )
 }
 
+/**
+ * Name, phone, email and password — identical on both paths, so they live in
+ * one place. Only one branch is on screen at a time, so the ids cannot collide.
+ */
+function IdentityFields({ form, update, fieldError, errors }) {
+  return (
+    <>
+      <div className="input-group">
+        <div className="field">
+          <label htmlFor="full_name">
+            Full name <span className="required">*</span>
+          </label>
+          <input
+            id="full_name"
+            className="input"
+            placeholder="As per MyKad"
+            value={form.full_name}
+            onChange={(e) => update('full_name', e.target.value)}
+            required
+          />
+          {fieldError('full_name')}
+        </div>
+        <div className="field">
+          <label htmlFor="phone">
+            Phone number <span className="required">*</span>
+          </label>
+          <input
+            id="phone"
+            className="input"
+            placeholder="+60 12-345 6789"
+            value={form.phone}
+            onChange={(e) => update('phone', e.target.value)}
+            required
+          />
+          {fieldError('phone')}
+        </div>
+      </div>
+
+      <div className="input-group">
+        <div className="field">
+          <label htmlFor="reg-email">
+            Email <span className="required">*</span>
+          </label>
+          <input
+            id="reg-email"
+            className="input"
+            type="email"
+            placeholder="you@example.com"
+            value={form.email}
+            onChange={(e) => update('email', e.target.value)}
+            required
+          />
+          {fieldError('email')}
+        </div>
+        <div className="field">
+          <label htmlFor="reg-password">
+            Password <span className="required">*</span>
+          </label>
+          <input
+            id="reg-password"
+            className="input"
+            type="password"
+            placeholder="At least 8 characters"
+            value={form.password}
+            onChange={(e) => update('password', e.target.value)}
+            required
+          />
+          {fieldError('password') || (
+            <span className="help">Use a mix of letters and numbers.</span>
+          )}
+        </div>
+      </div>
+
+      <div className="input-group">
+        <div className="field">
+          <label htmlFor="password_confirm">
+            Confirm password <span className="required">*</span>
+          </label>
+          <input
+            id="password_confirm"
+            className={`input${errors.password_confirm ? ' input--error' : ''}`}
+            type="password"
+            placeholder="Re-enter your password"
+            value={form.password_confirm}
+            onChange={(e) => update('password_confirm', e.target.value)}
+            required
+          />
+          {fieldError('password_confirm')}
+        </div>
+        <div className="field" aria-hidden="true" />
+      </div>
+    </>
+  )
+}
+
 export default function Register({ onRegistered, onShowLogin }) {
   const [accountType, setAccountType] = useState('resident')
   const [organizations, setOrganizations] = useState([])
-  // TODO: requestedRole and documents state for the ADR-012 application form.
+  const [requestedRole, setRequestedRole] = useState('')
+  const [organizationId, setOrganizationId] = useState('')
+  // e.target.files is a FileList, converted here to a real array so .map and
+  // .length work below.
+  const [documents, setDocuments] = useState([])
 
   // Load the organisation list once, when this screen first appears.
   useEffect(() => {
@@ -53,6 +161,8 @@ export default function Register({ onRegistered, onShowLogin }) {
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
 
+  const applying = accountType === 'organisation'
+
   function update(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
@@ -66,10 +176,22 @@ export default function Register({ onRegistered, onShowLogin }) {
       return
     }
 
+    // Re-checked on the server, which is the check that counts — this one only
+    // saves the applicant a round trip.
+    if (applying && documents.length === 0) {
+      setErrors({ documents: 'Attach at least one supporting document.' })
+      return
+    }
+
     setBusy(true)
     try {
       await api.primeCsrf()
-      const user = await api.register(form)
+      // Only an application carries a role, an organisation and files; a
+      // resident registration stays plain JSON.
+      const payload = applying
+        ? { ...form, requested_role: requestedRole, organization: organizationId }
+        : form
+      const user = await api.register(payload, applying ? documents : undefined)
       onRegistered(user)
     } catch (err) {
       setErrors(err.fields || { detail: err.message })
@@ -83,6 +205,43 @@ export default function Register({ onRegistered, onShowLogin }) {
         {Array.isArray(errors[name]) ? errors[name].join(' ') : errors[name]}
       </span>
     ) : null
+
+  const errorBanner = errors.detail ? (
+    <div
+      role="alert"
+      style={{
+        background: 'var(--danger-100)',
+        color: 'var(--danger-600)',
+        padding: '1.0rem 1.2rem',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: 'var(--fs-14)',
+        fontWeight: 600,
+      }}
+    >
+      {errors.detail}
+    </div>
+  ) : null
+
+  // The frozen styles.css carries no disabled state for .btn, and a
+  // full-strength primary button that does nothing when clicked reads as
+  // broken. Dimmed inline rather than editing the design contract.
+  const submitDisabled = busy || !agreed
+  const submitStyle = submitDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
+
+  const termsCheckbox = (
+    <label className="check-row" style={{ alignItems: 'flex-start' }}>
+      <input
+        type="checkbox"
+        style={{ marginTop: '0.3rem' }}
+        checked={agreed}
+        onChange={(e) => setAgreed(e.target.checked)}
+      />
+      <span className="text-sm">
+        I agree to the terms of use and consent to my information being shared with
+        authorised responders for recovery coordination.
+      </span>
+    </label>
+  )
 
   return (
     <div className="auth-scene">
@@ -134,29 +293,87 @@ export default function Register({ onRegistered, onShowLogin }) {
             </button>
           </div>
 
-          {accountType === 'organisation' ? (
+          {applying ? (
             <form className="stack" style={{ gap: '2.4rem' }} onSubmit={handleSubmit}>
-              {errors.detail && (
-                <div
-                  role="alert"
-                  style={{
-                    background: 'var(--danger-100)',
-                    color: 'var(--danger-600)',
-                    padding: '1.0rem 1.2rem',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: 'var(--fs-14)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {errors.detail}
+              {errorBanner}
+
+              <div className="input-group">
+                <div className="field">
+                  <label htmlFor="requested_role">
+                    Role you are applying for <span className="required">*</span>
+                  </label>
+                  <select
+                    id="requested_role"
+                    className="input"
+                    value={requestedRole}
+                    onChange={(e) => setRequestedRole(e.target.value)}
+                    required
+                  >
+                    <option value="">Select your role</option>
+                    {APPLICABLE_ROLES.map((role) => (
+                      <option key={role.value} value={role.value}>
+                        {role.label}
+                      </option>
+                    ))}
+                  </select>
+                  {fieldError('requested_role')}
                 </div>
-              )}
+                <div className="field">
+                  <label htmlFor="organization">
+                    Organisation <span className="required">*</span>
+                  </label>
+                  <select
+                    id="organization"
+                    className="input"
+                    value={organizationId}
+                    onChange={(e) => setOrganizationId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select your organisation</option>
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} — {org.type_display}
+                      </option>
+                    ))}
+                  </select>
+                  {fieldError('organization')}
+                </div>
+              </div>
 
-              {/* TODO: role and organisation pickers for the ADR-012 application. */}
+              <div className="field">
+                <label htmlFor="documents">
+                  Supporting documents <span className="required">*</span>
+                </label>
+                <input
+                  id="documents"
+                  className="input"
+                  type="file"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setDocuments(Array.from(e.target.files))}
+                />
+                {fieldError('documents') || (
+                  <span className="help">
+                    Organisation registration, staff ID, or an authorisation letter.
+                    PDF, JPEG or PNG, up to 5 MB each.
+                  </span>
+                )}
+                {documents.length > 0 && (
+                  <span className="help" style={{ color: 'var(--grey-900)', fontWeight: 600 }}>
+                    {documents.length} file{documents.length === 1 ? '' : 's'} attached:{' '}
+                    {documents.map((file) => file.name).join(', ')}
+                  </span>
+                )}
+              </div>
 
-              {/* TODO: document upload — multiple, PDF/JPEG/PNG, 5 MB each (ADR-012). */}
+              <IdentityFields
+                form={form}
+                update={update}
+                fieldError={fieldError}
+                errors={errors}
+              />
 
-              {/* TODO: reuse the resident form's name/phone/email/password fields. */}
+              {termsCheckbox}
 
               <div className="auth-note" style={{ margin: 0, color: 'var(--grey-700)' }}>
                 <span>
@@ -168,127 +385,34 @@ export default function Register({ onRegistered, onShowLogin }) {
                 </span>
               </div>
 
-              <button className="btn btn--primary btn--full" type="submit" disabled={busy || !agreed}>
+              <button
+                className="btn btn--primary btn--full"
+                type="submit"
+                disabled={submitDisabled}
+                style={submitStyle}
+              >
                 {busy ? 'Submitting application…' : 'Submit application'}
               </button>
             </form>
           ) : (
             <form className="stack" style={{ gap: '2.4rem' }} onSubmit={handleSubmit}>
-              {errors.detail && (
-                <div
-                  role="alert"
-                  style={{
-                    background: 'var(--danger-100)',
-                    color: 'var(--danger-600)',
-                    padding: '1.0rem 1.2rem',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: 'var(--fs-14)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {errors.detail}
-                </div>
-              )}
+              {errorBanner}
 
-              <div className="input-group">
-                <div className="field">
-                  <label htmlFor="full_name">
-                    Full name <span className="required">*</span>
-                  </label>
-                  <input
-                    id="full_name"
-                    className="input"
-                    placeholder="As per MyKad"
-                    value={form.full_name}
-                    onChange={(e) => update('full_name', e.target.value)}
-                    required
-                  />
-                  {fieldError('full_name')}
-                </div>
-                <div className="field">
-                  <label htmlFor="phone">
-                    Phone number <span className="required">*</span>
-                  </label>
-                  <input
-                    id="phone"
-                    className="input"
-                    placeholder="+60 12-345 6789"
-                    value={form.phone}
-                    onChange={(e) => update('phone', e.target.value)}
-                    required
-                  />
-                  {fieldError('phone')}
-                </div>
-              </div>
+              <IdentityFields
+                form={form}
+                update={update}
+                fieldError={fieldError}
+                errors={errors}
+              />
 
-              <div className="input-group">
-                <div className="field">
-                  <label htmlFor="reg-email">
-                    Email <span className="required">*</span>
-                  </label>
-                  <input
-                    id="reg-email"
-                    className="input"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={form.email}
-                    onChange={(e) => update('email', e.target.value)}
-                    required
-                  />
-                  {fieldError('email')}
-                </div>
-                <div className="field">
-                  <label htmlFor="reg-password">
-                    Password <span className="required">*</span>
-                  </label>
-                  <input
-                    id="reg-password"
-                    className="input"
-                    type="password"
-                    placeholder="At least 8 characters"
-                    value={form.password}
-                    onChange={(e) => update('password', e.target.value)}
-                    required
-                  />
-                  {fieldError('password') || (
-                    <span className="help">Use a mix of letters and numbers.</span>
-                  )}
-                </div>
-              </div>
+              {termsCheckbox}
 
-              <div className="input-group">
-                <div className="field">
-                  <label htmlFor="password_confirm">
-                    Confirm password <span className="required">*</span>
-                  </label>
-                  <input
-                    id="password_confirm"
-                    className={`input${errors.password_confirm ? ' input--error' : ''}`}
-                    type="password"
-                    placeholder="Re-enter your password"
-                    value={form.password_confirm}
-                    onChange={(e) => update('password_confirm', e.target.value)}
-                    required
-                  />
-                  {fieldError('password_confirm')}
-                </div>
-                <div className="field" aria-hidden="true" />
-              </div>
-
-              <label className="check-row" style={{ alignItems: 'flex-start' }}>
-                <input
-                  type="checkbox"
-                  style={{ marginTop: '0.3rem' }}
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                />
-                <span className="text-sm">
-                  I agree to the terms of use and consent to my information being shared with
-                  authorised responders for recovery coordination.
-                </span>
-              </label>
-
-              <button className="btn btn--primary btn--full" type="submit" disabled={busy || !agreed}>
+              <button
+                className="btn btn--primary btn--full"
+                type="submit"
+                disabled={submitDisabled}
+                style={submitStyle}
+              >
                 {busy ? 'Creating account…' : 'Create account'}
               </button>
             </form>

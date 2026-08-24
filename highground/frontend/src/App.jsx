@@ -3,6 +3,7 @@ import { api } from './api'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import CaseQueue from './pages/CaseQueue'
+import ResidentDashboard from './pages/ResidentDashboard'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
@@ -62,6 +63,12 @@ export default function App() {
       </div>
     )
   }
+
+  // A resident — including someone whose role application is still pending,
+  // since ADR-012 leaves them least-privileged until an admin decides — gets
+  // their own household screen, not the responder queue.
+  if (user?.role === 'community_member')
+    return <ResidentDashboard user={user} onLogout={handleLogout} />
 
   if (user) return <CaseQueue user={user} onLogout={handleLogout} />
   if (screen === 'register')

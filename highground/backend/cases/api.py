@@ -66,14 +66,31 @@ class CaseListSerializer(serializers.ModelSerializer):
 class CaseDetailSerializer(CaseListSerializer):
     score_components = ScoreComponentSerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
+    # The raw values are enum members like "medical_disrupted"; the model
+    # already carries the wording a person should read, so send that too rather
+    # than leaving each client to invent its own labels.
+    urgency_display = serializers.CharField(source="get_urgency_display", read_only=True)
+    flood_depth_display = serializers.CharField(
+        source="get_flood_depth_display", read_only=True
+    )
+    liveability_display = serializers.CharField(
+        source="get_liveability_display", read_only=True
+    )
+    access_level_display = serializers.CharField(
+        source="get_access_level_display", read_only=True
+    )
 
     class Meta(CaseListSerializer.Meta):
         fields = CaseListSerializer.Meta.fields + [
             "description",
             "urgency",
+            "urgency_display",
             "flood_depth",
+            "flood_depth_display",
             "liveability",
+            "liveability_display",
             "access_level",
+            "access_level_display",
             "needs_flags",
             "vulnerability_flags",
             "score_components",
