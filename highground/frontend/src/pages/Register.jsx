@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 // system_admin is deliberately not offered, and the backend refuses it too. An
 // approval flow that can mint admins is one bad click from handing over the
@@ -138,6 +139,7 @@ function IdentityFields({ form, update, fieldError, errors }) {
 }
 
 export default function Register({ onRegistered, onShowLogin }) {
+  useDocumentTitle('Create account')
   const [accountType, setAccountType] = useState('resident')
   const [organizations, setOrganizations] = useState([])
   const [requestedRole, setRequestedRole] = useState('')

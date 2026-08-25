@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All' },
@@ -13,6 +14,16 @@ const STATUS_FILTERS = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'submitted', label: 'Submitted' },
 ]
+
+// Slim, warm-toned scrollbars on the panels that scroll, plus a gutter so the
+// cards are not pressed up against the bar. Set here rather than in styles.css:
+// the design contract is frozen and never styles scrollbars, so this stays a
+// code-level choice instead of a change to the design.
+const SCROLL_PANE = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'var(--grey-300) transparent',
+  paddingRight: 'var(--sp-16)',
+}
 
 function scoreClass(band) {
   if (band === 'High') return 'score score--high score--sm'
@@ -205,6 +216,7 @@ function ScorePanel({ detail, onClose, user, onDone }) {
 }
 
 export default function CaseQueue({ user, onLogout }) {
+  useDocumentTitle('Case queue')
   const [cases, setCases] = useState([])
   const [stats, setStats] = useState(null)
   const [status, setStatus] = useState('')
@@ -349,7 +361,7 @@ export default function CaseQueue({ user, onLogout }) {
         </div>
       </aside>
 
-      <main className="main">
+      <main className="main main--vp">
         <div className="page-header">
           <div>
             <h1>Case queue</h1>
@@ -403,15 +415,18 @@ export default function CaseQueue({ user, onLogout }) {
           />
         </div>
 
+        {/* vp-fill claims the rest of the viewport and each column scrolls on
+            its own, so the filter bar and stat strip stay pinned while a long
+            queue or a long score panel scrolls independently. */}
         <div
+          className="vp-fill"
           style={{
             display: 'grid',
             gridTemplateColumns: detail ? '1fr 1fr' : '1fr',
             gap: 'var(--sp-16)',
-            alignItems: 'start',
           }}
         >
-          <div className="stack" style={{ gap: 'var(--sp-12)' }}>
+          <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
             {notice && (
               <div className="banner banner--info">
                 <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
@@ -460,12 +475,16 @@ export default function CaseQueue({ user, onLogout }) {
             ))}
           </div>
 
-          <ScorePanel
-            detail={detail}
-            user={user}
-            onDone={refresh}
-            onClose={() => setDetail(null)}
-          />
+          {detail && (
+            <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
+              <ScorePanel
+                detail={detail}
+                user={user}
+                onDone={refresh}
+                onClose={() => setDetail(null)}
+              />
+            </div>
+          )}
         </div>
       </main>
     </div>

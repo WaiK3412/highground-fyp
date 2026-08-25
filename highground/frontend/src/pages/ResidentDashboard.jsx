@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 // How each case status reads to the household that submitted it. The wording
 // is deliberately about what happens next, not the internal status name.
@@ -59,6 +60,16 @@ const STATUS_UI = {
 }
 
 const CLOSED_STATUSES = new Set(['closed', 'rejected'])
+
+// Slim, warm-toned scrollbars on the panels that scroll, plus a gutter so the
+// cards are not pressed up against the bar. Set here rather than in styles.css:
+// the design contract is frozen and never styles scrollbars, so this stays a
+// code-level choice instead of a change to the design.
+const SCROLL_PANE = {
+  scrollbarWidth: 'thin',
+  scrollbarColor: 'var(--grey-300) transparent',
+  paddingRight: 'var(--sp-16)',
+}
 
 function Icon({ path, strokeWidth = 1.5, style }) {
   return (
@@ -260,6 +271,80 @@ function CaseDetailPanel({ detail, onClose }) {
   )
 }
 
+// Statuses where the case is waiting on the household rather than on a
+// responder. These come first in the banner because they are the only ones the
+// resident can actually act on.
+const NEEDS_RESIDENT = new Set(['needs_info', 'pending_confirm'])
+
+/**
+ * The one case worth leading with.
+ *
+ * Anything waiting on the household outranks everything else; among the rest,
+ * the highest-scoring open case. Counting cases told a household nothing they
+ * could not already see in the list — this says what is happening and whether
+ * they need to do something.
+ */
+function focusCase(cases) {
+  const open = cases.filter((item) => !CLOSED_STATUSES.has(item.status))
+  if (open.length === 0) return null
+
+  const waitingOnThem = open.filter((item) => NEEDS_RESIDENT.has(item.status))
+  const pool = waitingOnThem.length > 0 ? waitingOnThem : open
+
+  return pool.reduce((best, item) =>
+    (item.score_total ?? 0) > (best.score_total ?? 0) ? item : best,
+  )
+}
+
+// The card's "next" line restates the status, which reads as a repetition once
+// the banner headline has already said it. These carry on from the headline
+// instead, and say what the household should expect or do.
+const BANNER_NEXT = {
+  submitted: 'A district officer will review it and set its priority',
+  needs_info: 'Open the case to see what the district office has asked for',
+  verified: 'Waiting for a response team to take it on',
+  claimed: 'They will schedule the work and keep you updated',
+  in_progress: 'Someone will be in touch about access to your home',
+  pending_confirm: 'Open the case and confirm, so it can be closed',
+}
+
+function CaseStatusBanner({ cases }) {
+  const item = focusCase(cases)
+  if (!item) return null
+
+  const headline = {
+    submitted: `#${item.reference} has been received`,
+    needs_info: `#${item.reference} needs more information from you`,
+    verified: `#${item.reference} has been verified and prioritised`,
+    claimed: `${item.claimed_by || 'A response team'} has taken on #${item.reference}`,
+    in_progress: `Work has started on #${item.reference}`,
+    pending_confirm: `Confirm the work on #${item.reference} is finished`,
+  }[item.status]
+
+  const waited =
+    item.days_waiting === 0
+      ? 'submitted today'
+      : `${item.days_waiting} ${item.days_waiting === 1 ? 'day' : 'days'} so far`
+
+  const actionable = NEEDS_RESIDENT.has(item.status)
+
+  return (
+    <div className={`banner ${actionable ? 'banner--warning' : 'banner--info'}`}>
+      <Icon path={actionable ? PATHS.warning : PATHS.bell} />
+      <span className="body">
+        <span className="title">{headline}</span>
+        <br />
+        {item.score_total != null && (
+          <>
+            {item.priority_band} priority ({item.score_total} of 100).{' '}
+          </>
+        )}
+        {BANNER_NEXT[item.status]} · {waited}.
+      </span>
+    </div>
+  )
+}
+
 function CaseCard({ item, onOpen, isOpen }) {
   const ui = STATUS_UI[item.status] || STATUS_UI.submitted
   const settled = CLOSED_STATUSES.has(item.status)
@@ -319,6 +404,7 @@ function CaseCard({ item, onOpen, isOpen }) {
 }
 
 export default function ResidentDashboard({ user, onLogout }) {
+  useDocumentTitle('My Recovery')
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState(null)
@@ -351,10 +437,6 @@ export default function ResidentDashboard({ user, onLogout }) {
     }
   }, [])
 
-  const active = cases.filter((c) => !CLOSED_STATUSES.has(c.status))
-  const resolved = cases.filter((c) => c.status === 'closed')
-  const awaiting = cases.filter((c) => c.status === 'submitted' || c.status === 'needs_info')
-
   const firstName = user.full_name.split(' ')[0]
   const initials = user.full_name
     .split(' ')
@@ -365,7 +447,7 @@ export default function ResidentDashboard({ user, onLogout }) {
   return (
     <div className="app">
       <aside className="sidebar">
-        <a className="logo" href="#dashboard" onClick={(e) => e.preventDefault()}>
+        <a className="logo" href="#recovery" onClick={(e) => e.preventDefault()}>
           <span className="logo__mark">
             <Icon path={PATHS.logo} strokeWidth={2} />
           </span>
@@ -377,9 +459,13 @@ export default function ResidentDashboard({ user, onLogout }) {
         </a>
 
         <nav className="side-nav">
-          <a href="#dashboard" className="active" onClick={(e) => e.preventDefault()}>
+          {/* "My Recovery", not "Dashboard" — the word the design contract uses
+              in this screen's own title. A household is not monitoring a system,
+              and report §2.2.4 argues for the user's vocabulary in a crisis
+              context. The responder screens keep operational language. */}
+          <a href="#recovery" className="active" onClick={(e) => e.preventDefault()}>
             <Icon path={PATHS.home} />
-            Dashboard
+            My Recovery
           </a>
           <a
             href="#submit"
@@ -428,7 +514,7 @@ export default function ResidentDashboard({ user, onLogout }) {
         </div>
       </aside>
 
-      <main className="main">
+      <main className="main main--vp">
         <div className="page-header">
           <div>
             <h1>Selamat datang, {firstName} 👋</h1>
@@ -447,35 +533,22 @@ export default function ResidentDashboard({ user, onLogout }) {
           </button>
         </div>
 
-        <ApplicationBanner user={user} />
-
-        <div className="stat-strip" style={{ margin: '1.6rem 0' }}>
-          <div className="stat-strip__item stat-strip__item--hero">
-            <div className="stat-strip__value">{active.length}</div>
-            <div className="stat-strip__label">
-              Active {active.length === 1 ? 'case' : 'cases'}
-            </div>
-          </div>
-          <div className="stat-strip__item">
-            <div className="stat-strip__value">{awaiting.length}</div>
-            <div className="stat-strip__label">Awaiting review</div>
-          </div>
-          <div className="stat-strip__item">
-            <div className="stat-strip__value">{resolved.length}</div>
-            <div className="stat-strip__label">
-              Resolved {resolved.length === 1 ? 'case' : 'cases'}
-            </div>
-          </div>
+        <div className="stack" style={{ gap: 'var(--sp-12)', marginBottom: '1.6rem' }}>
+          <ApplicationBanner user={user} />
+          {!loading && <CaseStatusBanner cases={cases} />}
         </div>
 
+        {/* vp-fill takes the remaining viewport height and each column scrolls
+            inside itself, so a long detail panel never leaves a tall empty
+            column beside it. The header and banners stay pinned. */}
         <div
-          className="grid-2"
+          className="grid-2 vp-fill"
           style={{
             gridTemplateColumns: detail ? '1.5fr 1fr' : '1fr',
-            alignItems: 'start',
             gap: '1.6rem',
           }}
         >
+          <div className="stack vp-scroll" style={{ gap: '1.6rem', ...SCROLL_PANE }}>
           <div className="card">
             <div className="card__header">
               <h3>My cases</h3>
@@ -515,21 +588,26 @@ export default function ResidentDashboard({ user, onLogout }) {
             )}
           </div>
 
-          {detail && <CaseDetailPanel detail={detail} onClose={() => setDetail(null)} />}
-        </div>
-
-        <div className="card" style={{ background: 'var(--sand-100)', marginTop: '1.6rem' }}>
-          <div className="row--between" style={{ gap: '1.6rem', flexWrap: 'wrap' }}>
-            <div>
-              <h3 style={{ marginBottom: '0.4rem' }}>
-                Not affected this season? Your neighbours could use a hand.
-              </h3>
-              <p className="text-sm text-muted">
-                Pledge cleaning kits, bedding or water — or volunteer with a recovery team.
-                Goods and time only, never money.
-              </p>
+            <div className="card" style={{ background: 'var(--sand-100)' }}>
+              <div className="row--between" style={{ gap: '1.6rem', flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ marginBottom: '0.4rem' }}>
+                    Not affected this season? Your neighbours could use a hand.
+                  </h3>
+                  <p className="text-sm text-muted">
+                    Pledge cleaning kits, bedding or water — or volunteer with a recovery
+                    team. Goods and time only, never money.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
+
+          {detail && (
+            <div className="stack vp-scroll" style={{ gap: '1.6rem', ...SCROLL_PANE }}>
+              <CaseDetailPanel detail={detail} onClose={() => setDetail(null)} />
+            </div>
+          )}
         </div>
       </main>
     </div>

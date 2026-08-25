@@ -5,6 +5,7 @@
 
 import { useState } from 'react'
 import { api } from '../api'
+import { useDocumentTitle } from '../useDocumentTitle'
 
 const CONTOUR =
   'M-220 -30 C-210 -130 -100 -200 20 -195 C140 -190 225 -110 228 -5 C231 100 150 190 20 200 C-110 210 -230 130 -220 -30 Z'
@@ -34,6 +35,7 @@ function Contours({ modifier, scales }) {
 }
 
 export default function Login({ onLoggedIn, onShowRegister }) {
+  useDocumentTitle('Log in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
