@@ -4,6 +4,8 @@ The SPA talks to /api/; Django admin remains at /admin/ (ADR-002: admin is
 screens 14/19 of the design, not a temporary stand-in).
 """
 
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
@@ -26,3 +28,9 @@ urlpatterns = [
     path("api/cases/<int:pk>/claim/", cases_api.claim_case),
     path("api/cases/<int:pk>/verify/", cases_api.verify_case),
 ]
+
+# runserver serves STATIC by itself but never MEDIA, so uploaded registration
+# documents 404 without this line. DEBUG-only on purpose: in production the
+# web server serves MEDIA_ROOT, and this helper refuses to run anyway.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
