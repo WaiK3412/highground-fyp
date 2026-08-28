@@ -69,6 +69,7 @@ export const api = {
     ).toString()
     return request('/api/cases/' + (query ? `?${query}` : ''))
   },
+  createCase: (payload) => request('/api/cases/', { method: 'POST', body: payload }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
   claimCase: (id) => request(`/api/cases/${id}/claim/`, { method: 'POST' }),
   verifyCase: (id, decision, note) =>

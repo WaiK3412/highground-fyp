@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.generics import ListAPIView
+from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -112,9 +112,96 @@ class CaseDetailSerializer(CaseListSerializer):
         return {"precision": "village", "address": obj.village, "latitude": None, "longitude": None}
 
 
-class CaseListView(ListAPIView):
-    serializer_class = CaseListSerializer
+# The scoring engine awards points per flag, so an unchecked list is a way to
+# inflate your own priority. These vocabularies are the engine's own
+# (scoring/engine.py) — anything outside them is not a need we recognise.
+VULNERABILITY_VOCAB = {"elderly", "child_under_5", "disability", "single_parent"}
+NEEDS_VOCAB = {"food", "water", "hygiene", "bedding", "medicine", "baby_supplies"}
+
+
+def _known_flags(values, vocabulary, field):
+    if not isinstance(values, list):
+        raise serializers.ValidationError("Expected a list.")
+    unknown = sorted({str(v) for v in values} - vocabulary)
+    if unknown:
+        raise serializers.ValidationError(f"Unrecognised {field}: {', '.join(unknown)}.")
+    # De-duplicated: the engine counts entries, so a repeated flag would score twice.
+    return sorted(set(values))
+
+
+class CaseCreateSerializer(serializers.ModelSerializer):
+    """What a household may put in a new case (FR3).
+
+    The field list IS the security boundary, and it is deliberately short.
+    Everything a resident must not control — status, score_total,
+    verified_by_user, claimed_by_org, rubric_version, reference,
+    submitted_by_user — is simply absent, so DRF drops it instead of trusting
+    it. Posting score_total=100 is not an error; it is ignored.
+
+    Same rule as ADR-012 registration: the request records what you want, the
+    server decides what you get.
+    """
+
+    class Meta:
+        model = CaseRecord
+        fields = [
+            "village",
+            "address",
+            "household_size",
+            "damage_category",
+            "description",
+            "flood_depth",
+            "liveability",
+            "access_level",
+            "urgency",
+            "vulnerability_flags",
+            "needs_flags",
+        ]
+
+    def validate_household_size(self, value):
+        if value < 1:
+            raise serializers.ValidationError("A household has at least one person.")
+        return value
+
+    def validate_description(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Describe the damage and what you need.")
+        return value.strip()
+
+    def validate_vulnerability_flags(self, value):
+        return _known_flags(value, VULNERABILITY_VOCAB, "vulnerability flags")
+
+    def validate_needs_flags(self, value):
+        return _known_flags(value, NEEDS_VOCAB, "needs flags")
+
+
+def _next_reference():
+    """Next FRC- number, continuing the seed data's series.
+
+    Known limitation: two simultaneous submissions can read the same maximum.
+    `reference` is unique, so the loser gets an IntegrityError rather than a
+    duplicate reference — noisy, but never wrong. A database sequence is the
+    real fix and is not worth building before submissions are concurrent.
+    """
+    last = (
+        CaseRecord.objects.filter(reference__startswith="FRC-")
+        .order_by("-reference")
+        .values_list("reference", flat=True)
+        .first()
+    )
+    try:
+        return f"FRC-{int(last.split('-')[1]) + 1}"
+    except (AttributeError, IndexError, ValueError):
+        return "FRC-1042"
+
+
+class CaseListView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        # Reading and writing are different shapes: the list carries computed
+        # fields a client may never set.
+        return CaseCreateSerializer if self.request.method == "POST" else CaseListSerializer
 
     def get_queryset(self):
         queryset = CaseRecord.objects.select_related(
@@ -135,6 +222,35 @@ class CaseListView(ListAPIView):
                 | Q(description__icontains=search)
             )
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Create a case from a household's submission (FR3).
+
+        Scoring deliberately does not happen here. Screen 17 is explicit that
+        a request is checked by an officer "before it is scored and released
+        to the NGO queue", so a new case carries score_total=None until it is
+        verified.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            case = serializer.save(
+                submitted_by_user=request.user,
+                reference=_next_reference(),
+                status=CaseRecord.Status.SUBMITTED,
+                created_at=timezone.now(),
+            )
+            CaseEventLog.objects.create(
+                case=case,
+                actor_user=request.user,
+                event_type=CaseEventLog.EventType.SUBMITTED,
+                detail=f"Request submitted by {request.user.full_name}.",
+                created_at=timezone.now(),
+            )
+
+        return Response(CaseListSerializer(case).data, status=201)
+
 
 
 @api_view(["GET"])

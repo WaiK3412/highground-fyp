@@ -16,45 +16,42 @@ import { useDocumentTitle } from '../useDocumentTitle'
 
 // How each case status reads to the household that submitted it. The wording
 // is deliberately about what happens next, not the internal status name.
+// No progress bar here. The frozen design pairs it with a real percentage
+// ("60%", "25%") driven by task completion — screen 04 shows "Cleanup team
+// assigned · arriving Thu 15 Jan · 60%". CaseTask is not built until Phase 5,
+// so there is nothing to measure; a bar fed from the status name would be a
+// number the system invented. Restore it with the label when tasks exist.
 const STATUS_UI = {
   submitted: {
     badge: 'badge--new',
-    progress: 10,
     next: 'Waiting for a district officer to review it',
   },
   needs_info: {
     badge: 'badge--escalated',
-    progress: 20,
     next: 'The district office has asked for more information',
   },
   verified: {
     badge: 'badge--verified',
-    progress: 35,
     next: 'Verified — waiting for a response team to take it on',
   },
   claimed: {
     badge: 'badge--assigned',
-    progress: 55,
     next: 'A response team has taken this on',
   },
   in_progress: {
     badge: 'badge--progress',
-    progress: 75,
     next: 'Work is under way',
   },
   pending_confirm: {
     badge: 'badge--progress',
-    progress: 90,
     next: 'Waiting for you to confirm the work is finished',
   },
   closed: {
     badge: 'badge--resolved',
-    progress: 100,
     next: 'Closed',
   },
   rejected: {
     badge: 'badge--escalated',
-    progress: 0,
     next: 'Not accepted — open the case for the reason given',
   },
 }
@@ -71,15 +68,37 @@ const SCROLL_PANE = {
   paddingRight: 'var(--sp-16)',
 }
 
+// `path` may be one string or several — Heroicons are single-path, Lucide's
+// sprout is three.
 function Icon({ path, strokeWidth = 1.5, style }) {
+  const parts = Array.isArray(path) ? path : [path]
   return (
     <svg fill="none" viewBox="0 0 24 24" strokeWidth={strokeWidth} stroke="currentColor" style={style}>
-      <path strokeLinecap="round" strokeLinejoin="round" d={path} />
+      {parts.map((d, i) => (
+        <path key={i} strokeLinecap="round" strokeLinejoin="round" d={d} />
+      ))}
     </svg>
   )
 }
 
 const PATHS = {
+  // Per damage category. All Heroicons outline — DESIGN-GUIDE.md:100 allows one
+  // pack only, so these are chosen from what that pack has rather than from what
+  // would be ideal. `sun` for agriculture is the weakest fit: Heroicons has no
+  // crop, plant or field icon, and the card's label carries the meaning anyway.
+  cleanup: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z',
+  repair: 'M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z',
+  essential_items: 'm20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z',
+  // The one exception to DESIGN-GUIDE.md's "never mix icon packs": Heroicons
+  // has no crop, plant or field icon in all 316, and `sun` for Agriculture was
+  // a stand-in. This is Lucide's `sprout` — same 24x24 grid and round caps, so
+  // at strokeWidth 1.5 it sits at Heroicons' weight rather than Lucide's 2.
+  agriculture: [
+    'M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3',
+    'M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4',
+    'M5 21h14',
+  ],
+  other: 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   home: 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75',
   plus: 'M12 4.5v15m7.5-7.5h-15',
   folder:
@@ -106,9 +125,7 @@ function ApplicationBanner({ user }) {
             Your application to join as {user.requested_role_display} is under review.
           </span>
           <br />
-          A district administrator is checking the documents you uploaded. Until it is
-          approved this account works as an ordinary resident account — you can submit and
-          track your own household's requests, but not other people's.
+          Until it is approved, this works as an ordinary resident account.
         </span>
       </div>
     )
@@ -121,8 +138,8 @@ function ApplicationBanner({ user }) {
         <span className="body">
           <span className="title">Your role application was not approved.</span>
           <br />
-          {user.verification_note || 'No reason was recorded.'} Your resident account is
-          unaffected and you can continue to use it normally.
+          {user.verification_note || 'No reason was recorded.'} Your resident account
+          is unaffected.
         </span>
       </div>
     )
@@ -257,16 +274,6 @@ function CaseDetailPanel({ detail, onClose }) {
             : 'Village-level only.'}
         </p>
       </div>
-
-      <div className="banner banner--warning">
-        <Icon path={PATHS.warning} />
-        <span className="body">
-          <span className="title">Situation changed?</span>
-          <br />
-          If your home becomes unsafe or someone needs medical help, report it and your case
-          will be re-prioritised.
-        </span>
-      </div>
     </aside>
   )
 }
@@ -370,7 +377,7 @@ function CaseCard({ item, onOpen, isOpen }) {
             className={`stat-card__icon ${settled ? 'icon-bg--success' : 'icon-bg--info'}`}
             style={{ width: '3.6rem', height: '3.6rem' }}
           >
-            <Icon path={PATHS.home} style={{ width: '1.8rem', height: '1.8rem' }} />
+            <Icon path={PATHS[item.damage_category] || PATHS.other} style={{ width: '1.8rem', height: '1.8rem' }} />
           </span>
           <div>
             <div className="text-strong">{item.damage_category_display}</div>
@@ -393,17 +400,11 @@ function CaseCard({ item, onOpen, isOpen }) {
           </span>
         )}
       </div>
-      <div className="progress">
-        <div
-          className={`progress__fill${settled ? '' : ' progress__fill--info'}`}
-          style={{ width: `${ui.progress}%` }}
-        />
-      </div>
     </button>
   )
 }
 
-export default function ResidentDashboard({ user, onLogout }) {
+export default function ResidentDashboard({ user, onLogout, onSubmitRequest }) {
   useDocumentTitle('My Recovery')
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
@@ -469,9 +470,10 @@ export default function ResidentDashboard({ user, onLogout }) {
           </a>
           <a
             href="#submit"
-            onClick={(e) => e.preventDefault()}
-            title="Not built yet — FR1 is the next feature"
-            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+            onClick={(e) => {
+              e.preventDefault()
+              onSubmitRequest()
+            }}
           >
             <Icon path={PATHS.plus} />
             Submit a request
@@ -517,17 +519,10 @@ export default function ResidentDashboard({ user, onLogout }) {
       <main className="main main--vp">
         <div className="page-header">
           <div>
-            <h1>Selamat datang, {firstName} 👋</h1>
+            <h1>Selamat datang, {firstName} </h1>
             <p>Here is the latest on your household&apos;s recovery.</p>
           </div>
-          {/* Disabled until FR1 exists. Styled inline rather than in styles.css,
-              which is the frozen design contract and is not edited here. */}
-          <button
-            className="btn btn--primary"
-            disabled
-            title="Not built yet — FR1 is the next feature"
-            style={{ opacity: 0.5, cursor: 'not-allowed' }}
-          >
+          <button className="btn btn--primary" onClick={onSubmitRequest}>
             <Icon path={PATHS.plus} strokeWidth={2} />
             Submit a request
           </button>

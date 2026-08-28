@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import CaseQueue from './pages/CaseQueue'
 import ResidentDashboard from './pages/ResidentDashboard'
+import SubmitRequest from './pages/SubmitRequest'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
@@ -14,6 +15,8 @@ export default function App() {
   const [checking, setChecking] = useState(true)
   const [screen, setScreen] = useState('login')
   const [justLoggedIn, setJustLoggedIn] = useState(false)
+  // Residents have two screens now; anything more and this wants a router.
+  const [residentScreen, setResidentScreen] = useState('recovery')
 
   useEffect(() => {
     api
@@ -67,8 +70,24 @@ export default function App() {
   // A resident — including someone whose role application is still pending,
   // since ADR-012 leaves them least-privileged until an admin decides — gets
   // their own household screen, not the responder queue.
-  if (user?.role === 'community_member')
-    return <ResidentDashboard user={user} onLogout={handleLogout} />
+  if (user?.role === 'community_member') {
+    if (residentScreen === 'submit')
+      return (
+        <SubmitRequest
+          user={user}
+          onLogout={handleLogout}
+          onCancel={() => setResidentScreen('recovery')}
+          onSubmitted={() => setResidentScreen('recovery')}
+        />
+      )
+    return (
+      <ResidentDashboard
+        user={user}
+        onLogout={handleLogout}
+        onSubmitRequest={() => setResidentScreen('submit')}
+      />
+    )
+  }
 
   if (user) return <CaseQueue user={user} onLogout={handleLogout} />
   if (screen === 'register')
