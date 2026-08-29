@@ -421,31 +421,27 @@ textarea.input { resize: vertical; min-height: 10rem; }
 
 /* ---------- Banner / alert ----------
    White body + 3px left accent + tinted icon tile (not a tinted box). */
+/* Quiet note, not a callout component. The accent bar, the tinted icon chip
+   and the coloured title were three colour signals doing one job; the icon
+   alone now carries the severity and the border stays uniform. Diverges
+   deliberately from design-prototype-v2 — see ADR on the banner restyle. */
 .banner {
   display: flex; gap: var(--sp-12); align-items: flex-start;
   background-color: var(--white);
-  border: 1px solid var(--grey-200); border-left-width: 3px;
+  border: 1px solid var(--grey-200);
   border-radius: var(--radius-md); padding: var(--sp-16); font-size: var(--fs-14);
   color: var(--grey-700);
 }
 .banner svg {
-  width: 3.4rem; height: 3.4rem; flex-shrink: 0;
-  padding: 0.7rem; border-radius: var(--radius-sm);
+  width: 2.2rem; height: 2.2rem; flex-shrink: 0;
+  margin-top: 0.2rem;
 }
-.banner--info    { border-left-color: var(--info-600); }
-.banner--info svg    { background-color: var(--info-100);    color: var(--info-600); }
-.banner--info .title    { color: var(--info-600); }
-.banner--warning { border-left-color: var(--warning-500); }
-.banner--warning svg { background-color: var(--warning-100); color: var(--warning-600); }
-.banner--warning .title { color: var(--warning-600); }
-.banner--danger  { border-left-color: var(--danger-600); }
-.banner--danger svg  { background-color: var(--danger-100);  color: var(--danger-600); }
-.banner--danger .title  { color: var(--danger-600); }
-.banner--ai      { border-left-color: var(--purple-600); }
-.banner--ai svg      { background-color: var(--purple-100);  color: var(--purple-600); }
-.banner--ai .title      { color: var(--purple-600); }
+.banner--info svg    { color: var(--info-600); }
+.banner--warning svg { color: var(--warning-600); }
+.banner--danger svg  { color: var(--danger-600); }
+.banner--ai svg      { color: var(--purple-600); }
 .banner .body { color: var(--grey-700); }
-.banner .title { font-weight: 600; }
+.banner .title { font-weight: 600; color: var(--grey-900); }
 
 /* ---------- Kanban board ---------- */
 .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-16); align-items: start; }
