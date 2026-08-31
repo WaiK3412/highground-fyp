@@ -201,3 +201,21 @@ class VolunteerProfile(models.Model):
 
     def __str__(self):
         return f"Volunteer: {self.user.full_name}"
+
+
+class RoleApplication(UserAccount):
+    """The same rows as UserAccount, shown as a review queue.
+
+    A proxy adds no table and no columns — it exists so the admin can offer a
+    second screen over the same data: the account form is for editing a person,
+    this one is for deciding an application, and the two want very different
+    fields on screen.
+    """
+
+    class Meta:
+        proxy = True
+        verbose_name = "role application"
+        verbose_name_plural = "role applications"
+
+    def __str__(self):
+        return f"{self.full_name} — {self.get_requested_role_display()}"

@@ -1,12 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm
+from django.utils.html import format_html, format_html_join
 
 from django.utils import timezone
 
 from .models import (
     Organization,
     RegistrationDocument,
+    RoleApplication,
     UserAccount,
     VolunteerProfile,
 )
@@ -184,3 +186,66 @@ class VolunteerProfileAdmin(admin.ModelAdmin):
 class RegistrationDocumentAdmin(admin.ModelAdmin):
     list_display = ("label", "user", "uploaded_at")
     search_fields = ("user__email", "label")
+
+
+@admin.register(RoleApplication)
+class RoleApplicationAdmin(UserAccountAdmin):
+    """Screen 14's verification queue, as an admin view.
+
+    Subclasses the account admin rather than reimplementing it, so the decision
+    still routes through save_model and the approve/reject model methods — the
+    audit fields are recorded exactly as before. All this changes is what is on
+    screen: an approver needs the applicant, the role asked for, the evidence
+    and a note, not a password widget, group pickers or permission flags.
+    """
+
+    list_display = (
+        "full_name", "email", "requested_role",
+        "organization", "verification_status", "documents", "created_at",
+    )
+    list_filter = ("verification_status", "requested_role", "organization")
+    list_display_links = ("full_name", "email")
+    search_fields = ("email", "full_name", "organization__name")
+    ordering = ("verification_status", "created_at")
+
+    fieldsets = (
+        ("Applicant", {"fields": ("full_name", "email", "phone", "organization")}),
+        (
+            "Decision",
+            {
+                "fields": ("requested_role", "verification_status", "verification_note",
+                           "verified_by_user", "verified_at"),
+                "description": (
+                    "Approving copies the requested role into the account. To reject, set "
+                    "the status to Rejected and give a reason — the reason is required and "
+                    "the role is left untouched."
+                ),
+            },
+        ),
+    )
+    # The applicant's own words are evidence, not fields staff edit here.
+    readonly_fields = (
+        "full_name", "email", "phone", "organization", "requested_role",
+        "verified_by_user", "verified_at", "created_at",
+    )
+
+    def get_queryset(self, request):
+        # Only people who actually applied for something. An ordinary resident
+        # has no application, so has no business in a review queue.
+        return super().get_queryset(request).exclude(requested_role__isnull=True).exclude(
+            requested_role=""
+        )
+
+    @admin.display(description="Documents")
+    def documents(self, obj):
+        docs = obj.registration_documents.all()
+        if not docs:
+            return format_html('<span style="color:#B45309;">none uploaded</span>')
+        return format_html_join(
+            " · ", '<a href="{}" target="_blank" rel="noopener">{}</a>',
+            ((d.file.url, d.label or d.file.name.rsplit("/", 1)[-1]) for d in docs),
+        )
+
+    def has_add_permission(self, request):
+        # Applications arrive by registering, never by being typed in here.
+        return False
