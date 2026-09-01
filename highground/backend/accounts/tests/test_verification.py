@@ -225,3 +225,52 @@ class AdminRejectionTests(VerificationTestCase):
         self.assertEqual(self.applicant.verification_status, S.REJECTED)
         self.assertEqual(self.applicant.verified_by_user, self.admin)
 
+
+class AdminRevocationTests(AdminRejectionTests):
+    """Rejecting someone who was already approved.
+
+    The guards only recognise a decision when the applicant was pending, so
+    this transition currently slips past both: it saves with no reason and
+    leaves the granted role in place.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+
+    def test_revoking_without_a_reason_is_refused(self):
+        self.applicant.approve_application(admin=self.admin)
+        self.applicant.refresh_from_db()
+
+        response = self.client.post(
+            self.change_url(),
+            self.form_payload(
+                verification_status=S.REJECTED,
+                verification_note="",
+            ),
+        )
+        self.assertEqual(response.status_code, 200, "the form should have been refused")
+
+        self.applicant.refresh_from_db()
+        self.assertEqual(self.applicant.verification_status, S.VERIFIED)
+        self.assertEqual(self.applicant.role, R.NGO_VOLUNTEER)
+
+    def test_revoking_removes_the_granted_role(self):
+        self.applicant.approve_application(admin=self.admin)
+        self.applicant.refresh_from_db()
+        old_verified_at = self.applicant.verified_at
+
+        response = self.client.post(
+            self.change_url(),
+            self.form_payload(
+                verification_status=S.REJECTED,
+                verification_note="Licence expired.",
+            ),
+        )
+        self.assertEqual(response.status_code, 302,"the change form did not save")
+
+        self.applicant.refresh_from_db()
+        self.assertEqual(self.applicant.verification_status, S.REJECTED)
+        self.assertEqual(self.applicant.role, R.COMMUNITY_MEMBER)
+        self.assertEqual(self.applicant.verified_by_user, self.admin)
+        self.assertNotEqual(self.applicant.verified_at, old_verified_at)

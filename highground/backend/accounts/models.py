@@ -143,13 +143,31 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
         if not note:
             raise ValueError('a rejection must give a reason')
 
-    
+
         self.verification_status = self.VerificationStatus.REJECTED
         self.verified_by_user    = admin
         self.verified_at         = timezone.now()
         self.verification_note   = note
 
         self.save(update_fields=["verification_status","verified_by_user","verified_at","verification_note"])
+
+    def revoke_approval(self,admin,note=""):
+
+        if self.verification_status != self.VerificationStatus.VERIFIED:
+            raise ValueError('only an approved account can be revoked')
+
+        if not note:
+            raise ValueError('a revocation must give a reason')
+
+        self.role = self.Role.COMMUNITY_MEMBER
+
+
+        self.verification_status = self.VerificationStatus.REJECTED
+        self.verified_by_user    = admin
+        self.verified_at         = timezone.now()
+        self.verification_note   = note
+
+        self.save(update_fields=["role", "verification_status","verified_by_user","verified_at","verification_note"])
 
 
 

@@ -67,7 +67,7 @@ class UserAccountChangeForm(UserChangeForm):
         now = cleaned.get("verification_status")
         note = (cleaned.get("verification_note") or "").strip()
 
-        if was == S.PENDING and now == S.REJECTED and not note:
+        if (was == S.PENDING or was == S.VERIFIED) and now == S.REJECTED and not note:
             self.add_error(
                 "verification_note",
                 "A rejected applicant is owed a reason (ADR-012).",
@@ -145,11 +145,13 @@ class UserAccountAdmin(UserAdmin):
         was = form.initial.get("verification_status")
         now = form.cleaned_data.get("verification_status")
 
+        is_first_decision = was == S.PENDING and now in {S.VERIFIED, S.REJECTED}
+        is_revocation = was == S.VERIFIED and now == S.REJECTED
+
         decided = (
             change
             and "verification_status" in form.changed_data
-            and was == S.PENDING
-            and now in {S.VERIFIED, S.REJECTED}
+            and (is_first_decision or is_revocation)
         )
 
         if not decided:
@@ -165,6 +167,9 @@ class UserAccountAdmin(UserAdmin):
         note = form.cleaned_data.get("verification_note") or ""
         if now == S.VERIFIED:
             obj.approve_application(admin=request.user, note=note)
+        elif is_revocation:
+            obj.revoke_approval(admin=request.user , note=note)
+
         else:
             obj.reject_application(admin=request.user, note=note)
 
