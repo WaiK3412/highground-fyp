@@ -127,6 +127,25 @@ class VerifyTests(LifecycleTestCase):
         self.case.status = CaseRecord.Status.SUBMITTED
         self.case.save()
 
+        # Verifying now scores the case, and scoring refuses to run without a
+        # published rubric — weights are read from the database, never
+        # hardcoded. So a rubric is part of the world these tests need.
+        from django.utils import timezone
+
+        from cases.management.commands.seed_demo import RUBRIC_V3
+        from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
+
+        version = PriorityRubricVersion.objects.create(
+            label="v3.0",
+            status=PriorityRubricVersion.Status.PUBLISHED,
+            published_at=timezone.now(),
+        )
+        for key, name, weight, max_points, rule in RUBRIC_V3:
+            PriorityRubricCriterion.objects.create(
+                version=version, key=key, name=name,
+                weight=weight, max_points=max_points, rule_text=rule,
+            )
+
     def test_officer_can_verify(self):
         self.login(self.officer)
         response = self.client.post(

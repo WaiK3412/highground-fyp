@@ -417,4 +417,16 @@ def verify_case(request, pk):
             created_at=timezone.now(),
         )
 
+        # Scoring happens at verification, not submission: screen 17 has an
+        # officer check a request "before it is scored and released to the NGO
+        # queue". Inside the transaction, so a scoring failure undoes the
+        # verification rather than leaving a verified case with no score.
+        if decision == "verified":
+            # Imported here, not at module level: services imports the models
+            # this module also imports, and at import time that loop cannot
+            # resolve. Inside the function it runs after both are loaded.
+            from .services import score_case_record
+
+            score_case_record(case, request.user)
+
     return Response(CaseDetailSerializer(case, context={"request": request}).data)
