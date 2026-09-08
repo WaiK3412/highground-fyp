@@ -8,7 +8,7 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[2]) : null
 }
 
-async function request(path, { method = 'GET', body, files } = {}) {
+async function request(path, { method = 'GET', body, files, fileField = 'documents' } = {}) {
   // A file cannot be put inside JSON, so an upload switches the whole request
   // to multipart/form-data. The browser sets Content-Type itself in that case
   // — it has to, because it must append the boundary marker.
@@ -24,11 +24,15 @@ async function request(path, { method = 'GET', body, files } = {}) {
   if (files) {
     payload = new FormData()
     Object.entries(body || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') payload.append(key, value)
+      if (value === undefined || value === null || value === '') return
+      // FormData stringifies everything, so an array would arrive as
+      // "elderly,disability" and stop being a list. Send it as JSON and let
+      // the serializer parse it back.
+      payload.append(key, Array.isArray(value) ? JSON.stringify(value) : value)
     })
     // Same field name repeated once per file — that is how request.FILES
     // .getlist("documents") sees them all on the Django side.
-    files.forEach((file) => payload.append('documents', file))
+    files.forEach((file) => payload.append(fileField, file))
   } else if (body) {
     payload = JSON.stringify(body)
   }
@@ -69,10 +73,15 @@ export const api = {
     ).toString()
     return request('/api/cases/' + (query ? `?${query}` : ''))
   },
-  createCase: (payload) => request('/api/cases/', { method: 'POST', body: payload }),
+  createCase: (payload, files) =>
+    request('/api/cases/', { method: 'POST', body: payload, files, fileField: 'photos' }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
   claimCase: (id) => request(`/api/cases/${id}/claim/`, { method: 'POST' }),
   verifyCase: (id, decision, note) =>
     request(`/api/cases/${id}/verify/`, { method: 'POST', body: { decision, note } }),
   stats: () => request('/api/cases/stats/'),
+  // Notifications are event-log rows addressed to this user (ADR-004).
+  notifications: () => request('/api/notifications/'),
+  markNotificationRead: (id) => request(`/api/notifications/${id}/read/`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/api/notifications/read-all/', { method: 'POST' }),
 }

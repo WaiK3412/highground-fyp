@@ -10,10 +10,15 @@ endpoint that accepts everything it is sent would let a household set its own
 priority score, which is the one thing the whole rubric exists to prevent.
 """
 
-from django.test import TestCase
+import json
+import shutil
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 
 from accounts.models import UserAccount
-from cases.models import CaseEventLog, CaseRecord
+from cases.models import CaseEventLog, CasePhoto, CaseRecord
 
 URL = "/api/cases/"
 
@@ -164,3 +169,92 @@ class SubmittedStateTests(SubmissionTestCase):
 
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.json()["results"]), 1)
+
+
+# A FileField writes for real, even in tests. Without this every run would add
+# more files to backend/media/.
+TEMP_MEDIA = tempfile.mkdtemp()
+
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA)
+class PhotoUploadTests(SubmissionTestCase):
+    """Photos attached to a submission (FR3).
+
+    A submission carrying files arrives as multipart rather than JSON, which
+    changes how the flag lists travel — hence the JSON-encoded flags below.
+    """
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(TEMP_MEDIA, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.resident)
+
+    def photo(self, name="damage.jpg", content_type="image/jpeg", size=32):
+        return SimpleUploadedFile(name, b"x" * size, content_type=content_type)
+
+    def post_multipart(self, photos, **overrides):
+        payload = {**VALID, **overrides}
+        # multipart cannot carry a list, so the client JSON-encodes them
+        payload["needs_flags"] = json.dumps(payload["needs_flags"])
+        payload["vulnerability_flags"] = json.dumps(payload["vulnerability_flags"])
+        if photos:
+            payload["photos"] = photos
+        return self.client.post(URL, payload)
+
+    def test_a_submitted_photo_is_stored(self):
+        response = self.post_multipart([self.photo()])
+        self.assertEqual(response.status_code, 201, response.content)
+
+        case = CaseRecord.objects.get()
+        self.assertEqual(case.photos.count(), 1)
+        self.assertTrue(case.photos.get().file_path.name.endswith(".jpg"))
+
+    def test_several_photos_are_all_stored(self):
+        self.post_multipart([self.photo("a.jpg"), self.photo("b.png", "image/png")])
+        self.assertEqual(CaseRecord.objects.get().photos.count(), 2)
+
+    def test_flags_survive_a_multipart_submission(self):
+        """The JSON-encoded lists must arrive as lists, not as one string."""
+        self.post_multipart([self.photo()])
+        case = CaseRecord.objects.get()
+
+        self.assertEqual(case.needs_flags, ["bedding", "water"])
+        self.assertEqual(case.vulnerability_flags, ["disability", "elderly"])
+
+    def test_a_submission_without_photos_still_works(self):
+        response = self.post_multipart([])
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(CaseRecord.objects.get().photos.count(), 0)
+
+    def test_more_than_five_photos_is_refused(self):
+        response = self.post_multipart([self.photo(f"{i}.jpg") for i in range(6)])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_a_non_image_is_refused(self):
+        response = self.post_multipart(
+            [self.photo("notes.pdf", content_type="application/pdf")]
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_an_oversized_photo_is_refused(self):
+        response = self.post_multipart([self.photo(size=6 * 1024 * 1024)])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_the_event_log_records_how_many_photos_came_with_it(self):
+        self.post_multipart([self.photo("a.jpg"), self.photo("b.jpg")])
+        event = CaseEventLog.objects.get(case=CaseRecord.objects.get())
+
+        self.assertIn("2 photo(s)", event.detail)
+
+    def test_a_photo_is_refused_when_the_case_is_refused(self):
+        """Validation failure must not leave an orphan photo behind."""
+        response = self.post_multipart([self.photo()], description="   ")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CasePhoto.objects.count(), 0)

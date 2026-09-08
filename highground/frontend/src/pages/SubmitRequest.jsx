@@ -544,8 +544,7 @@ function StepPhotos({ data, set }) {
             />
           </label>
           <span className="help">
-            {data.photos.length} of {MAX_PHOTOS} selected. Photos aren&rsquo;t saved yet — your
-            request will submit without them.
+            {data.photos.length} of {MAX_PHOTOS} selected. JPEG, PNG or WebP, up to 5 MB each.
           </span>
         </div>
 
@@ -698,9 +697,10 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
     setBusy(true)
     try {
       await api.primeCsrf()
-      // Only the fields the case record owns. full_name, phone, alt_contact and
-      // the photos are collected by the design but have nowhere to go on
-      // CaseRecord yet — contact details already live on the user account.
+      // Only the fields the case record owns. full_name, phone and alt_contact
+      // are collected by the design but live on the user account, not the case.
+      // Photos go as a second argument: they cannot travel inside JSON, so the
+      // client switches the whole request to multipart when any are attached.
       const created = await api.createCase({
         village: data.village,
         address: data.address,
@@ -713,7 +713,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
         urgency: data.urgency,
         vulnerability_flags: data.vulnerability_flags,
         needs_flags: data.needs_flags,
-      })
+      }, data.photos)
       onSubmitted(created)
     } catch (err) {
       setError(err.message)

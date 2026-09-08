@@ -404,12 +404,13 @@ function CaseCard({ item, onOpen, isOpen }) {
   )
 }
 
-export default function ResidentDashboard({ user, onLogout, onSubmitRequest }) {
+export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onNavigate }) {
   useDocumentTitle('My Recovery')
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState(null)
   const [detailError, setDetailError] = useState(null)
+  const [unread, setUnread] = useState(0)
 
   // The list carries only summary fields; the breakdown, needs and location
   // come from the detail endpoint, which applies its own visibility rules.
@@ -425,6 +426,13 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest }) {
       setDetailError(err.message)
     }
   }
+
+  useEffect(() => {
+    api
+      .notifications()
+      .then((data) => setUnread(data.unread))
+      .catch(() => setUnread(0))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -483,9 +491,16 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest }) {
             My cases
             {cases.length > 0 && <span className="side-nav__count">{cases.length}</span>}
           </a>
-          <a href="#notifications" onClick={(e) => e.preventDefault()}>
+          <a
+            href="#notifications"
+            onClick={(e) => {
+              e.preventDefault()
+              onNavigate('notifications')
+            }}
+          >
             <Icon path={PATHS.bell} />
             Notifications
+            {unread > 0 && <span className="side-nav__count">{unread}</span>}
           </a>
 
           <span className="side-nav__label">Community</span>

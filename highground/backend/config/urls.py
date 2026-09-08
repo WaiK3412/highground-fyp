@@ -27,6 +27,10 @@ urlpatterns = [
     path("api/cases/<int:pk>/", cases_api.case_detail),
     path("api/cases/<int:pk>/claim/", cases_api.claim_case),
     path("api/cases/<int:pk>/verify/", cases_api.verify_case),
+    # Notifications are the same event-log rows, filtered by recipient (ADR-004).
+    path("api/notifications/", cases_api.notifications),
+    path("api/notifications/read-all/", cases_api.mark_all_notifications_read),
+    path("api/notifications/<int:pk>/read/", cases_api.mark_notification_read),
 ]
 
 # runserver serves STATIC by itself but never MEDIA, so uploaded registration

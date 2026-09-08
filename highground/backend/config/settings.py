@@ -170,3 +170,23 @@ CSRF_TRUSTED_ORIGINS = [
 # tree and never served by the app server in production.
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+
+# ---------------------------------------------------------------- email
+# Notifications are a nudge back into the app (GAPS C10 item 9). Sent
+# synchronously — no Celery — because the volume is one message per case event.
+#
+# In development nothing leaves the machine: the console backend prints the
+# message to the terminal, so the flow can be demonstrated with no credentials
+# and no network. Setting EMAIL_HOST in .env switches to real SMTP (Brevo).
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "HighGround <no-reply@hg.my>")
+
+if os.environ.get("EMAIL_HOST"):
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.environ["EMAIL_HOST"]
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
+    EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+    EMAIL_USE_TLS = True
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

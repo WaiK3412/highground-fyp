@@ -4,12 +4,15 @@ Querysets are narrowed by role before serialising, so guessing an id gets a
 resident nothing.
 """
 
+import json
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import ListCreateAPIView
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -20,7 +23,7 @@ from accounts.permissions import (
     visible_cases,
 )
 
-from .models import CaseEventLog, CaseRecord
+from .models import CaseEventLog, CasePhoto, CaseRecord
 
 
 class ScoreComponentSerializer(serializers.Serializer):
@@ -63,8 +66,15 @@ class CaseListSerializer(serializers.ModelSerializer):
         return (timezone.now() - obj.created_at).days
 
 
+class CasePhotoSerializer(serializers.Serializer):
+    url = serializers.CharField(source="file_path.url", read_only=True)
+    caption = serializers.CharField(read_only=True)
+    uploaded_at = serializers.DateTimeField(read_only=True)
+
+
 class CaseDetailSerializer(CaseListSerializer):
     score_components = ScoreComponentSerializer(many=True, read_only=True)
+    photos = CasePhotoSerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
@@ -95,6 +105,7 @@ class CaseDetailSerializer(CaseListSerializer):
             "vulnerability_flags",
             "score_components",
             "location",
+            "photos",
         ]
 
     def get_location(self, obj):
@@ -115,11 +126,24 @@ class CaseDetailSerializer(CaseListSerializer):
 # The scoring engine awards points per flag, so an unchecked list is a way to
 # inflate your own priority. These vocabularies are the engine's own
 # (scoring/engine.py) — anything outside them is not a need we recognise.
+# Same limits as registration documents (accounts/api.py) — a household on a
+# phone connection should not be asked to upload more than this.
+MAX_PHOTOS = 5
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
 VULNERABILITY_VOCAB = {"elderly", "child_under_5", "disability", "single_parent"}
 NEEDS_VOCAB = {"food", "water", "hygiene", "bedding", "medicine", "baby_supplies"}
 
 
 def _known_flags(values, vocabulary, field):
+    # A multipart submission (one carrying photos) cannot hold a real list, so
+    # the client sends the flags as a JSON string. Accept either shape.
+    if isinstance(values, str):
+        try:
+            values = json.loads(values)
+        except ValueError:
+            raise serializers.ValidationError("Expected a list.")
     if not isinstance(values, list):
         raise serializers.ValidationError("Expected a list.")
     unknown = sorted({str(v) for v in values} - vocabulary)
@@ -197,6 +221,9 @@ def _next_reference():
 
 class CaseListView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+    # A photo cannot travel inside JSON, so a submission with images arrives as
+    # multipart. JSON is kept for submissions without any.
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         # Reading and writing are different shapes: the list carries computed
@@ -234,6 +261,20 @@ class CaseListView(ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        photos = request.FILES.getlist("photos")
+        if len(photos) > MAX_PHOTOS:
+            return Response(
+                {"photos": [f"Attach at most {MAX_PHOTOS} photos."]}, status=400
+            )
+        for upload in photos:
+            if upload.size > MAX_PHOTO_BYTES:
+                return Response({"photos": [f"{upload.name} is larger than 5 MB."]}, status=400)
+            if upload.content_type not in ALLOWED_PHOTO_TYPES:
+                return Response(
+                    {"photos": [f"{upload.name} must be a JPEG, PNG or WebP image."]},
+                    status=400,
+                )
+
         with transaction.atomic():
             case = serializer.save(
                 submitted_by_user=request.user,
@@ -241,13 +282,29 @@ class CaseListView(ListCreateAPIView):
                 status=CaseRecord.Status.SUBMITTED,
                 created_at=timezone.now(),
             )
+            for upload in photos:
+                CasePhoto.objects.create(case=case, file_path=upload)
+
             CaseEventLog.objects.create(
                 case=case,
                 actor_user=request.user,
                 event_type=CaseEventLog.EventType.SUBMITTED,
-                detail=f"Request submitted by {request.user.full_name}.",
+                detail=f"Request submitted by {request.user.full_name}."
+                + (f" {len(photos)} photo(s) attached." if photos else ""),
                 created_at=timezone.now(),
             )
+
+        # Outside the transaction: sending mail is slow and can fail, and a
+        # failed nudge must not roll back a submitted case.
+        from .notifications import notify
+
+        notify(
+            case,
+            CaseEventLog.EventType.SUBMITTED,
+            request.user,
+            f"{case.get_damage_category_display()} in {case.village}, "
+            f"household of {case.household_size}.",
+        )
 
         return Response(CaseListSerializer(case).data, status=201)
 
@@ -360,6 +417,15 @@ def claim_case(request, pk):
             created_at=timezone.now(),
         )
 
+    from .notifications import notify
+
+    notify(
+        case,
+        CaseEventLog.EventType.CLAIMED,
+        request.user,
+        f"{request.user.organization.name} will be in touch about your case.",
+    )
+
     return Response(CaseDetailSerializer(case, context={"request": request}).data)
 
 
@@ -429,4 +495,72 @@ def verify_case(request, pk):
 
             score_case_record(case, request.user)
 
+    from .notifications import notify
+
+    case.refresh_from_db()  # so a verification notification carries the score
+    notify(case, event_type, request.user, note)
+
     return Response(CaseDetailSerializer(case, context={"request": request}).data)
+
+
+class NotificationSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    case_reference = serializers.CharField(source="case.reference", read_only=True)
+    case_id = serializers.IntegerField(source="case.id", read_only=True)
+    event_type = serializers.CharField(read_only=True)
+    event_display = serializers.CharField(source="get_event_type_display", read_only=True)
+    detail = serializers.CharField(read_only=True)
+    read_at = serializers.DateTimeField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def notifications(request):
+    """This user's notifications — a filtered query over the event log (ADR-004).
+
+    No notification table exists: these are the same rows that serve the case
+    timeline and the audit trail, selected by recipient.
+    """
+    rows = (
+        CaseEventLog.objects.filter(recipient_user=request.user)
+        .select_related("case")
+        .order_by("-created_at")[:50]
+    )
+    return Response(
+        {
+            "unread": CaseEventLog.objects.filter(
+                recipient_user=request.user, read_at__isnull=True
+            ).count(),
+            "results": NotificationSerializer(rows, many=True).data,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, pk):
+    """Mark one as read.
+
+    This is the one write the event log allows. ADR-004 keeps read_at and
+    delivery_status as notification-delivery state; the audit fields — actor,
+    event type, detail, timestamp — are never touched.
+    """
+    row = CaseEventLog.objects.filter(pk=pk, recipient_user=request.user).first()
+    if row is None:
+        return Response({"detail": "Not found."}, status=404)
+
+    if row.read_at is None:
+        row.read_at = timezone.now()
+        row.save(update_fields=["read_at"])
+
+    return Response(NotificationSerializer(row).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_all_notifications_read(request):
+    updated = CaseEventLog.objects.filter(
+        recipient_user=request.user, read_at__isnull=True
+    ).update(read_at=timezone.now())
+    return Response({"marked_read": updated})

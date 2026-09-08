@@ -147,7 +147,9 @@ class CaseRecord(models.Model):
 
 class CasePhoto(models.Model):
     case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="photos")
-    file_path = models.CharField(max_length=255)
+    # Still file_path VARCHAR(255) in the database, as the report's ERD specifies —
+    # a FileField is a varchar column that also knows how to save the upload.
+    file_path = models.FileField(upload_to="cases/%Y/%m/", max_length=255)
     caption = models.CharField(max_length=255, null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import CaseQueue from './pages/CaseQueue'
 import ResidentDashboard from './pages/ResidentDashboard'
 import SubmitRequest from './pages/SubmitRequest'
+import Notifications from './pages/Notifications'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
@@ -80,11 +81,21 @@ export default function App() {
           onSubmitted={() => setResidentScreen('recovery')}
         />
       )
+    if (residentScreen === 'notifications')
+      return (
+        <Notifications
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={setResidentScreen}
+          onOpenCase={() => setResidentScreen('recovery')}
+        />
+      )
     return (
       <ResidentDashboard
         user={user}
         onLogout={handleLogout}
         onSubmitRequest={() => setResidentScreen('submit')}
+        onNavigate={setResidentScreen}
       />
     )
   }
