@@ -103,6 +103,11 @@ class CaseEventLogAdmin(admin.ModelAdmin):
     search_fields = ("case__reference", "detail")
     date_hierarchy = "created_at"
 
+    def get_queryset(self, request):
+        # Per-recipient copies carry notification read state, not new actions.
+        # Screen 19 is the audit trail, so show each canonical action once.
+        return super().get_queryset(request).filter(notification_copy_of__isnull=True)
+
     def has_add_permission(self, request):
         return False
 

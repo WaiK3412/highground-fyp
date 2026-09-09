@@ -7,6 +7,7 @@ resident nothing.
 import json
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
@@ -66,6 +67,46 @@ class CaseListSerializer(serializers.ModelSerializer):
         return (timezone.now() - obj.created_at).days
 
 
+class CaseEventSerializer(serializers.Serializer):
+    """One entry in a case's history.
+
+    The timeline uses canonical audit actions. Extra rows that only give a
+    second notification recipient independent read state are excluded.
+    """
+
+    event_type = serializers.CharField(read_only=True)
+    event_display = serializers.CharField(source="get_event_type_display", read_only=True)
+    detail = serializers.SerializerMethodField()
+    actor = serializers.CharField(source="actor_user.full_name", default=None, read_only=True)
+    actor_org = serializers.CharField(
+        source="actor_user.organization.name", default=None, read_only=True
+    )
+    created_at = serializers.DateTimeField(read_only=True)
+
+    # These notes were deliberately written for the household. Other event
+    # detail may contain operational context; residents still see the event and
+    # its plain-language title, but not the internal note.
+    RESIDENT_DETAIL_TYPES = {
+        CaseEventLog.EventType.VERIFIED,
+        CaseEventLog.EventType.NEEDS_INFO,
+        CaseEventLog.EventType.REJECTED,
+        CaseEventLog.EventType.CLAIMED,
+        CaseEventLog.EventType.TASK_ASSIGNED,
+        CaseEventLog.EventType.CLOSED,
+        CaseEventLog.EventType.REOPENED,
+    }
+
+    def get_detail(self, obj):
+        request = self.context.get("request")
+        if (
+            request
+            and request.user.role == "community_member"
+            and obj.event_type not in self.RESIDENT_DETAIL_TYPES
+        ):
+            return ""
+        return obj.detail
+
+
 class CasePhotoSerializer(serializers.Serializer):
     url = serializers.CharField(source="file_path.url", read_only=True)
     caption = serializers.CharField(read_only=True)
@@ -75,6 +116,7 @@ class CasePhotoSerializer(serializers.Serializer):
 class CaseDetailSerializer(CaseListSerializer):
     score_components = ScoreComponentSerializer(many=True, read_only=True)
     photos = CasePhotoSerializer(many=True, read_only=True)
+    events = CaseEventSerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
@@ -106,6 +148,7 @@ class CaseDetailSerializer(CaseListSerializer):
             "score_components",
             "location",
             "photos",
+            "events",
         ]
 
     def get_location(self, obj):
@@ -316,7 +359,17 @@ def case_detail(request, pk):
     queryset = visible_cases(
         request.user,
         CaseRecord.objects.select_related("claimed_by_org").prefetch_related(
-            "score_components__criterion"
+            "score_components__criterion",
+            "photos",
+            # Oldest first: a timeline reads downwards.
+            Prefetch(
+                "events",
+                queryset=CaseEventLog.objects.filter(
+                    notification_copy_of__isnull=True
+                )
+                .select_related("actor_user__organization")
+                .order_by("created_at"),
+            ),
         ),
     )
     case = queryset.filter(pk=pk).first()

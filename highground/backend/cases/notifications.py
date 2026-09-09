@@ -135,6 +135,7 @@ def notify(case, event_type, actor, detail=""):
                 case=case,
                 actor_user=actor,
                 recipient_user=user,
+                notification_copy_of=audit_row,
                 event_type=event_type,
                 detail=detail or headline(case, event_type),
                 created_at=timezone.now(),

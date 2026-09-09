@@ -18,6 +18,8 @@ export default function App() {
   const [justLoggedIn, setJustLoggedIn] = useState(false)
   // Residents have two screens now; anything more and this wants a router.
   const [residentScreen, setResidentScreen] = useState('recovery')
+  // Officers and NGOs have their own small set of screens.
+  const [responderScreen, setResponderScreen] = useState('queue')
 
   useEffect(() => {
     api
@@ -100,7 +102,18 @@ export default function App() {
     )
   }
 
-  if (user) return <CaseQueue user={user} onLogout={handleLogout} />
+  if (user) {
+    if (responderScreen === 'notifications')
+      return (
+        <Notifications
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={() => setResponderScreen('queue')}
+          onOpenCase={() => setResponderScreen('queue')}
+        />
+      )
+    return <CaseQueue user={user} onLogout={handleLogout} onNavigate={setResponderScreen} />
+  }
   if (screen === 'register')
     return <Register onRegistered={handleLoggedIn} onShowLogin={() => setScreen('login')} />
   return <Login onLoggedIn={handleLoggedIn} onShowRegister={() => setScreen('register')} />

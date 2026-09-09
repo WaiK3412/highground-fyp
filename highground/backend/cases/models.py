@@ -223,8 +223,10 @@ class DuplicateCaseMatch(models.Model):
 class CaseEventLog(models.Model):
     """Timeline, notifications and audit in one table (ADR-004).
 
-    Append-only: nothing in the codebase updates or deletes a row, and the
-    admin refuses both.
+    A canonical row records each action. When one action must notify several
+    people, extra rows point back through ``notification_copy_of`` so each
+    recipient has independent read state without inflating the audit trail.
+    Audit fields remain append-only; only delivery/read state is updated.
     """
 
     class EventType(models.TextChoices):
@@ -260,6 +262,14 @@ class CaseEventLog(models.Model):
         null=True,
         blank=True,
         related_name="notifications",
+    )
+    notification_copy_of = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="notification_copies",
+        help_text="Canonical event when this row only stores another recipient's read state.",
     )
     event_type = models.CharField(max_length=30, choices=EventType)
     detail = models.TextField(blank=True)

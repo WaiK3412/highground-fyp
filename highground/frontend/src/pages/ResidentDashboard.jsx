@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import CaseTimeline from './CaseTimeline'
 
 // How each case status reads to the household that submitted it. The wording
 // is deliberately about what happens next, not the internal status name.
@@ -274,6 +275,9 @@ function CaseDetailPanel({ detail, onClose }) {
             : 'Village-level only.'}
         </p>
       </div>
+
+      {/* Screen 06's timeline: every event_log row for this case, oldest first. */}
+      <CaseTimeline events={detail.events} />
     </aside>
   )
 }

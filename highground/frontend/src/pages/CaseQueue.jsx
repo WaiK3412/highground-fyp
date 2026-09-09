@@ -215,7 +215,8 @@ function ScorePanel({ detail, onClose, user, onDone }) {
   )
 }
 
-export default function CaseQueue({ user, onLogout }) {
+export default function CaseQueue({ user, onLogout, onNavigate }) {
+  const [unread, setUnread] = useState(0)
   useDocumentTitle('Case queue')
   const [cases, setCases] = useState([])
   const [stats, setStats] = useState(null)
@@ -227,8 +228,14 @@ export default function CaseQueue({ user, onLogout }) {
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    api
+      .notifications()
+      .then((data) => setUnread(data.unread))
+      .catch(() => setUnread(0))
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
-    setLoading(true)
     Promise.all([api.cases({ status, q: search }), api.stats()])
       .then(([list, s]) => {
         if (cancelled) return
@@ -322,7 +329,13 @@ export default function CaseQueue({ user, onLogout }) {
             Task board
           </a>
 
-          <a href="#notifications" onClick={(e) => e.preventDefault()}>
+          <a
+            href="#notifications"
+            onClick={(e) => {
+              e.preventDefault()
+              onNavigate('notifications')
+            }}
+          >
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
               <path
                 strokeLinecap="round"
@@ -331,6 +344,7 @@ export default function CaseQueue({ user, onLogout }) {
               />
             </svg>
             Notifications
+            {unread > 0 && <span className="side-nav__count">{unread}</span>}
           </a>
 
           <span className="side-nav__label">Organisation</span>
