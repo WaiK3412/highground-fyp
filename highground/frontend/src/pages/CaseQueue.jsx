@@ -347,6 +347,23 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             {unread > 0 && <span className="side-nav__count">{unread}</span>}
           </a>
 
+          <a
+            href="#rules"
+            onClick={(e) => {
+              e.preventDefault()
+              onNavigate('rules')
+            }}
+          >
+            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25V6.75zM7.5 9h9M7.5 12h9M7.5 15h5.25"
+              />
+            </svg>
+            How scoring works
+          </a>
+
           <span className="side-nav__label">Organisation</span>
           <a href="#org" onClick={(e) => e.preventDefault()}>
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">

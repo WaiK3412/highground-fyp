@@ -19,7 +19,15 @@ class PriorityRubricCriterionInline(admin.TabularInline):
 class PriorityRubricVersionAdmin(admin.ModelAdmin):
     """Rubric weights are governed data, not code constants."""
 
-    list_display = ("label", "status", "total_weight", "published_at", "published_by_user")
+    list_display = (
+        "label",
+        "status",
+        "total_weight",
+        "medium_threshold",
+        "high_threshold",
+        "published_at",
+        "published_by_user",
+    )
     list_filter = ("status",)
     inlines = [PriorityRubricCriterionInline]
 

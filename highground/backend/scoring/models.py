@@ -5,6 +5,7 @@ attributable to a published rubric version and changing them is an audited act.
 """
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -23,6 +24,8 @@ class PriorityRubricVersion(models.Model):
     )
     label = models.CharField(max_length=20)
     status = models.CharField(max_length=20, choices=Status, default=Status.DRAFT)
+    medium_threshold = models.PositiveSmallIntegerField(default=40)
+    high_threshold = models.PositiveSmallIntegerField(default=70)
     published_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -32,13 +35,25 @@ class PriorityRubricVersion(models.Model):
     def __str__(self):
         return f"Rubric {self.label} ({self.get_status_display()})"
 
+    def clean(self):
+        super().clean()
+        if self.medium_threshold >= self.high_threshold:
+            raise ValidationError(
+                {"high_threshold": "High threshold must be above the medium threshold."}
+            )
+
     @property
     def total_weight(self):
         return sum(c.weight for c in self.criteria.all())
 
 
 class PriorityRubricCriterion(models.Model):
-    """One weighted factor of a rubric version. Six of these make up v3.0."""
+    """One weighted factor of a rubric version. Six of these make up v3.0.
+
+    ``max_points`` is the top of the raw severity scale used by the point
+    bands. ``weight`` is the criterion's maximum contribution after scaling.
+    They are equal in v3.0, but separating them makes weight changes effective.
+    """
 
     version = models.ForeignKey(
         PriorityRubricVersion, on_delete=models.CASCADE, related_name="criteria"

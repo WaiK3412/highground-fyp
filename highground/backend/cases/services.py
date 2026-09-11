@@ -30,6 +30,8 @@ def score_case_record(case, actor):
             Criterion(c.key, c.name, c.weight, c.max_points)
             for c in version.criteria.all()
         ),
+        high_threshold=version.high_threshold,
+        medium_threshold=version.medium_threshold,
     )
 
       result = score_case(

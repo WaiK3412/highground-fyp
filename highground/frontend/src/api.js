@@ -81,6 +81,8 @@ export const api = {
     request(`/api/cases/${id}/verify/`, { method: 'POST', body: { decision, note } }),
   stats: () => request('/api/cases/stats/'),
   // Notifications are event-log rows addressed to this user (ADR-004).
+  // Screen 18 — the published rubric, read-only.
+  rubric: () => request('/api/rubric/'),
   notifications: () => request('/api/notifications/'),
   markNotificationRead: (id) => request(`/api/notifications/${id}/read/`, { method: 'POST' }),
   markAllNotificationsRead: () => request('/api/notifications/read-all/', { method: 'POST' }),

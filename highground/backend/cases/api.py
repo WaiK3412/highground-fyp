@@ -18,6 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import (
+    IsCoordinator,
     IsDisasterOfficer,
     IsNgoVolunteer,
     may_see_exact_location,
@@ -617,3 +618,76 @@ def mark_all_notifications_read(request):
         recipient_user=request.user, read_at__isnull=True
     ).update(read_at=timezone.now())
     return Response({"marked_read": updated})
+
+
+@api_view(["GET"])
+@permission_classes([IsCoordinator])
+def rubric(request):
+    """The published rubric, read-only — screen 18, "how scoring works".
+
+    Criteria, weights and thresholds belong to the published version. Point
+    bands remain explicit code rules; each raw band is scaled by its criterion
+    weight exactly as the scoring engine does.
+    """
+    from scoring.engine import (
+        ACCESS_POINTS,
+        NEEDS_POINTS_EACH,
+        PARTIAL_DEPTH_POINTS,
+        URGENCY_POINTS,
+        VULNERABILITY_POINTS,
+        WAITING_POINTS_PER_DAY,
+    )
+    from scoring.models import PriorityRubricVersion
+
+    version = (
+        PriorityRubricVersion.objects.filter(
+            status=PriorityRubricVersion.Status.PUBLISHED
+        )
+        .order_by("-published_at")
+        .first()
+    )
+    if version is None:
+        return Response({"detail": "No rubric has been published."}, status=404)
+
+    # Raw value-function bands. Additive criteria combine these severity values
+    # before the engine caps and scales the result to the versioned weight.
+    raw_bands = {
+        "safety": [(k, v) for k, v in URGENCY_POINTS.items()],
+        "damage": [("cosmetic", 4)]
+        + [(f"partially unliveable, {k}", v) for k, v in PARTIAL_DEPTH_POINTS.items()],
+        "vulnerability": [(k, v) for k, v in VULNERABILITY_POINTS.items()],
+        "needs": [("each shortage category", NEEDS_POINTS_EACH)],
+        "access": [(k, v) for k, v in ACCESS_POINTS.items()],
+        "waiting": [("each day waiting", WAITING_POINTS_PER_DAY)],
+    }
+
+    criteria = []
+    for stored in version.criteria.all():
+        bands = list(raw_bands.get(stored.key, []))
+        if stored.key == "damage":
+            bands.append(("fully unliveable", stored.max_points))
+        criteria.append(
+            {
+                "key": stored.key,
+                "name": stored.name,
+                "weight": stored.weight,
+                "max_points": stored.max_points,
+                "rule_text": stored.rule_text,
+                "bands": [
+                    {"when": label, "points": raw}
+                    for label, raw in bands
+                ],
+            }
+        )
+
+    return Response(
+        {
+            "label": version.label,
+            "published_at": version.published_at,
+            "thresholds": {
+                "high": version.high_threshold,
+                "medium": version.medium_threshold,
+            },
+            "criteria": criteria,
+        }
+    )

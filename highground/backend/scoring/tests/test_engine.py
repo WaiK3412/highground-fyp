@@ -61,7 +61,7 @@ class CanonicalCaseTests(TestCase):
             liveability="partial",
             flood_depth="waist",                              # 16
             vulnerability_flags=("elderly", "child_under_5", "disability"),  # 20 (capped)
-            needs_flags=("water", "food", "bedding", "cleaning", "medicine"),  # 15 (capped)
+            needs_flags=("water", "food", "bedding", "hygiene", "medicine"),  # 15
             access_level="cut_off",                           # 10
             created_at=NOW - timedelta(days=4),               # 8
         )
@@ -77,7 +77,7 @@ class CanonicalCaseTests(TestCase):
             liveability="partial",
             flood_depth="waist",
             vulnerability_flags=("elderly", "child_under_5", "disability"),
-            needs_flags=("water", "food", "bedding", "cleaning", "medicine"),
+            needs_flags=("water", "food", "bedding", "hygiene", "medicine"),
             access_level="cut_off",
             created_at=NOW - timedelta(days=4),
         )
@@ -112,6 +112,19 @@ class BandTests(TestCase):
         result = score_case(make_case(), RUBRIC_V3, now=NOW)
         self.assertEqual(result.total, 4)  # cosmetic damage only
         self.assertEqual(result.band, "Low")
+
+    def test_score_uses_the_rubric_versions_thresholds(self):
+        rubric = Rubric(
+            label="low thresholds",
+            criteria=RUBRIC_V3.criteria,
+            medium_threshold=2,
+            high_threshold=4,
+        )
+        self.assertEqual(score_case(make_case(), rubric, now=NOW).band, "High")
+
+    def test_invalid_threshold_order_is_refused(self):
+        with self.assertRaises(ValueError):
+            band_for(50, high_threshold=40, medium_threshold=40)
 
 
 class CriterionBandTests(TestCase):
@@ -181,6 +194,53 @@ class CapTests(TestCase):
         result = score_case(case, RUBRIC_V3, now=NOW)
         reason = next(c.reason for c in result.components if c.key == "vulnerability")
         self.assertIn("capped", reason)
+
+
+class WeightTests(TestCase):
+    def test_changing_a_weight_changes_that_contribution(self):
+        criteria = tuple(
+            Criterion(c.key, c.name, 50 if c.key == "safety" else c.weight, c.max_points)
+            for c in RUBRIC_V3.criteria
+        )
+        rubric = Rubric("safety doubled", criteria)
+
+        result = score_case(
+            make_case(urgency="medical_disrupted"), rubric, now=NOW
+        )
+        safety = next(c for c in result.components if c.key == "safety")
+
+        self.assertEqual(safety.points, 36)  # 18/25 severity × weight 50
+        self.assertIn("weight 50", safety.reason)
+
+    def test_no_component_exceeds_its_weight(self):
+        weights = {"safety": 7, "damage": 6, "vulnerability": 5, "needs": 4, "access": 3, "waiting": 2}
+        criteria = tuple(
+            Criterion(c.key, c.name, weights[c.key], c.max_points)
+            for c in RUBRIC_V3.criteria
+        )
+        result = score_case(
+            make_case(
+                urgency="urgent",
+                liveability="unliveable",
+                vulnerability_flags=("elderly", "child_under_5", "disability", "single_parent"),
+                needs_flags=tuple(str(i) for i in range(10)),
+                access_level="cut_off",
+                created_at=NOW - timedelta(days=30),
+            ),
+            Rubric("small weights", criteria),
+            now=NOW,
+        )
+
+        for component in result.components:
+            self.assertLessEqual(component.points, weights[component.key])
+
+    def test_invalid_severity_scale_is_refused(self):
+        broken = tuple(
+            Criterion(c.key, c.name, c.weight, 0 if c.key == "safety" else c.max_points)
+            for c in RUBRIC_V3.criteria
+        )
+        with self.assertRaises(ValueError):
+            score_case(make_case(), Rubric("broken", broken), now=NOW)
 
 
 class PurityTests(TestCase):

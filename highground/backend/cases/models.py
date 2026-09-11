@@ -135,14 +135,18 @@ class CaseRecord(models.Model):
 
     @property
     def priority_band(self):
-        """High >= 70 / Medium 40-69 / Low <= 39 (rubric v3.0 thresholds)."""
+        """The band defined by the rubric version that produced this score."""
         if self.score_total is None:
             return "unscored"
-        if self.score_total >= 70:
-            return "High"
-        if self.score_total >= 40:
-            return "Medium"
-        return "Low"
+        from scoring.engine import band_for
+
+        if self.rubric_version_id:
+            return band_for(
+                self.score_total,
+                self.rubric_version.high_threshold,
+                self.rubric_version.medium_threshold,
+            )
+        return band_for(self.score_total)
 
 
 class CasePhoto(models.Model):

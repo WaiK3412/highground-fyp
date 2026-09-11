@@ -33,6 +33,25 @@ class IsNgoVolunteer(BasePermission):
         )
 
 
+class IsCoordinator(BasePermission):
+    """Officer, administrator, or an NGO responder attached to an organisation."""
+
+    message = "Only authorised coordinators may view this resource."
+
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role in {
+            UserAccount.Role.DISASTER_OFFICER,
+            UserAccount.Role.SYSTEM_ADMIN,
+        }:
+            return True
+        return (
+            request.user.role == UserAccount.Role.NGO_VOLUNTEER
+            and request.user.organization_id is not None
+        )
+
+
 def visible_cases(user, queryset):
     """Narrow a case queryset to what this user is allowed to see at all.
 
