@@ -69,7 +69,7 @@ DESCRIPTIONS = [
     "Well contaminated by floodwater — the household has no safe drinking supply.",
 ]
 
-NEEDS = ["water", "food", "bedding", "cleaning", "medicine", "clothing"]
+NEEDS = ["water", "food", "bedding", "hygiene", "medicine", "baby_supplies"]
 VULNS = ["elderly", "child_under_5", "disability", "single_parent"]
 
 
@@ -113,6 +113,8 @@ class Command(BaseCommand):
         version = PriorityRubricVersion.objects.create(
             label="v3.0",
             status=PriorityRubricVersion.Status.PUBLISHED,
+            medium_threshold=40,
+            high_threshold=70,
             published_at=now - timedelta(days=30),
         )
         for key, name, weight, max_points, rule in RUBRIC_V3:
@@ -128,6 +130,8 @@ class Command(BaseCommand):
                 Criterion(c.key, c.name, c.weight, c.max_points)
                 for c in version.criteria.all()
             ),
+            high_threshold=version.high_threshold,
+            medium_threshold=version.medium_threshold,
         )
 
         # ---------------- organisations ----------------
@@ -198,13 +202,12 @@ class Command(BaseCommand):
             liveability=CaseRecord.Liveability.PARTIAL,
             flood_depth=CaseRecord.FloodDepth.WAIST,
             access_level=CaseRecord.AccessLevel.CUT_OFF,
-            needs=["water", "food", "bedding", "cleaning", "medicine"],
+            needs=["water", "food", "bedding", "hygiene", "medicine"],
             vulns=["elderly", "child_under_5", "disability"],
             household_size=5,
             status=CaseRecord.Status.VERIFIED,
             created_at=now - timedelta(days=4),
             verified_by=officer,
-            version=version,
         )
         cases.append(frc)
 
@@ -242,14 +245,20 @@ class Command(BaseCommand):
                 status=status,
                 created_at=now - timedelta(days=random.randint(0, 9), hours=random.randint(0, 20)),
                 verified_by=officer if status != CaseRecord.Status.SUBMITTED else None,
-                version=version,
                 claimed_by=orgs[i % len(orgs)] if claimed else None,
             )
             cases.append(case)
 
-        # ---------------- score every case with the ENGINE ----------------
+        # ---------------- score the VERIFIED cases with the ENGINE ----------------
+        # Only cases an officer has actually looked at carry a score. Screen 17
+        # is explicit that a request is checked "before it is scored and
+        # released to the NGO queue", and the running system now does exactly
+        # that (cases/services.py). Seeding a score onto a submitted case would
+        # contradict the behaviour the demo is showing.
+        UNSCORED = {CaseRecord.Status.SUBMITTED, CaseRecord.Status.NEEDS_INFO}
         for case in cases:
-            self._score(case, engine_rubric, version, now, officer)
+            if case.status not in UNSCORED:
+                self._score(case, engine_rubric, version, now, officer)
 
         # ---------------- tasks ----------------
         for case in cases:
@@ -274,8 +283,14 @@ class Command(BaseCommand):
                 self.style.WARNING(f"  audit log cleared ({removed} rows) — demo starts empty")
             )
 
-        high = sum(1 for c in cases if c.score_total >= 70)
-        self.stdout.write(self.style.SUCCESS(f"  cases — {len(cases)} seeded, {high} high priority"))
+        scored = [c for c in cases if c.score_total is not None]
+        high = sum(1 for c in scored if c.score_total >= 70)
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  cases — {len(cases)} seeded, {len(scored)} scored, {high} high priority "
+                f"({len(cases) - len(scored)} awaiting verification, so unscored)"
+            )
+        )
         self.stdout.write(
             self.style.SUCCESS(f"  #FRC-1042 scored {frc.score_total} by the engine ({frc.priority_band})")
         )
@@ -291,7 +306,7 @@ class Command(BaseCommand):
     def _make_case(self, *, reference, submitted_by, village, address, lat, lng,
                    description, damage_category, urgency, liveability, flood_depth,
                    access_level, needs, vulns, household_size, status, created_at,
-                   version, verified_by=None, claimed_by=None):
+                    verified_by=None, claimed_by=None):
         case = CaseRecord.objects.create(
             reference=reference, submitted_by_user=submitted_by,
             village=village, address=address, latitude=lat, longitude=lng,
@@ -300,7 +315,6 @@ class Command(BaseCommand):
             access_level=access_level, needs_flags=needs, vulnerability_flags=vulns,
             household_size=household_size, status=status, created_at=created_at,
             verified_by_user=verified_by, claimed_by_org=claimed_by,
-            rubric_version=version,
             closed_at=created_at + timedelta(days=3) if status == CaseRecord.Status.CLOSED else None,
         )
         CaseEventLog.objects.create(
@@ -341,7 +355,8 @@ class Command(BaseCommand):
             now=now,
         )
         case.score_total = result.total
-        case.save(update_fields=["score_total"])
+        case.rubric_version = version
+        case.save(update_fields=["score_total", "rubric_version"])
 
         criteria = {c.key: c for c in version.criteria.all()}
         for component in result.components:
@@ -353,5 +368,5 @@ class Command(BaseCommand):
             case=case, actor_user=officer,
             event_type=CaseEventLog.EventType.SCORE_COMPUTED,
             detail=f"Priority {result.total} ({result.band}) under rubric {version.label}.",
-            created_at=case.created_at + timedelta(hours=1),
+            created_at=case.created_at + timedelta(hours=6, minutes=1),
         )

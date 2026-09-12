@@ -11,10 +11,9 @@
  *      The pin's privacy banner went with it — it promises something about
  *      "your exact pin" that this build does not yet collect.
  *
- *   2. Step 4 holds the chosen photos in state and previews them, but does
- *      not upload. CasePhoto.file_path is a CharField, not a FileField, so
- *      there is no storage machinery behind it yet — wiring one is a model
- *      decision, not a port.
+ *   2. Step 4 holds the chosen photos in state and previews them. On submit,
+ *      api.createCase switches the request to multipart and Django stores up
+ *      to five validated JPEG, PNG or WebP files through CasePhoto.file_path.
  *
  * All answers live in this component until step 5. There are no drafts and
  * no partial saves: the design's final step reviews the whole request before
@@ -71,11 +70,26 @@ const ACCESS_LEVELS = [
   { value: 'cut_off', label: 'Completely cut off' },
 ]
 
+// Wording is the frozen design's, verbatim (design-prototype-v2 screen 05b). The
+// last option deliberately says "call 999 first": HighGround runs alongside the
+// emergency services, it does not stand in for them.
 const URGENCY = [
-  { value: 'none', label: 'No immediate risk', desc: 'Everyone is safe and well' },
-  { value: 'health_risk', label: 'Health risk', desc: 'Conditions are making someone unwell' },
-  { value: 'medical_disrupted', label: 'Medical needs disrupted', desc: 'Medicine or treatment interrupted' },
-  { value: 'urgent', label: 'Urgent', desc: 'Someone needs help right now' },
+  { value: 'none', label: 'No safety concerns', desc: 'Everyone is safe and well' },
+  {
+    value: 'health_risk',
+    label: 'Health concern',
+    desc: 'Damp or mould exposure, minor illness, hygiene risk',
+  },
+  {
+    value: 'medical_disrupted',
+    label: 'Medical needs disrupted',
+    desc: 'Medication, medical equipment or ongoing treatment affected by the flood',
+  },
+  {
+    value: 'urgent',
+    label: 'Someone needs urgent medical attention',
+    desc: 'We will flag this to the district office — but call 999 first',
+  },
 ]
 
 const VULNERABILITY_FLAGS = [
@@ -107,6 +121,7 @@ const PATHS = {
   arrow: 'M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3',
   camera: 'M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z',
   info: 'M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z',
+  warning: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z',
 }
 
 function Icon({ path, strokeWidth = 1.5, style }) {
@@ -424,10 +439,12 @@ function StepNeeds({ data, set }) {
   return (
     <>
       <div className="banner banner--danger" style={{ marginBottom: '2.4rem' }}>
-        <Icon path={PATHS.info} />
+        <Icon path={PATHS.warning} />
         <span className="body text-sm">
-          <span className="title">If someone is in immediate danger, call 999.</span> HighGround is for
-          recovery, not emergencies.
+          <span className="title">In danger right now? Call 999.</span>
+          <br />
+          HighGround coordinates recovery help — it is not an emergency rescue service. If anyone is
+          in life-threatening danger, call 999 or the Civil Defence Force (APM) immediately.
         </span>
       </div>
 
@@ -456,10 +473,10 @@ function StepNeeds({ data, set }) {
                     onChange={() => set({ urgency: option.value })}
                     style={{ width: '1.8rem', height: '1.8rem', accentColor: 'var(--teal-700)' }}
                   />
-                  <span>
-                    <span className="title">{option.label}</span>
-                    <span className="desc"> — {option.desc}</span>
-                  </span>
+                  <div>
+                    <div className="title">{option.label}</div>
+                    <div className="desc">{option.desc}</div>
+                  </div>
                 </label>
               ))}
             </div>
