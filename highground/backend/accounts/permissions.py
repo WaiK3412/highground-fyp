@@ -33,6 +33,16 @@ class IsNgoVolunteer(BasePermission):
         )
 
 
+class IsCommunityMember(BasePermission):
+    message = "Only the resident who submitted the case may do this."
+
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.role == UserAccount.Role.COMMUNITY_MEMBER
+        )
+
+
 class IsCoordinator(BasePermission):
     """Officer, administrator, or an NGO responder attached to an organisation."""
 
@@ -90,4 +100,22 @@ def may_see_exact_location(user, case) -> bool:
         return case.claimed_by_org_id == user.organization_id
     if user.role == Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
+    return False
+
+
+def may_see_private_case_details(user, case) -> bool:
+    """Keep household evidence behind ownership or operational responsibility.
+
+    NGOs need a village-level queue summary to decide whether they can help,
+    but descriptions, photos, vulnerability flags and the operational history
+    are released only after their organisation claims the case.
+    """
+    Role = UserAccount.Role
+
+    if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
+        return True
+    if user.role == Role.COMMUNITY_MEMBER:
+        return case.submitted_by_user_id == user.id
+    if user.role == Role.NGO_VOLUNTEER and case.claimed_by_org_id:
+        return case.claimed_by_org_id == user.organization_id
     return False

@@ -43,6 +43,7 @@ class TimelineTests(TestCase):
         self.case = CaseRecord.objects.create(
             reference="FRC-7001",
             submitted_by_user=self.resident,
+            claimed_by_org=self.org,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Mud through the ground floor.",
             village="Kg. Test",

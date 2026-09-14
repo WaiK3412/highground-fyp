@@ -50,6 +50,8 @@ TO_HOUSEHOLD = {
     CaseEventLog.EventType.NEEDS_INFO,
     CaseEventLog.EventType.REJECTED,
     CaseEventLog.EventType.CLAIMED,
+    CaseEventLog.EventType.RELEASED,
+    CaseEventLog.EventType.COMPLETION_REQUESTED,
     CaseEventLog.EventType.CLOSED,
 }
 
@@ -58,9 +60,31 @@ TO_OFFICERS = {
     CaseEventLog.EventType.ESCALATED,
 }
 
+TO_CLAIMING_ORGANISATION = {
+    CaseEventLog.EventType.CLOSED,
+    CaseEventLog.EventType.REOPENED,
+}
+
 
 def recipients_for(case, event_type, actor):
     """Who should be told about this event. Returns a list of users."""
+    # Completion decisions are made by the household, so the operational team
+    # needs the notification rather than the person who just pressed the button.
+    if (
+        event_type in TO_CLAIMING_ORGANISATION
+        and actor == case.submitted_by_user
+        and case.claimed_by_org_id
+    ):
+        return list(
+            UserAccount.objects.filter(
+                role=UserAccount.Role.NGO_VOLUNTEER,
+                organization=case.claimed_by_org,
+                is_active=True,
+            )
+            .exclude(pk=getattr(actor, "pk", None))
+            .order_by("id")
+        )
+
     if event_type in TO_HOUSEHOLD:
         household = case.submitted_by_user
         # Nobody needs telling about something they did themselves.
@@ -88,7 +112,10 @@ HEADLINES = {
     CaseEventLog.EventType.NEEDS_INFO: "More information needed on your request",
     CaseEventLog.EventType.REJECTED: "Your request was not accepted",
     CaseEventLog.EventType.CLAIMED: "An organisation is taking on your case",
+    CaseEventLog.EventType.RELEASED: "Your case is available to response organisations again",
+    CaseEventLog.EventType.COMPLETION_REQUESTED: "Please confirm whether the recovery work is complete",
     CaseEventLog.EventType.CLOSED: "Your case has been closed",
+    CaseEventLog.EventType.REOPENED: "A resident reported that work is incomplete",
     CaseEventLog.EventType.ESCALATED: "A case has been escalated",
 }
 

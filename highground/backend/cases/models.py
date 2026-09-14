@@ -186,6 +186,7 @@ class CaseTask(models.Model):
         related_name="led_tasks",
     )
     title = models.CharField(max_length=150)
+    safety_note = models.CharField(max_length=500, blank=True, default="")
     task_type = models.CharField(max_length=20, choices=TaskType)
     status = models.CharField(max_length=20, choices=Status, default=Status.OPEN)
     assigned_at = models.DateTimeField(null=True, blank=True)
@@ -240,8 +241,11 @@ class CaseEventLog(models.Model):
         REJECTED = "rejected", "Rejected"
         SCORE_COMPUTED = "score_computed", "Score computed"
         CLAIMED = "claimed", "Claimed"
+        RELEASED = "released", "Released"
         TASK_ASSIGNED = "task_assigned", "Task assigned"
         TASK_UPDATED = "task_updated", "Task updated"
+        SAFETY_ACKNOWLEDGED = "safety_acknowledged", "Safety note acknowledged"
+        COMPLETION_REQUESTED = "completion_requested", "Completion requested"
         ESCALATED = "escalated", "Escalated"
         CLOSED = "closed", "Closed"
         REOPENED = "reopened", "Reopened"

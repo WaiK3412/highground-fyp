@@ -18,14 +18,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.permissions import (
+    IsCommunityMember,
     IsCoordinator,
     IsDisasterOfficer,
     IsNgoVolunteer,
     may_see_exact_location,
+    may_see_private_case_details,
     visible_cases,
 )
+from accounts.models import UserAccount
 
-from .models import CaseEventLog, CasePhoto, CaseRecord
+from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask
 
 
 class ScoreComponentSerializer(serializers.Serializer):
@@ -92,7 +95,9 @@ class CaseEventSerializer(serializers.Serializer):
         CaseEventLog.EventType.NEEDS_INFO,
         CaseEventLog.EventType.REJECTED,
         CaseEventLog.EventType.CLAIMED,
+        CaseEventLog.EventType.RELEASED,
         CaseEventLog.EventType.TASK_ASSIGNED,
+        CaseEventLog.EventType.COMPLETION_REQUESTED,
         CaseEventLog.EventType.CLOSED,
         CaseEventLog.EventType.REOPENED,
     }
@@ -114,11 +119,54 @@ class CasePhotoSerializer(serializers.Serializer):
     uploaded_at = serializers.DateTimeField(read_only=True)
 
 
+class CaseTaskSummarySerializer(serializers.ModelSerializer):
+    task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    lead_name = serializers.CharField(source="lead_user.full_name", default=None, read_only=True)
+
+    class Meta:
+        model = CaseTask
+        fields = [
+            "id",
+            "title",
+            "task_type",
+            "task_type_display",
+            "status",
+            "status_display",
+            "lead_name",
+            "assigned_at",
+            "completed_at",
+        ]
+
+
+class CaseSummaryDetailSerializer(CaseListSerializer):
+    """A coordination summary for an NGO that has not claimed the case."""
+
+    detail_access = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+
+    class Meta(CaseListSerializer.Meta):
+        fields = CaseListSerializer.Meta.fields + ["detail_access", "location"]
+
+    def get_detail_access(self, obj):
+        return "summary"
+
+    def get_location(self, obj):
+        return {
+            "precision": "village",
+            "address": obj.village,
+            "latitude": None,
+            "longitude": None,
+        }
+
+
 class CaseDetailSerializer(CaseListSerializer):
     score_components = ScoreComponentSerializer(many=True, read_only=True)
     photos = CasePhotoSerializer(many=True, read_only=True)
     events = CaseEventSerializer(many=True, read_only=True)
+    tasks = CaseTaskSummarySerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
+    detail_access = serializers.SerializerMethodField()
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
     # than leaving each client to invent its own labels.
@@ -150,7 +198,12 @@ class CaseDetailSerializer(CaseListSerializer):
             "location",
             "photos",
             "events",
+            "tasks",
+            "detail_access",
         ]
+
+    def get_detail_access(self, obj):
+        return "full"
 
     def get_location(self, obj):
         """Coordinates go to the district office and the claiming org; everyone
@@ -287,11 +340,22 @@ class CaseListView(ListCreateAPIView):
         if search:
             from django.db.models import Q
 
-            queryset = queryset.filter(
-                Q(reference__icontains=search)
-                | Q(village__icontains=search)
-                | Q(description__icontains=search)
+            search_query = Q(reference__icontains=search) | Q(
+                village__icontains=search
             )
+            # An NGO may browse the shared coordination queue, but private
+            # household descriptions only become searchable after its own
+            # organisation claims the case. Otherwise even a yes/no search
+            # result could reveal sensitive circumstances.
+            if self.request.user.role == UserAccount.Role.NGO_VOLUNTEER:
+                if self.request.user.organization_id:
+                    search_query |= Q(
+                        claimed_by_org=self.request.user.organization,
+                        description__icontains=search,
+                    )
+            else:
+                search_query |= Q(description__icontains=search)
+            queryset = queryset.filter(search_query)
         return queryset
 
     def create(self, request, *args, **kwargs):
@@ -357,19 +421,19 @@ class CaseListView(ListCreateAPIView):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def case_detail(request, pk):
+    events = CaseEventLog.objects.filter(notification_copy_of__isnull=True)
+    if request.user.role == UserAccount.Role.COMMUNITY_MEMBER:
+        events = events.exclude(event_type=CaseEventLog.EventType.SAFETY_ACKNOWLEDGED)
     queryset = visible_cases(
         request.user,
         CaseRecord.objects.select_related("claimed_by_org").prefetch_related(
             "score_components__criterion",
             "photos",
+            "tasks__lead_user",
             # Oldest first: a timeline reads downwards.
             Prefetch(
                 "events",
-                queryset=CaseEventLog.objects.filter(
-                    notification_copy_of__isnull=True
-                )
-                .select_related("actor_user__organization")
-                .order_by("created_at"),
+                queryset=events.select_related("actor_user__organization").order_by("created_at"),
             ),
         ),
     )
@@ -377,7 +441,12 @@ def case_detail(request, pk):
     if case is None:
         # 404 rather than 403: do not confirm that a hidden case exists.
         return Response({"detail": "Not found."}, status=404)
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+    serializer_class = (
+        CaseDetailSerializer
+        if may_see_private_case_details(request.user, case)
+        else CaseSummaryDetailSerializer
+    )
+    return Response(serializer_class(case, context={"request": request}).data)
 
 
 @api_view(["GET"])
@@ -393,6 +462,565 @@ def queue_stats(request):
             "in_progress": queryset.filter(status="in_progress").count(),
         }
     )
+
+
+class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
+    case_id = serializers.IntegerField(source="case.id", read_only=True)
+    case_reference = serializers.CharField(source="case.reference", read_only=True)
+    case_village = serializers.CharField(source="case.village", read_only=True)
+    case_score_total = serializers.IntegerField(source="case.score_total", read_only=True)
+    case_priority_band = serializers.CharField(source="case.priority_band", read_only=True)
+    case_status = serializers.CharField(source="case.status", read_only=True)
+    case_status_display = serializers.CharField(
+        source="case.get_status_display", read_only=True
+    )
+    lead = serializers.SerializerMethodField()
+    updates = serializers.SerializerMethodField()
+    safety_acknowledgement = serializers.SerializerMethodField()
+
+    class Meta(CaseTaskSummarySerializer.Meta):
+        fields = CaseTaskSummarySerializer.Meta.fields + [
+            "case_id",
+            "case_reference",
+            "case_village",
+            "case_score_total",
+            "case_priority_band",
+            "case_status",
+            "case_status_display",
+            "lead",
+            "updates",
+            "safety_note",
+            "safety_acknowledgement",
+        ]
+
+    def get_lead(self, obj):
+        if obj.lead_user_id is None:
+            return None
+        return {"id": obj.lead_user_id, "full_name": obj.lead_user.full_name}
+
+    def get_safety_acknowledgement(self, obj):
+        if not obj.safety_note or not obj.lead_user_id or not obj.assigned_at:
+            return None
+        acknowledgements = [
+            event for event in obj.events.all()
+            if event.notification_copy_of_id is None
+            and event.event_type == CaseEventLog.EventType.SAFETY_ACKNOWLEDGED
+            and event.actor_user_id == obj.lead_user_id
+            and event.created_at >= obj.assigned_at
+        ]
+        if not acknowledgements:
+            return None
+        latest = max(acknowledgements, key=lambda event: (event.created_at, event.pk))
+        return {"by": latest.actor_user.full_name, "at": latest.created_at}
+
+    def get_updates(self, obj):
+        rows = [
+            event
+            for event in obj.events.all()
+            if event.notification_copy_of_id is None
+            and event.event_type == CaseEventLog.EventType.TASK_UPDATED
+        ]
+        rows.sort(key=lambda event: event.created_at)
+        return [
+            {
+                "detail": event.detail,
+                "actor": event.actor_user.full_name if event.actor_user else None,
+                "created_at": event.created_at,
+            }
+            for event in rows[-5:]
+        ]
+
+
+class CaseTaskCreateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=150)
+    task_type = serializers.ChoiceField(choices=CaseTask.TaskType.choices)
+    lead_user_id = serializers.IntegerField(required=False, allow_null=True)
+    safety_note = serializers.CharField(required=False, allow_blank=True, max_length=500)
+
+    def validate_title(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Give the task a title.")
+        return value
+
+    def validate_safety_note(self, value):
+        return value.strip()
+
+
+class CaseTaskUpdateSerializer(serializers.Serializer):
+    lead_user_id = serializers.IntegerField(required=False, allow_null=True)
+    status = serializers.ChoiceField(choices=CaseTask.Status.choices, required=False)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+    safety_acknowledged = serializers.BooleanField(required=False)
+
+
+def _lead_for_organisation(lead_id, organisation):
+    if lead_id is None:
+        return None
+    return UserAccount.objects.filter(
+        pk=lead_id,
+        role=UserAccount.Role.NGO_VOLUNTEER,
+        organization=organisation,
+        is_active=True,
+    ).first()
+
+
+def _may_read_tasks(user, case):
+    if user.role in {UserAccount.Role.DISASTER_OFFICER, UserAccount.Role.SYSTEM_ADMIN}:
+        return True
+    if user.role == UserAccount.Role.COMMUNITY_MEMBER:
+        return case.submitted_by_user_id == user.id
+    return (
+        user.role == UserAccount.Role.NGO_VOLUNTEER
+        and case.claimed_by_org_id == user.organization_id
+    )
+
+
+def _task_queryset():
+    return CaseTask.objects.select_related("case", "lead_user").prefetch_related(
+        "events__actor_user"
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsNgoVolunteer])
+def task_board(request):
+    """The claiming organisation's tasks, active cases and assignable responders."""
+    from datetime import timedelta
+    from django.db.models import Q
+
+    recent = timezone.now() - timedelta(days=7)
+    tasks = (
+        _task_queryset()
+        .filter(case__claimed_by_org=request.user.organization)
+        .filter(
+            Q(
+                case__status__in=[
+                    CaseRecord.Status.CLAIMED,
+                    CaseRecord.Status.IN_PROGRESS,
+                    CaseRecord.Status.PENDING_CONFIRM,
+                ]
+            )
+            | Q(status=CaseTask.Status.DONE, completed_at__gte=recent)
+        )
+        .order_by("case__reference", "id")
+    )
+    cases = CaseRecord.objects.filter(
+        claimed_by_org=request.user.organization,
+        status__in=[
+            CaseRecord.Status.CLAIMED,
+            CaseRecord.Status.IN_PROGRESS,
+            CaseRecord.Status.PENDING_CONFIRM,
+        ],
+    )
+    responders = UserAccount.objects.filter(
+        role=UserAccount.Role.NGO_VOLUNTEER,
+        organization=request.user.organization,
+        is_active=True,
+    ).order_by("full_name")
+    return Response(
+        {
+            "tasks": CaseTaskBoardSerializer(tasks, many=True).data,
+            "cases": CaseListSerializer(cases, many=True).data,
+            "responders": [
+                {"id": responder.id, "full_name": responder.full_name}
+                for responder in responders
+            ],
+        }
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def case_tasks(request, pk):
+    case = CaseRecord.objects.select_related("claimed_by_org").filter(pk=pk).first()
+    if case is None or not _may_read_tasks(request.user, case):
+        return Response({"detail": "Not found."}, status=404)
+
+    if request.method == "GET":
+        tasks = _task_queryset().filter(case=case).order_by("id")
+        # Residents can follow task status and the accountable lead, but NGO
+        # progress notes remain operational records and may contain access or
+        # safety details that are not appropriate for the household timeline.
+        serializer_class = (
+            CaseTaskSummarySerializer
+            if request.user.role == UserAccount.Role.COMMUNITY_MEMBER
+            else CaseTaskBoardSerializer
+        )
+        return Response(serializer_class(tasks, many=True).data)
+
+    if (
+        request.user.role != UserAccount.Role.NGO_VOLUNTEER
+        or request.user.organization_id is None
+        or case.claimed_by_org_id != request.user.organization_id
+    ):
+        return Response(
+            {"detail": "Only the claiming organisation may create tasks."}, status=403
+        )
+    if case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
+        return Response(
+            {"detail": "Tasks can only be added while a claimed case is active."},
+            status=409,
+        )
+
+    serializer = CaseTaskCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    lead_id = serializer.validated_data.get("lead_user_id")
+    lead = _lead_for_organisation(lead_id, request.user.organization)
+    if lead_id is not None and lead is None:
+        return Response(
+            {"lead_user_id": ["Choose an active responder from your organisation."]},
+            status=400,
+        )
+
+    with transaction.atomic():
+        locked_case = CaseRecord.objects.select_for_update().get(pk=case.pk)
+        if (
+            locked_case.claimed_by_org_id != request.user.organization_id
+            or locked_case.status
+            not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}
+        ):
+            return Response(
+                {"detail": "This case is no longer available for task changes."},
+                status=409,
+            )
+        task = CaseTask.objects.create(
+            case=locked_case,
+            lead_user=lead,
+            title=serializer.validated_data["title"],
+            task_type=serializer.validated_data["task_type"],
+            safety_note=serializer.validated_data.get("safety_note", ""),
+            status=CaseTask.Status.ASSIGNED if lead else CaseTask.Status.OPEN,
+            assigned_at=timezone.now() if lead else None,
+        )
+        event_type = (
+            CaseEventLog.EventType.TASK_ASSIGNED
+            if lead
+            else CaseEventLog.EventType.TASK_UPDATED
+        )
+        detail = (
+            f"{request.user.organization.name} assigned a responder to {task.title}."
+            if lead
+            else f"Task created: {task.title}."
+        )
+        CaseEventLog.objects.create(
+            case=locked_case,
+            task=task,
+            actor_user=request.user,
+            event_type=event_type,
+            detail=detail,
+            created_at=timezone.now(),
+        )
+
+    return Response(CaseTaskBoardSerializer(task).data, status=201)
+
+
+TASK_TRANSITIONS = {
+    CaseTask.Status.OPEN: {CaseTask.Status.ASSIGNED},
+    CaseTask.Status.ASSIGNED: {CaseTask.Status.IN_PROGRESS},
+    CaseTask.Status.IN_PROGRESS: {CaseTask.Status.DONE},
+    # A resident may report incomplete work after every task was marked done.
+    CaseTask.Status.DONE: {CaseTask.Status.IN_PROGRESS},
+}
+
+
+@api_view(["PATCH"])
+@permission_classes([IsNgoVolunteer])
+def update_task(request, pk):
+    serializer = CaseTaskUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    if not serializer.validated_data:
+        return Response({"detail": "Provide a lead, status or progress note."}, status=400)
+
+    with transaction.atomic():
+        task = (
+            CaseTask.objects.select_for_update()
+            # `lead_user` is nullable, and PostgreSQL cannot apply FOR UPDATE
+            # to the nullable side of that outer join. The lead id is already
+            # on the task row; load the related user lazily for the response.
+            .select_related("case")
+            .filter(pk=pk, case__claimed_by_org=request.user.organization)
+            .first()
+        )
+        if task is None:
+            return Response({"detail": "Not found."}, status=404)
+        if task.case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
+            return Response(
+                {"detail": "This task cannot change while the case awaits confirmation or is closed."},
+                status=409,
+            )
+
+        lead_supplied = "lead_user_id" in serializer.validated_data
+        status_supplied = "status" in serializer.validated_data
+        if lead_supplied and status_supplied:
+            return Response(
+                {"detail": "Change the lead and the status in separate steps."}, status=400
+            )
+        old_lead_id = task.lead_user_id
+        old_status = task.status
+        if lead_supplied:
+            lead_id = serializer.validated_data["lead_user_id"]
+            lead = _lead_for_organisation(lead_id, request.user.organization)
+            if lead_id is not None and lead is None:
+                return Response(
+                    {"lead_user_id": ["Choose an active responder from your organisation."]},
+                    status=400,
+                )
+            if lead is None and task.status == CaseTask.Status.IN_PROGRESS:
+                return Response(
+                    {"lead_user_id": ["A task in progress must keep its accountable lead."]},
+                    status=409,
+                )
+            if task.status == CaseTask.Status.DONE and lead_id != old_lead_id:
+                return Response(
+                    {"lead_user_id": ["Reopen the task before reassigning it."]},
+                    status=409,
+                )
+            task.lead_user = lead
+
+        lead_changed = old_lead_id != task.lead_user_id
+        target_status = serializer.validated_data.get("status", task.status)
+        if lead_changed:
+            if task.status == CaseTask.Status.OPEN:
+                target_status = CaseTask.Status.ASSIGNED
+            elif task.status == CaseTask.Status.ASSIGNED and task.lead_user_id is None:
+                target_status = CaseTask.Status.OPEN
+            elif task.status == CaseTask.Status.IN_PROGRESS:
+                target_status = CaseTask.Status.ASSIGNED
+
+        if target_status != task.status:
+            if not lead_changed and target_status not in TASK_TRANSITIONS.get(task.status, set()):
+                return Response(
+                    {"status": [f"Cannot move a task from {task.status} to {target_status}."]},
+                    status=409,
+                )
+        if target_status != CaseTask.Status.OPEN and task.lead_user_id is None:
+            return Response(
+                {"lead_user_id": ["Assign an accountable responder before moving this task."]},
+                status=400,
+            )
+
+        status_changed = target_status != task.status
+        starting = task.status == CaseTask.Status.ASSIGNED and target_status == CaseTask.Status.IN_PROGRESS
+        acknowledgement_supplied = "safety_acknowledged" in serializer.validated_data
+        if acknowledgement_supplied and (not starting or not task.safety_note):
+            return Response(
+                {"safety_acknowledged": ["Acknowledge a safety note only when starting its task."]},
+                status=400,
+            )
+        if starting and task.lead_user_id != request.user.id:
+            return Response(
+                {"detail": "Only the task's accountable lead can start it. Reassign the task first if someone else will do the work."},
+                status=403,
+            )
+        if starting and task.safety_note and serializer.validated_data.get("safety_acknowledged") is not True:
+            return Response(
+                {"safety_acknowledged": ["Read and acknowledge the safety note before starting."]},
+                status=400,
+            )
+        note = serializer.validated_data.get("note", "").strip()
+        if not lead_changed and not status_changed and not note:
+            return Response({"detail": "Nothing changed."}, status=400)
+
+        task.status = target_status
+        if task.lead_user_id and (task.assigned_at is None or lead_changed):
+            task.assigned_at = timezone.now()
+        if target_status == CaseTask.Status.OPEN:
+            task.assigned_at = None
+        if target_status == CaseTask.Status.DONE:
+            task.completed_at = timezone.now()
+        elif status_changed:
+            task.completed_at = None
+        task.save(
+            update_fields=["lead_user", "status", "assigned_at", "completed_at"]
+        )
+
+        if starting and task.safety_note:
+            CaseEventLog.objects.create(
+                case=task.case,
+                task=task,
+                actor_user=request.user,
+                event_type=CaseEventLog.EventType.SAFETY_ACKNOWLEDGED,
+                detail=(
+                    f'The task lead acknowledged the safety note shown before starting "{task.title}". '
+                    f'This confirms the warning was presented, not that the site is safe. '
+                    f'Note: {task.safety_note}'
+                ),
+                created_at=timezone.now(),
+            )
+
+        if target_status == CaseTask.Status.IN_PROGRESS and task.case.status == CaseRecord.Status.CLAIMED:
+            task.case.status = CaseRecord.Status.IN_PROGRESS
+            task.case.save(update_fields=["status"])
+
+        event_type = (
+            CaseEventLog.EventType.TASK_ASSIGNED
+            if lead_changed and task.lead_user_id
+            else CaseEventLog.EventType.TASK_UPDATED
+        )
+        if event_type == CaseEventLog.EventType.TASK_ASSIGNED:
+            # Only a started task is reset; a first assignment is not a handover.
+            if old_status == CaseTask.Status.IN_PROGRESS:
+                detail = (
+                    f'{request.user.organization.name} reassigned "{task.title}"; '
+                    'it returns to Assigned until the new lead starts it.'
+                )
+            else:
+                detail = f"{request.user.organization.name} assigned a responder to {task.title}."
+        elif note:
+            detail = note
+        else:
+            detail = f"{task.title} moved to {task.get_status_display().lower()}."
+        CaseEventLog.objects.create(
+            case=task.case,
+            task=task,
+            actor_user=request.user,
+            event_type=event_type,
+            detail=detail,
+            created_at=timezone.now(),
+        )
+
+    return Response(CaseTaskBoardSerializer(task).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsNgoVolunteer])
+def complete_case(request, pk):
+    with transaction.atomic():
+        case = (
+            CaseRecord.objects.select_for_update()
+            .filter(pk=pk, claimed_by_org=request.user.organization)
+            .first()
+        )
+        if case is None:
+            return Response({"detail": "Not found."}, status=404)
+        if case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
+            return Response({"detail": "This case is not ready for completion."}, status=409)
+        tasks = case.tasks.all()
+        if not tasks.exists():
+            return Response(
+                {"detail": "Create and complete at least one task first."}, status=409
+            )
+        if tasks.exclude(status=CaseTask.Status.DONE).exists():
+            return Response(
+                {"detail": "Every task must be done before requesting confirmation."},
+                status=409,
+            )
+
+        case.status = CaseRecord.Status.PENDING_CONFIRM
+        case.save(update_fields=["status"])
+        CaseEventLog.objects.create(
+            case=case,
+            actor_user=request.user,
+            event_type=CaseEventLog.EventType.COMPLETION_REQUESTED,
+            detail=f"{request.user.organization.name} marked the recovery work complete. Please confirm the result.",
+            created_at=timezone.now(),
+        )
+
+    from .notifications import notify
+
+    notify(case, CaseEventLog.EventType.COMPLETION_REQUESTED, request.user)
+    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsCommunityMember])
+def confirm_case(request, pk):
+    decision = request.data.get("decision")
+    if decision not in {"confirm", "incomplete"}:
+        return Response(
+            {"decision": ["Choose confirm or incomplete."]}, status=400
+        )
+    note = (request.data.get("note") or "").strip()
+    if decision == "incomplete" and not note:
+        return Response(
+            {"note": ["Explain what still needs attention."]}, status=400
+        )
+
+    with transaction.atomic():
+        case = (
+            CaseRecord.objects.select_for_update()
+            .filter(pk=pk, submitted_by_user=request.user)
+            .first()
+        )
+        if case is None:
+            return Response({"detail": "Not found."}, status=404)
+        if case.status != CaseRecord.Status.PENDING_CONFIRM:
+            return Response(
+                {"detail": "This case is not waiting for resident confirmation."},
+                status=409,
+            )
+
+        if decision == "confirm":
+            case.status = CaseRecord.Status.CLOSED
+            case.closed_at = timezone.now()
+            event_type = CaseEventLog.EventType.CLOSED
+            detail = "The resident confirmed that the recovery work is complete."
+            update_fields = ["status", "closed_at"]
+        else:
+            case.status = CaseRecord.Status.IN_PROGRESS
+            case.closed_at = None
+            event_type = CaseEventLog.EventType.REOPENED
+            detail = f"The resident reported incomplete work: {note}"
+            update_fields = ["status", "closed_at"]
+        case.save(update_fields=update_fields)
+        CaseEventLog.objects.create(
+            case=case,
+            actor_user=request.user,
+            event_type=event_type,
+            detail=detail,
+            created_at=timezone.now(),
+        )
+
+    from .notifications import notify
+
+    notify(case, event_type, request.user, detail)
+    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+
+
+@api_view(["POST"])
+@permission_classes([IsNgoVolunteer])
+def release_case(request, pk):
+    reason = (request.data.get("reason") or "").strip()
+    if not reason:
+        return Response({"reason": ["Give a reason for releasing the case."]}, status=400)
+
+    with transaction.atomic():
+        case = (
+            CaseRecord.objects.select_for_update()
+            .filter(pk=pk, claimed_by_org=request.user.organization)
+            .first()
+        )
+        if case is None:
+            return Response({"detail": "Not found."}, status=404)
+        if case.status != CaseRecord.Status.CLAIMED:
+            return Response(
+                {"detail": "Only a claimed case whose work has not started can be released."},
+                status=409,
+            )
+        if case.tasks.exists():
+            return Response(
+                {"detail": "A case with tasks needs an explicit operational handover; it cannot be returned to the public queue."},
+                status=409,
+            )
+
+        organisation_name = request.user.organization.name
+        case.claimed_by_org = None
+        case.status = CaseRecord.Status.VERIFIED
+        case.save(update_fields=["claimed_by_org", "status"])
+        detail = f"{organisation_name} released the case back to the verified queue: {reason}"
+        CaseEventLog.objects.create(
+            case=case,
+            actor_user=request.user,
+            event_type=CaseEventLog.EventType.RELEASED,
+            detail=detail,
+            created_at=timezone.now(),
+        )
+
+    from .notifications import notify
+
+    notify(case, CaseEventLog.EventType.RELEASED, request.user, detail)
+    return Response(CaseSummaryDetailSerializer(case, context={"request": request}).data)
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +1046,7 @@ def claim_case(request, pk):
     ------------------------------------------------------------------
     YOURS TO WRITE. Run `python manage.py test cases` after each step.
     `IsNgoVolunteer` has already checked the role, so request.user is an
-    NGO volunteer with an organisation.
+    NGO responder with an organisation.
 
     1. Open a transaction:            with transaction.atomic():
     2. Fetch the case WITH A ROW LOCK:

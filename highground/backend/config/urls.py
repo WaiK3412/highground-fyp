@@ -26,7 +26,13 @@ urlpatterns = [
     path("api/cases/stats/", cases_api.queue_stats),
     path("api/cases/<int:pk>/", cases_api.case_detail),
     path("api/cases/<int:pk>/claim/", cases_api.claim_case),
+    path("api/cases/<int:pk>/release/", cases_api.release_case),
     path("api/cases/<int:pk>/verify/", cases_api.verify_case),
+    path("api/cases/<int:pk>/tasks/", cases_api.case_tasks),
+    path("api/cases/<int:pk>/complete/", cases_api.complete_case),
+    path("api/cases/<int:pk>/confirm/", cases_api.confirm_case),
+    path("api/tasks/", cases_api.task_board),
+    path("api/tasks/<int:pk>/", cases_api.update_task),
     # Notifications are the same event-log rows, filtered by recipient (ADR-004).
     # Screen 18 — how scoring works, read-only.
     path("api/rubric/", cases_api.rubric),
