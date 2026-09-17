@@ -77,8 +77,19 @@ export const api = {
     request('/api/cases/', { method: 'POST', body: payload, files, fileField: 'photos' }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
   claimCase: (id) => request(`/api/cases/${id}/claim/`, { method: 'POST' }),
+  releaseCase: (id, reason) =>
+    request(`/api/cases/${id}/release/`, { method: 'POST', body: { reason } }),
   verifyCase: (id, decision, note) =>
     request(`/api/cases/${id}/verify/`, { method: 'POST', body: { decision, note } }),
+  taskBoard: () => request('/api/tasks/'),
+  caseTasks: (id) => request(`/api/cases/${id}/tasks/`),
+  createTask: (caseId, payload) =>
+    request(`/api/cases/${caseId}/tasks/`, { method: 'POST', body: payload }),
+  updateTask: (id, payload) =>
+    request(`/api/tasks/${id}/`, { method: 'PATCH', body: payload }),
+  completeCase: (id) => request(`/api/cases/${id}/complete/`, { method: 'POST' }),
+  confirmCase: (id, decision, note = '') =>
+    request(`/api/cases/${id}/confirm/`, { method: 'POST', body: { decision, note } }),
   stats: () => request('/api/cases/stats/'),
   // Notifications are event-log rows addressed to this user (ADR-004).
   // Screen 18 — the published rubric, read-only.

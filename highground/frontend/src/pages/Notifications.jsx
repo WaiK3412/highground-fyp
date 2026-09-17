@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 import ResidentShell from './ResidentShell'
+import ResponderShell from './ResponderShell'
 
 // Icon and tone per event. Green for good news, amber when the household has
 // to do something, red for a refusal — matching the frozen design's four
@@ -100,9 +101,11 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase }
   }
 
   const shown = filter === 'unread' ? rows.filter((r) => !r.read_at) : rows
+  // Coordinators share this screen, but must keep their own navigation.
+  const Shell = user.role === 'community_member' ? ResidentShell : ResponderShell
 
   return (
-    <ResidentShell
+    <Shell
       user={user}
       active="notifications"
       unread={unread}
@@ -139,7 +142,9 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase }
           <p className="text-sm text-muted" style={{ padding: '2.4rem' }}>
             {filter === 'unread'
               ? 'Nothing unread.'
-              : 'No notifications yet. You will be told here when your case is reviewed.'}
+              : user.role === 'community_member'
+                ? 'No notifications yet. You will be told here when your case is reviewed.'
+                : 'No notifications yet. Case updates addressed to you will appear here.'}
           </p>
         ) : (
           <ul className="notif-list">
@@ -189,6 +194,6 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase }
           </ul>
         )}
       </div>
-    </ResidentShell>
+    </Shell>
   )
 }

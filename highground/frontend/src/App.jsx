@@ -3,51 +3,16 @@ import { api } from './api'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import CaseQueue from './pages/CaseQueue'
+import TaskBoard from './pages/TaskBoard'
 import ResidentDashboard from './pages/ResidentDashboard'
 import SubmitRequest from './pages/SubmitRequest'
 import Notifications from './pages/Notifications'
 import ScoringRules from './pages/ScoringRules'
+import ResponderShell from './pages/ResponderShell'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
 const ADMIN_CONSOLE = '/admin/'
-
-// The rules page has no chrome of its own; wrap it in the plain app frame with
-// a way back to the queue.
-function ResponderRules({ user, onLogout, onBack }) {
-  return (
-    <div className="app">
-      <aside className="sidebar">
-        <a className="logo" href="#queue" onClick={(e) => { e.preventDefault(); onBack() }}>
-          <span className="name">HighGround</span>
-        </a>
-        <nav className="side-nav">
-          <a href="#queue" onClick={(e) => { e.preventDefault(); onBack() }}>
-            Case queue
-          </a>
-          <a href="#rules" className="active" onClick={(e) => e.preventDefault()}>
-            How scoring works
-          </a>
-        </nav>
-        <div className="sidebar__user">
-          <div>
-            <div className="text-sm text-strong">{user.full_name}</div>
-            <button
-              className="text-xs text-muted"
-              onClick={onLogout}
-              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit' }}
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </aside>
-      <main className="main" style={{ maxWidth: '92rem' }}>
-        <ScoringRules />
-      </main>
-    </div>
-  )
-}
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -141,18 +106,29 @@ export default function App() {
   }
 
   if (user) {
+    if (responderScreen === 'tasks' && user.role === 'ngo_volunteer')
+      return (
+        <TaskBoard
+          user={user}
+          onLogout={handleLogout}
+          onNavigate={setResponderScreen}
+        />
+      )
     if (responderScreen === 'notifications')
       return (
         <Notifications
           user={user}
           onLogout={handleLogout}
-          onNavigate={() => setResponderScreen('queue')}
+          onNavigate={setResponderScreen}
           onOpenCase={() => setResponderScreen('queue')}
         />
       )
+    // The rules page has no chrome of its own; it sits in the responder frame.
     if (responderScreen === 'rules')
       return (
-        <ResponderRules user={user} onLogout={handleLogout} onBack={() => setResponderScreen('queue')} />
+        <ResponderShell user={user} active="rules" onNavigate={setResponderScreen} onLogout={handleLogout}>
+          <ScoringRules />
+        </ResponderShell>
       )
     return <CaseQueue user={user} onLogout={handleLogout} onNavigate={setResponderScreen} />
   }

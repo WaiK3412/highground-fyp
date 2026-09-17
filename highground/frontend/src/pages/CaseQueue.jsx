@@ -168,6 +168,7 @@ function CaseActions({ detail, user, onDone }) {
 
 function ScorePanel({ detail, onClose, user, onDone }) {
   if (!detail) return null
+  const summaryOnly = detail.detail_access === 'summary'
   return (
     <aside className="card" style={{ padding: 'var(--sp-20)' }}>
       <div className="row--between">
@@ -177,9 +178,20 @@ function ScorePanel({ detail, onClose, user, onDone }) {
         </button>
       </div>
 
-      <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-8)' }}>
-        {detail.description}
-      </p>
+      {summaryOnly ? (
+        <div className="banner banner--info" style={{ marginTop: 'var(--sp-12)' }}>
+          <span className="body">
+            <span className="title">Household details are protected.</span>
+            <br />
+            This coordination summary is enough to assess capacity. Photos, vulnerability details,
+            case history and the exact address are released only to the claiming organisation.
+          </span>
+        </div>
+      ) : (
+        <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-8)' }}>
+          {detail.description}
+        </p>
+      )}
 
       <div className="row--between" style={{ marginTop: 'var(--sp-16)' }}>
         <span className="text-strong">Priority score</span>
@@ -187,7 +199,7 @@ function ScorePanel({ detail, onClose, user, onDone }) {
       </div>
 
       <div className="stack" style={{ gap: '0.8rem', marginTop: 'var(--sp-12)' }}>
-        {detail.score_components.map((component) => (
+        {(detail.score_components || []).map((component) => (
           <div key={component.name} className="score-row">
             <span>{component.name}</span>
             <span className="pts">+{component.points}</span>
@@ -301,7 +313,9 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
           <span>
             <span className="logo__name">HighGround</span>
             <br />
-            <span className="logo__role">{user.role_display}</span>
+            <span className="logo__role">
+              {user.role === 'ngo_volunteer' ? 'NGO responder' : user.role_display}
+            </span>
           </span>
         </a>
 
@@ -318,7 +332,13 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             {stats && <span className="side-nav__count">{stats.total}</span>}
           </a>
 
-          <a href="#tasks" onClick={(e) => e.preventDefault()}>
+          {user.role === 'ngo_volunteer' && <a
+            href="#tasks"
+            onClick={(e) => {
+              e.preventDefault()
+              onNavigate('tasks')
+            }}
+          >
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
               <path
                 strokeLinecap="round"
@@ -327,7 +347,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               />
             </svg>
             Task board
-          </a>
+          </a>}
 
           <a
             href="#notifications"
@@ -365,7 +385,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
           </a>
 
           <span className="side-nav__label">Organisation</span>
-          <a href="#org" onClick={(e) => e.preventDefault()}>
+          <span className="side-nav__item side-nav__item--static">
             <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
               <path
                 strokeLinecap="round"
@@ -374,7 +394,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               />
             </svg>
             {user.organization || 'No organisation'}
-          </a>
+          </span>
         </nav>
 
         <div className="sidebar__user">
@@ -397,7 +417,8 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
           <div>
             <h1>Case queue</h1>
             <p>
-              Recovery cases visible to you as {user.role_display.toLowerCase()}. Priority is computed
+              Recovery cases visible to you as{' '}
+              {user.role === 'ngo_volunteer' ? 'an NGO responder' : `a ${user.role_display.toLowerCase()}`}. Priority is computed
               from the published rubric v3.0.
             </p>
           </div>

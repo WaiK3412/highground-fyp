@@ -21,6 +21,11 @@ img { max-width: 100%; display: block; }
 a { text-decoration: none; color: inherit; }
 ul { list-style: none; }
 
+/* One visible keyboard-focus ring for every control. The contract only
+   styles :focus on .input, which leaves buttons and nav links on the
+   browser default — invisible against the teal fills. */
+:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+
 h1, h2, h3, h4 { color: var(--grey-900); line-height: 1.2; letter-spacing: -0.02em; }
 /* Display headings (h1/h2) use ExtraBold 800 — friendly display
    character without a second typeface. */
@@ -68,6 +73,12 @@ h4 { font-size: var(--fs-16); font-weight: 600; }
 .btn--full { width: 100%; }
 .btn--big { font-size: var(--fs-18); padding: 1.6rem 3.2rem; }
 .btn svg { width: 1.8rem; height: 1.8rem; }
+/* The contract never draws a disabled button, but the built screens have
+   several — a control that cannot be used has to look that way. */
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary:disabled:hover { background-color: var(--teal-700); }
+.btn--secondary:disabled:hover { background-color: var(--white); }
+.btn--ghost:disabled:hover { background: none; }
 .btn--sm svg { width: 1.6rem; height: 1.6rem; }
 
 /* ---------- Badges (case status) ---------- */
@@ -195,6 +206,24 @@ h4 { font-size: var(--fs-16); font-weight: 600; }
   border-radius: var(--radius-full); padding: 0.1rem 0.8rem;
 }
 .side-nav a.active .side-nav__count { background-color: var(--white); color: var(--teal-800); }
+.side-nav__item--soon {
+  display: flex; align-items: center; gap: var(--sp-12);
+  padding: 1rem var(--sp-12); border-radius: var(--radius-sm);
+  font-size: var(--fs-14); color: var(--grey-500); cursor: default;
+}
+.side-nav__item--soon svg { width: 2rem; height: 2rem; flex-shrink: 0; }
+/* Information shown in the nav that is not a destination (e.g. the organisation). */
+.side-nav__item--static {
+  display: flex; align-items: center; gap: var(--sp-12);
+  padding: 1rem var(--sp-12); border-radius: var(--radius-sm);
+  font-size: var(--fs-14); font-weight: 500; color: var(--grey-700); cursor: default;
+}
+.side-nav__item--static svg { width: 2rem; height: 2rem; color: var(--teal-600); flex-shrink: 0; }
+.side-nav__soon-tag {
+  margin-left: auto; padding: 0.1rem 0.6rem;
+  background: var(--grey-100); color: var(--grey-700);
+  border-radius: var(--radius-full); font-size: var(--fs-12);
+}
 
 /* Profile card (bottom of sidebar) */
 .sidebar__user {
@@ -443,18 +472,113 @@ textarea.input { resize: vertical; min-height: 10rem; }
 .banner .body { color: var(--grey-700); }
 .banner .title { font-weight: 600; color: var(--grey-900); }
 
-/* ---------- Kanban board ---------- */
+/* ---------- Kanban board (screen 09) ----------
+   App-level extension of the frozen contract's board. The prototype's
+   task cards are static; the built ones carry the controls that move a
+   task between columns, so a card is a small flex stack — head, body,
+   accountable responder, actions, and a disclosure panel for the two
+   forms. The 3px column rail and the card shape stay as designed.
+   Diverges deliberately from design-prototype-v2 — the contract's
+   percentage progress bar and stacked volunteer avatars are omitted
+   because one responder is accountable and nothing measures a
+   percentage (ADR-013 records the same reasoning for screen 04). */
 .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-16); align-items: start; }
-.board-col { background-color: var(--grey-100); border-radius: var(--radius-md); padding: var(--sp-12); }
-.board-col__header { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-8) var(--sp-8) var(--sp-12); font-size: var(--fs-14); font-weight: 600; color: var(--grey-900); }
-.board-col__count { font-size: var(--fs-12); font-weight: 600; color: var(--grey-500); background-color: var(--white); border-radius: var(--radius-full); padding: 0 0.8rem; }
+.board-col {
+  background-color: var(--grey-100); border-radius: var(--radius-md);
+  border-top: 3px solid var(--grey-300);
+  padding: var(--sp-12); min-height: 14rem;
+  display: flex; flex-direction: column; gap: var(--sp-12);
+}
+.board-col--progress { border-top-color: var(--info-600); }
+.board-col--done { border-top-color: var(--success-600); }
+.board-col__header {
+  display: flex; align-items: center; gap: var(--sp-8);
+  padding: var(--sp-4) var(--sp-8);
+  font-size: var(--fs-14); font-weight: 600; color: var(--grey-900);
+}
+.board-col__count {
+  font-size: var(--fs-12); font-weight: 600; color: var(--grey-500);
+  background-color: var(--white); border-radius: var(--radius-full); padding: 0 0.8rem;
+}
+.board-col__empty { padding: var(--sp-4) var(--sp-8) var(--sp-12); font-size: var(--fs-12); color: var(--grey-500); }
+/* Dashed closing card — the contract's "All caught up" note. */
+.board-col__rest {
+  border: 1px dashed var(--grey-300); border-radius: var(--radius-sm);
+  padding: var(--sp-24) var(--sp-16); text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-8);
+}
+/* Column flex would otherwise squash the illustration's own height. */
+.board-col__rest .spot-illus { flex: none; }
+
 .task-card {
   background-color: var(--white); border: 1px solid var(--grey-200);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-16); margin-bottom: var(--sp-12);
+  border-radius: var(--radius-sm); padding: var(--sp-16);
+  display: flex; flex-direction: column; gap: var(--sp-12);
 }
-.task-card .title { font-size: var(--fs-14); font-weight: 600; color: var(--grey-900); }
-.task-card .meta { font-size: var(--fs-12); color: var(--grey-500); }
+/* A finished task stays fully legible but stops competing with live work. */
+.task-card--done { background-color: var(--grey-50); }
+.task-card__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); }
+.task-card__ref { display: inline-flex; align-items: center; gap: 0.6rem; font-size: var(--fs-12); color: var(--grey-500); }
+.task-card__ref svg { width: 1.6rem; height: 1.6rem; color: var(--teal-700); flex-shrink: 0; }
+.task-card__safety {
+  padding: var(--sp-12); border: 1px solid var(--warning-500);
+  border-radius: var(--radius-sm); background: var(--warning-100);
+  color: var(--grey-900); font-size: var(--fs-12); line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.task-card__safety-title { display: flex; align-items: center; gap: 0.6rem; color: var(--warning-600); font-weight: 700; }
+.task-card__safety-title svg { width: 1.8rem; height: 1.8rem; flex-shrink: 0; }
+.task-card__safety-ack { margin-top: var(--sp-8); color: var(--grey-700); }
+.task-card .title {
+  font-size: var(--fs-14); font-weight: 600; color: var(--grey-900);
+  line-height: 1.35; overflow-wrap: anywhere;
+}
+.task-card .meta { font-size: var(--fs-12); color: var(--grey-500); line-height: 1.5; overflow-wrap: anywhere; }
+/* Latest progress note, quoted so it reads as somebody's words. */
+.task-card__note {
+  border-left: 2px solid var(--grey-300); padding-left: var(--sp-8);
+  font-size: var(--fs-12); color: var(--grey-700); line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.task-card__note .who { display: block; color: var(--grey-500); }
+.task-card__lead { display: flex; align-items: center; gap: 0.8rem; font-size: var(--fs-12); }
+.task-card__lead .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-card__actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+/* Assignment and progress notes open in place, so a card at rest is a
+   card and not a form. */
+.task-card__panel {
+  border-top: 1px solid var(--grey-200); padding-top: var(--sp-12);
+  display: flex; flex-direction: column; gap: var(--sp-12);
+}
+.task-card__panel .input { font-size: var(--fs-14); }
+.task-card__notes { display: flex; flex-direction: column; gap: var(--sp-8); }
+
+/* ---------- Inset work panel (board forms) ---------- */
+.panel {
+  background-color: var(--teal-50); border: 1px solid var(--teal-100);
+  border-radius: var(--radius-md); padding: var(--sp-16);
+  display: flex; flex-direction: column; gap: var(--sp-12);
+}
+.panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-12); }
+.panel__header h4 { font-size: var(--fs-14); }
+.panel__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: var(--sp-12); }
+/* A single-field panel with prose in it; full board width would give
+   both an unreadable line length. */
+.panel--narrow { max-width: 76rem; }
+
+/* ---------- Claimed-case strip (board, above the columns) ----------
+   One row per case that needs a decision from the team: the case that
+   has no task yet, and the case whose tasks are all done. */
+.case-strip {
+  display: flex; align-items: center; gap: var(--sp-12); flex-wrap: wrap;
+  padding: var(--sp-12) var(--sp-16);
+  background-color: var(--white); border: 1px solid var(--grey-200);
+  border-radius: var(--radius-md);
+}
+.case-strip__body { min-width: 18rem; flex: 1; }
+.case-strip .nm { font-size: var(--fs-14); font-weight: 600; color: var(--grey-900); }
+.case-strip .sk { font-size: var(--fs-12); color: var(--grey-500); }
+.case-strip__actions { margin-left: auto; display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 
 /* ---------- Map placeholder ---------- */
 .map-placeholder {
@@ -943,3 +1067,37 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 .m-notif-compact__dot { width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--teal-600); flex-shrink: 0; }
 .m-notif-compact__text { flex: 1; color: var(--grey-700); }
 .m-notif-compact__time { color: var(--grey-500); font-size: 1.1rem; white-space: nowrap; }
+
+/* ---------- Responsive shell ----------
+   The frozen contract is desktop-only and its workspace screens pin
+   themselves to the viewport height. Below the sidebar + three-column
+   width that stops working, so the sidebar folds into a horizontal
+   strip and the viewport-height screens go back to normal page scroll.
+   Desktop rendering is untouched. */
+@media (max-width: 1150px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static; height: auto;
+    flex-direction: row; align-items: center; flex-wrap: wrap;
+    gap: var(--sp-12); padding: var(--sp-12) var(--sp-16);
+    border-right: none; border-bottom: 1px solid var(--teal-100);
+  }
+  /* Brand and account keep the first row, the nav takes the second. */
+  .logo { order: 1; }
+  .sidebar__user { order: 2; margin-left: auto; }
+  .side-nav { order: 3; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; gap: var(--sp-4); }
+  .side-nav__label { display: none; }
+  .side-nav__label:not(:first-child) { border-top: none; }
+  .side-nav a.active { box-shadow: inset 0 -3px 0 var(--teal-700); }
+
+  .main { padding: var(--sp-16); }
+  .main--vp { height: auto; overflow: visible; }
+  .vp-scroll { overflow-y: visible; }
+  .vp-fill.board .board-col { overflow-y: visible; }
+}
+
+@media (max-width: 900px) {
+  .board { grid-template-columns: 1fr; }
+  .page-header { flex-direction: column; align-items: flex-start; }
+  .case-strip__actions { margin-left: 0; }
+}

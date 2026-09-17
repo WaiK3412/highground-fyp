@@ -17,11 +17,8 @@ import CaseTimeline from './CaseTimeline'
 
 // How each case status reads to the household that submitted it. The wording
 // is deliberately about what happens next, not the internal status name.
-// No progress bar here. The frozen design pairs it with a real percentage
-// ("60%", "25%") driven by task completion — screen 04 shows "Cleanup team
-// assigned · arriving Thu 15 Jan · 60%". CaseTask is not built until Phase 5,
-// so there is nothing to measure; a bar fed from the status name would be a
-// number the system invented. Restore it with the label when tasks exist.
+// Task state is shown explicitly below, without inventing a numeric progress
+// percentage. "Two of three tasks done" is auditable; "60% recovered" is not.
 const STATUS_UI = {
   submitted: {
     badge: 'badge--new',
@@ -164,6 +161,62 @@ const humanise = (flag) => flag.replace(/_/g, ' ').replace(/^./, (c) => c.toUppe
 const readableReason = (reason) =>
   reason.replace(/[a-z0-9]+(?:_[a-z0-9]+)+/g, (token) => token.replace(/_/g, ' '))
 
+
+function CompletionDecision({ onDecision }) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function decide(decision) {
+    setBusy(true)
+    setError(null)
+    try {
+      await onDecision(decision, note)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="meta-rail__section">
+      <div className="banner banner--warning">
+        <span className="body">
+          <span className="title">Is the recovery work complete?</span>
+          <br />
+          Confirm only after checking the work. If something remains, explain it so the response
+          team has a clear follow-up record.
+        </span>
+      </div>
+      <div className="field" style={{ marginTop: '1.2rem' }}>
+        <label htmlFor="completion-note">What still needs attention? (required if incomplete)</label>
+        <textarea
+          id="completion-note"
+          className="input"
+          rows="3"
+          maxLength="1000"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
+      </div>
+      <div className="row" style={{ gap: '0.8rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+        <button className="btn btn--primary btn--sm" disabled={busy} onClick={() => decide('confirm')}>
+          Confirm complete
+        </button>
+        <button
+          className="btn btn--ghost btn--sm"
+          disabled={busy || !note.trim()}
+          onClick={() => decide('incomplete')}
+        >
+          Report incomplete work
+        </button>
+      </div>
+      {error && <p role="alert" className="text-xs" style={{ color: 'var(--danger-600)', marginTop: '0.8rem' }}>{error}</p>}
+    </div>
+  )
+}
+
 /**
  * The resident's own case, opened from a card.
  *
@@ -171,7 +224,7 @@ const readableReason = (reason) =>
  * for the household being ranked, not only for the officer doing the ranking —
  * someone told their case is Low is owed the reasoning.
  */
-function CaseDetailPanel({ detail, onClose }) {
+function CaseDetailPanel({ detail, onClose, onCompletionDecision }) {
   const ui = STATUS_UI[detail.status] || STATUS_UI.submitted
   const list = (flags) => (flags?.length ? flags.map(humanise).join(' · ') : '—')
 
@@ -275,6 +328,29 @@ function CaseDetailPanel({ detail, onClose }) {
             : 'Village-level only.'}
         </p>
       </div>
+
+      {detail.tasks?.length > 0 && (
+        <div className="meta-rail__section">
+          <div className="card__header"><h3>Recovery tasks</h3></div>
+          <div className="stack" style={{ gap: '0.8rem' }}>
+            {detail.tasks.map((task) => (
+              <div key={task.id} className="row--between" style={{ gap: '1rem' }}>
+                <div>
+                  <div className="text-sm text-strong">{task.title}</div>
+                  <div className="text-xs text-muted">
+                    {task.task_type_display} · {task.lead_name || 'Responder not assigned yet'}
+                  </div>
+                </div>
+                <span className="badge badge--assigned">{task.status_display}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {detail.status === 'pending_confirm' && (
+        <CompletionDecision onDecision={onCompletionDecision} />
+      )}
 
       {/* Screen 06's timeline: every event_log row for this case, oldest first. */}
       <CaseTimeline events={detail.events} />
@@ -429,6 +505,16 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
     } catch (err) {
       setDetailError(err.message)
     }
+  }
+
+  async function decideCompletion(decision, note) {
+    await api.confirmCase(detail.id, decision, note)
+    const [updatedDetail, updatedCases] = await Promise.all([
+      api.caseDetail(detail.id),
+      api.cases(),
+    ])
+    setDetail(updatedDetail)
+    setCases(updatedCases.results)
   }
 
   useEffect(() => {
@@ -619,7 +705,11 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
 
           {detail && (
             <div className="stack vp-scroll" style={{ gap: '1.6rem', ...SCROLL_PANE }}>
-              <CaseDetailPanel detail={detail} onClose={() => setDetail(null)} />
+              <CaseDetailPanel
+                detail={detail}
+                onClose={() => setDetail(null)}
+                onCompletionDecision={decideCompletion}
+              />
             </div>
           )}
         </div>
