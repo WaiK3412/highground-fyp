@@ -25,6 +25,7 @@ class UserSerializer(serializers.Serializer):
     )
     # The SPA needs these to show an applicant where their application stands.
     verification_status = serializers.CharField(read_only=True)
+    requested_role = serializers.CharField(read_only=True, default=None)
     requested_role_display = serializers.CharField(
         source="get_requested_role_display", read_only=True, default=None
     )

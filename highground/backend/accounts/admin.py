@@ -10,7 +10,6 @@ from .models import (
     RegistrationDocument,
     RoleApplication,
     UserAccount,
-    VolunteerProfile,
 )
 
 
@@ -179,12 +178,6 @@ class OrganizationAdmin(admin.ModelAdmin):
     list_display = ("name", "type", "service_area", "contact_no")
     list_filter = ("type",)
     search_fields = ("name", "service_area")
-
-
-@admin.register(VolunteerProfile)
-class VolunteerProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "availability", "vehicle_access", "verified_by_user")
-    list_filter = ("vehicle_access",)
 
 
 @admin.register(RegistrationDocument)

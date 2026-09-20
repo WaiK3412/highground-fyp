@@ -780,9 +780,6 @@ textarea.input { resize: vertical; min-height: 10rem; }
 }
 .legend-swatch { display: inline-block; width: 1rem; height: 1rem; border-radius: 0.2rem; margin-right: 0.5rem; vertical-align: -0.1rem; }
 
-/* ---------- Community volunteer badge (role identity, not status) ---------- */
-.badge--community { background-color: var(--white); color: var(--teal-800); border: 1px solid var(--teal-600); }
-
 /* ---------- Pledge track (mini stepper) ---------- */
 .pledge-track { display: flex; }
 .pledge-track__step {

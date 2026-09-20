@@ -120,7 +120,11 @@ function ApplicationBanner({ user }) {
         <Icon path={PATHS.bell} />
         <span className="body">
           <span className="title">
-            Your application to join as {user.requested_role_display} is under review.
+            Your application to join as{' '}
+            {user.requested_role === 'ngo_volunteer'
+              ? 'an NGO responder'
+              : `a ${(user.requested_role_display || '').toLowerCase()}`}{' '}
+            is under review.
           </span>
           <br />
           Until it is approved, this works as an ordinary resident account.
@@ -594,10 +598,10 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
           </a>
 
           <span className="side-nav__label">Community</span>
-          <a href="#help" onClick={(e) => e.preventDefault()}>
+          <span className="side-nav__item side-nav__item--soon" aria-disabled="true">
             <Icon path={PATHS.heart} />
-            Community Help
-          </a>
+            Pledge supplies <span className="side-nav__soon-tag">Coming soon</span>
+          </span>
 
           <span className="side-nav__label">Account</span>
           <a href="#profile" onClick={(e) => e.preventDefault()}>
@@ -695,10 +699,11 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
                     Not affected this season? Your neighbours could use a hand.
                   </h3>
                   <p className="text-sm text-muted">
-                    Pledge cleaning kits, bedding or water — or volunteer with a recovery
-                    team. Goods and time only, never money.
+                    Pledge cleaning kits, bedding or water to a drop-off point. Goods only,
+                    never money.
                   </p>
                 </div>
+                <span className="badge badge--new">Coming soon</span>
               </div>
             </div>
           </div>

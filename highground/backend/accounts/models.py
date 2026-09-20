@@ -199,6 +199,7 @@ class VolunteerProfile(models.Model):
 
     Report §3.6 ERD: volunteer_profile. IC documents are verified by an admin
     during registration review (GAPS A5), hence `verified_by_user`.
+    Dormant: the channel was withdrawn on 23 Sep 2026; the table stays as migration history.
     """
 
     user = models.OneToOneField(

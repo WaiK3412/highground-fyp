@@ -777,10 +777,10 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
           </a>
 
           <span className="side-nav__label">Community</span>
-          <a href="#help" onClick={(e) => e.preventDefault()}>
+          <span className="side-nav__item side-nav__item--soon" aria-disabled="true">
             <Icon path={PATHS.heart} />
-            Community Help
-          </a>
+            Pledge supplies <span className="side-nav__soon-tag">Coming soon</span>
+          </span>
 
           <span className="side-nav__label">Account</span>
           <a href="#profile" onClick={(e) => e.preventDefault()}>

@@ -15,7 +15,7 @@ import { useDocumentTitle } from '../useDocumentTitle'
 // approval flow that can mint admins is one bad click from handing over the
 // platform.
 const APPLICABLE_ROLES = [
-  { value: 'ngo_volunteer', label: 'NGO / volunteer team member' },
+  { value: 'ngo_volunteer', label: 'NGO responder' },
   { value: 'disaster_officer', label: 'District disaster officer' },
 ]
 
@@ -290,7 +290,7 @@ export default function Register({ onRegistered, onShowLogin }) {
               <BuildingIcon />
               <div>
                 <div className="title">Organisation</div>
-                <div className="desc">NGO, volunteer team, or disaster office</div>
+                <div className="desc">NGO, relief organisation, or disaster office</div>
               </div>
             </button>
           </div>
