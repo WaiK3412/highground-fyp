@@ -41,12 +41,13 @@ function tooltip(lines) {
   return node
 }
 
-function pinIcon(point) {
+function pinIcon(point, selected) {
   const tone = TONE[point.priority_band] || 'neutral'
   const ring = point.claimed_by_you ? ' ops-pin--ring' : ''
+  const chosen = selected ? ' ops-pin--selected' : ''
   return L.divIcon({
     className: 'case-map__icon',
-    html: `<span class="ops-pin ops-pin--${tone}${ring}"></span>`,
+    html: `<span class="ops-pin ops-pin--${tone}${ring}${chosen}"></span>`,
     iconSize: [26, 26],
     // The teardrop is a rotated square; its tip sits below the centre.
     iconAnchor: [13, 31],
@@ -64,17 +65,29 @@ function areaIcon(area) {
   })
 }
 
-export default function CaseMap({ points, areas, onOpenCase, onOpenArea }) {
+/**
+ * `children` is drawn over the map — the case popover — so the map stays in
+ * view while a case is read, as on the design's command map (screen 10).
+ */
+export default function CaseMap({
+  points,
+  areas,
+  selectedId,
+  onOpenCase,
+  onOpenArea,
+  onMapClick,
+  children,
+}) {
   const container = useRef(null)
   const map = useRef(null)
   const layer = useRef(null)
-  const handlers = useRef({ onOpenCase, onOpenArea })
+  const handlers = useRef({ onOpenCase, onOpenArea, onMapClick })
   const [tilesFailed, setTilesFailed] = useState(false)
 
   // Markers call the newest handlers without being rebuilt when they change.
   useEffect(() => {
-    handlers.current = { onOpenCase, onOpenArea }
-  }, [onOpenCase, onOpenArea])
+    handlers.current = { onOpenCase, onOpenArea, onMapClick }
+  }, [onOpenCase, onOpenArea, onMapClick])
 
   useEffect(() => {
     // fadeAnimation off: in testing, the first tiles loaded but stayed at
@@ -86,6 +99,8 @@ export default function CaseMap({ points, areas, onOpenCase, onOpenArea }) {
       .addTo(instance)
     layer.current = L.layerGroup().addTo(instance)
     map.current = instance
+    // A click on the map itself (markers do not bubble to it) dismisses the popover.
+    instance.on('click', () => handlers.current.onMapClick?.())
 
     // Opening the case panel narrows this column; Leaflet has to be told.
     const resize = new ResizeObserver(() => instance.invalidateSize())
@@ -101,11 +116,9 @@ export default function CaseMap({ points, areas, onOpenCase, onOpenArea }) {
     const group = layer.current
     if (!group) return
     group.clearLayers()
-    const bounds = []
 
     areas.forEach((area) => {
       const at = [Number(area.latitude), Number(area.longitude)]
-      bounds.push(at)
       const label = `${area.name}: ${area.case_count} ${area.case_count === 1 ? 'case' : 'cases'}`
       L.marker(at, { icon: areaIcon(area), title: label, keyboard: true, zIndexOffset: LAYER[area.highest_band] || 0 })
         .bindTooltip(tooltip([label, 'Exact locations are held by the claiming organisation.']))
@@ -115,24 +128,30 @@ export default function CaseMap({ points, areas, onOpenCase, onOpenArea }) {
 
     points.forEach((point) => {
       const at = [Number(point.latitude), Number(point.longitude)]
-      bounds.push(at)
       const lines = [
         `#${point.reference} · ${point.village}`,
         `${point.status_display}${point.score_total != null ? ` · score ${point.score_total}` : ''}`,
       ]
       if (point.precision === 'village') lines.push('Placed at the village centre — no household pin yet.')
       L.marker(at, {
-        icon: pinIcon(point),
+        icon: pinIcon(point, point.id === selectedId),
         title: `#${point.reference}`,
         keyboard: true,
-        zIndexOffset: LAYER[point.priority_band] || 0,
+        // The selected pin rises above everything else.
+        zIndexOffset: point.id === selectedId ? 5000 : LAYER[point.priority_band] || 0,
       })
         .bindTooltip(tooltip(lines))
         .on('click', () => handlers.current.onOpenCase(point.id))
         .addTo(group)
     })
 
-    if (bounds.length) map.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
+  }, [points, areas, selectedId])
+
+  // Fit to the markers when the data changes, not when a pin is selected, so
+  // choosing a case never throws away the user's zoom.
+  useEffect(() => {
+    const bounds = [...areas, ...points].map((item) => [Number(item.latitude), Number(item.longitude)])
+    if (bounds.length && map.current) map.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
   }, [points, areas])
 
   return (
@@ -145,7 +164,10 @@ export default function CaseMap({ points, areas, onOpenCase, onOpenArea }) {
           </span>
         </div>
       )}
-      <div ref={container} className="case-map__canvas" aria-label="Map of visible cases" />
+      <div className="case-map__stage">
+        <div ref={container} className="case-map__canvas" aria-label="Map of visible cases" />
+        {children}
+      </div>
     </div>
   )
 }

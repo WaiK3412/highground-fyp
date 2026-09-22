@@ -32,6 +32,7 @@ from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
 
 
 class ScoreComponentSerializer(serializers.Serializer):
+    key = serializers.CharField(source="criterion.key")
     name = serializers.CharField(source="criterion.name")
     weight = serializers.IntegerField(source="criterion.weight")
     points = serializers.IntegerField()
@@ -144,9 +145,11 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 
     detail_access = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
+    # Which rubric produced the score (FR22) — public, like the rubric page.
+    rubric_label = serializers.CharField(source="rubric_version.label", default=None, read_only=True)
 
     class Meta(CaseListSerializer.Meta):
-        fields = CaseListSerializer.Meta.fields + ["detail_access", "location"]
+        fields = CaseListSerializer.Meta.fields + ["detail_access", "location", "rubric_label"]
 
     def get_detail_access(self, obj):
         return "summary"
@@ -167,6 +170,7 @@ class CaseDetailSerializer(CaseListSerializer):
     tasks = CaseTaskSummarySerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
     detail_access = serializers.SerializerMethodField()
+    rubric_label = serializers.CharField(source="rubric_version.label", default=None, read_only=True)
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
     # than leaving each client to invent its own labels.
@@ -200,6 +204,7 @@ class CaseDetailSerializer(CaseListSerializer):
             "events",
             "tasks",
             "detail_access",
+            "rubric_label",
         ]
 
     def get_detail_access(self, obj):

@@ -92,6 +92,31 @@ class RubricEndpointTests(TestCase):
         self.assertEqual(safety["max_points"], 25)
         self.assertEqual(urgent["points"], 25)
 
+    def test_case_detail_names_the_rubric_version_that_scored_it(self):
+        """FR22: the breakdown a coordinator reads says which rubric produced it."""
+        from cases.models import CaseRecord
+
+        scored = CaseRecord.objects.create(
+            reference="FRC-9301", submitted_by_user=self.resident,
+            damage_category=CaseRecord.DamageCategory.CLEANUP, description="Scored case.",
+            village="Kg. Rubric", address="Lot 1", status=CaseRecord.Status.VERIFIED,
+            score_total=70, rubric_version=self.version, created_at=timezone.now(),
+        )
+        unscored = CaseRecord.objects.create(
+            reference="FRC-9302", submitted_by_user=self.resident,
+            damage_category=CaseRecord.DamageCategory.CLEANUP, description="New case.",
+            village="Kg. Rubric", address="Lot 2", status=CaseRecord.Status.SUBMITTED,
+            created_at=timezone.now(),
+        )
+        self.client.force_login(self.officer)
+
+        self.assertEqual(self.client.get(f"/api/cases/{scored.pk}/").json()["rubric_label"], "v3.1")
+        self.assertIsNone(self.client.get(f"/api/cases/{unscored.pk}/").json()["rubric_label"])
+
+        # An NGO's village-level summary carries the label too; it is not private.
+        self.client.force_login(self.responder)
+        self.assertEqual(self.client.get(f"/api/cases/{scored.pk}/").json()["rubric_label"], "v3.1")
+
     def test_no_published_rubric_returns_404(self):
         self.version.status = PriorityRubricVersion.Status.RETIRED
         self.version.save(update_fields=["status"])

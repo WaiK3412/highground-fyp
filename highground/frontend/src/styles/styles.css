@@ -426,6 +426,8 @@ textarea.input { resize: vertical; min-height: 10rem; }
 .score-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-12); font-size: var(--fs-14); padding: 0.6rem 0; }
 .score-row .bar { flex-grow: 1; margin: 0 var(--sp-8); }
 .score-row .pts { font-weight: 700; color: var(--grey-900); min-width: 3.6rem; text-align: right; }
+/* Fixed name column so the bars line up, as on screen 08. */
+.score-row__name { flex: 0 0 45%; }
 
 /* ---------- AI assistant panel ---------- */
 .ai-panel {
@@ -996,12 +998,19 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 /* Leaflet case map (07 Map view). Leaflet positions the icon box; the pin
    inside it keeps the prototype's absolute positioning. */
 .case-map { display: flex; flex-direction: column; gap: var(--sp-12); flex: 1 1 auto; min-height: 40rem; }
+.case-map__stage { position: relative; display: flex; flex: 1 1 auto; min-height: 36rem; }
+/* Its own stacking context, so Leaflet's panes (z-index up to 1000) stay
+   under the case card and never over the rest of the page. */
 .case-map__canvas {
-  flex: 1 1 auto; min-height: 36rem;
+  position: relative; z-index: 0; flex: 1 1 auto;
   border: 1px solid var(--grey-200); border-radius: var(--radius-md); overflow: hidden;
 }
+.case-map__popover { top: var(--sp-12); right: var(--sp-12); max-height: calc(100% - 2.4rem); overflow-y: auto; }
 .case-map__icon { background: none; border: 0; }
 .case-map__icon .ops-pin, .case-map__icon .ops-marker { top: 0; left: 0; }
+.case-queue__workspace { grid-template-columns: minmax(0, 1fr); }
+.case-queue__workspace--split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.case-queue__workspace > * { min-width: 0; }
 
 .ops-poi {
   position: absolute; width: 2.4rem; height: 2.4rem; border-radius: var(--radius-sm); z-index: 4;
@@ -1111,6 +1120,7 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 }
 
 @media (max-width: 900px) {
+  .case-queue__workspace--split { grid-template-columns: minmax(0, 1fr); }
   .board { grid-template-columns: 1fr; }
   .page-header { flex-direction: column; align-items: flex-start; }
   .case-strip__actions { margin-left: 0; }

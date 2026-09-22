@@ -167,6 +167,145 @@ function CaseActions({ detail, user, onDone }) {
   )
 }
 
+// Each criterion's share of the total, in the design's teal steps (screen 10).
+const SEGMENT_TONES = ['t900', 't800', 't700', 't600', 't500', 't300']
+
+function scoreOutOf(components) {
+  return components.reduce((sum, component) => sum + component.weight, 0) || 100
+}
+
+/**
+ * Screen 08's breakdown: every criterion's points against its weight, then the
+ * total and the rubric version that produced it (FR22). The small line under
+ * each bar is the engine's stored explanation, shown as recorded.
+ */
+function ScoreBreakdown({ detail }) {
+  if (detail.score_total == null) {
+    return (
+      <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-16)' }}>
+        Not scored yet — a case is scored when an officer verifies it.
+      </p>
+    )
+  }
+  const components = detail.score_components || []
+  const outOf = scoreOutOf(components)
+  return (
+    <div style={{ marginTop: 'var(--sp-16)' }}>
+      <div className="row--between">
+        <span className="text-strong">Priority score</span>
+        <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
+      </div>
+      {components.length > 0 && (
+        <div className="stack" style={{ gap: '1rem', marginTop: 'var(--sp-12)' }}>
+          {components.map((component) => (
+            <div key={component.name}>
+              <div className="score-row">
+                <span className="score-row__name">{component.name}</span>
+                <span className="bar progress" aria-hidden="true">
+                  <span
+                    className="progress__fill"
+                    style={{
+                      display: 'block',
+                      width: `${component.weight ? Math.round((component.points / component.weight) * 100) : 0}%`,
+                    }}
+                  />
+                </span>
+                <span className="pts">
+                  +{component.points}
+                  <span className="text-xs text-muted"> / {component.weight}</span>
+                </span>
+              </div>
+              {component.reason && (
+                <div className="text-xs text-muted">{component.reason.replaceAll('_', ' ')}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <hr className="divider" style={{ margin: '1.2rem 0' }} />
+      <div className="row--between">
+        <span className="text-xs text-muted">
+          {detail.rubric_label ? `Rubric ${detail.rubric_label}` : 'Published rubric'} · rule-based,
+          reviewed by officers
+        </span>
+        <span className="text-strong">
+          {detail.score_total}
+          <span className="text-sm text-muted">/{outOf}</span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The case card that opens over the map when a pin is clicked (screen 10's
+ * popover), so the map stays in view. It reads the same detail response as
+ * the side panel, so it shows nothing the viewer's role may not see.
+ */
+function MapCaseCard({ detail, user, onOpen, onClose }) {
+  const components = detail.score_components || []
+  const outOf = scoreOutOf(components)
+  const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
+  return (
+    <div className="ops-popover case-map__popover" role="dialog" aria-label={`Case ${detail.reference}`}>
+      <div className="row--between" style={{ alignItems: 'flex-start' }}>
+        <div>
+          <div className="text-strong" style={{ fontSize: 'var(--fs-16)' }}>#{detail.reference}</div>
+          <div className="text-xs text-muted">
+            {detail.damage_category_display} · {detail.village}
+          </div>
+        </div>
+        {detail.score_total != null && (
+          <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
+        )}
+      </div>
+      <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
+        <span className="badge badge--verified">{detail.status_display}</span>
+        <span className="text-xs text-muted">
+          {detail.claimed_by ? `Claimed by ${detail.claimed_by}` : 'Unclaimed'} · waiting{' '}
+          {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
+        </span>
+      </div>
+      {components.length > 0 ? (
+        <div>
+          <div className="score-stack" title={`Score breakdown — rubric ${detail.rubric_label || ''}`}>
+            {components.map((component, index) => (
+              <span
+                key={component.name}
+                className={`score-stack__seg score-stack__seg--${SEGMENT_TONES[index % SEGMENT_TONES.length]}`}
+                style={{ width: `${(component.points / outOf) * 100}%` }}
+                title={`${component.name} · ${component.points}`}
+              />
+            ))}
+          </div>
+          <div className="text-xs text-muted" style={{ marginTop: '0.6rem' }}>
+            {detail.score_total} / {outOf}
+            {detail.rubric_label ? ` · rubric ${detail.rubric_label}` : ''} —{' '}
+            {components.map((component) => `${component.key} ${component.points}`).join(' · ')}
+          </div>
+        </div>
+      ) : (
+        detail.score_total == null && (
+          <div className="text-xs text-muted">Not scored yet — scored when an officer verifies it.</div>
+        )
+      )}
+      <div className="text-xs text-muted">
+        {detail.location.precision === 'exact'
+          ? detail.location.address
+          : 'Village-level location only'}
+      </div>
+      <div className="row" style={{ gap: '0.8rem' }}>
+        <button className="btn btn--primary btn--sm" onClick={onOpen}>
+          {canDecide ? 'Review & decide' : 'Open full details'}
+        </button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ScorePanel({ detail, onClose, user, onDone }) {
   if (!detail) return null
   const summaryOnly = detail.detail_access === 'summary'
@@ -194,22 +333,7 @@ function ScorePanel({ detail, onClose, user, onDone }) {
         </p>
       )}
 
-      <div className="row--between" style={{ marginTop: 'var(--sp-16)' }}>
-        <span className="text-strong">Priority score</span>
-        <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
-      </div>
-
-      <div className="stack" style={{ gap: '0.8rem', marginTop: 'var(--sp-12)' }}>
-        {(detail.score_components || []).map((component) => (
-          <div key={component.name} className="score-row">
-            <span>{component.name}</span>
-            <span className="pts">+{component.points}</span>
-            <span className="text-xs text-muted" style={{ flexBasis: '100%' }}>
-              {component.reason}
-            </span>
-          </div>
-        ))}
-      </div>
+      <ScoreBreakdown detail={detail} />
 
       <div style={{ marginTop: 'var(--sp-16)' }}>
         <span className="text-xs text-muted">
@@ -243,6 +367,9 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
   const [view, setView] = useState('list')
   const [mapData, setMapData] = useState(null)
   const [mapError, setMapError] = useState(null)
+  const [mapLoading, setMapLoading] = useState(false)
+  // The case whose card is open over the map (a full detail response).
+  const [mapCase, setMapCase] = useState(null)
 
   useEffect(() => {
     api
@@ -269,6 +396,9 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
   useEffect(() => {
     if (view !== 'map') return undefined
     let cancelled = false
+    setMapLoading(true)
+    setMapData(null)
+    setMapError(null)
     api
       .caseMap({ status, q: search })
       .then((data) => {
@@ -277,17 +407,35 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
         setMapError(null)
       })
       .catch((err) => !cancelled && setMapError(err.message))
+      .finally(() => !cancelled && setMapLoading(false))
     return () => {
       cancelled = true
     }
   }, [view, status, search, reloadKey])
 
   const openCase = (id) => api.caseDetail(id).then(setDetail)
+  // On the map, a pin opens a card over the map; the side panel is one click on.
+  const openMapCase = (id) =>
+    api
+      .caseDetail(id)
+      .then(setMapCase)
+      .catch((err) => setMapError(err.message))
+  const closeMapCase = () => setMapCase(null)
   // A village marker stands for cases the list can show; go there.
   const showVillage = (name) => {
+    setMapCase(null)
+    setDetail(null)
     setSearch(name)
     setView('list')
   }
+
+  // Escape closes the map card, as it would any dialog.
+  useEffect(() => {
+    if (!mapCase) return undefined
+    const onKey = (event) => event.key === 'Escape' && setMapCase(null)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mapCase])
 
   // Re-fetch after an action so the screen shows what the server recorded,
   // not what we assumed it would record.
@@ -460,6 +608,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
                 aria-pressed={view === key}
                 onClick={(e) => {
                   e.preventDefault()
+                  setMapCase(null)
                   setView(key)
                 }}
               >
@@ -497,7 +646,11 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             <button
               key={filter.value}
               className={`filter-chip${status === filter.value ? ' filter-chip--active' : ''}`}
-              onClick={() => setStatus(filter.value)}
+              onClick={() => {
+                setMapCase(null)
+                if (view === 'map') setDetail(null)
+                setStatus(filter.value)
+              }}
               style={{ cursor: 'pointer', border: 0 }}
             >
               {filter.label}
@@ -508,7 +661,11 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             style={{ maxWidth: '24rem' }}
             placeholder="Search reference, village…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setMapCase(null)
+              if (view === 'map') setDetail(null)
+              setSearch(e.target.value)
+            }}
           />
         </div>
 
@@ -516,32 +673,55 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             its own, so the filter bar and stat strip stay pinned while a long
             queue or a long score panel scrolls independently. */}
         <div
-          className="vp-fill"
+          className={`vp-fill case-queue__workspace${detail ? ' case-queue__workspace--split' : ''}`}
           style={{
             display: 'grid',
-            gridTemplateColumns: detail ? '1fr 1fr' : '1fr',
             gap: 'var(--sp-16)',
           }}
         >
           {view === 'map' ? (
             <div className="stack" style={{ gap: 'var(--sp-12)', minHeight: 0 }}>
+              {mapLoading && <p role="status" className="text-sm text-muted">Updating map…</p>}
               {mapError && (
                 <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>
                   {mapError}
                 </p>
               )}
-              {mapData?.unmapped > 0 && (
+              {mapData?.unmapped > 0 &&
+                (mapData.points.length > 0 || mapData.areas.length > 0) && (
                 <p className="text-sm text-muted">
                   {mapData.unmapped} {mapData.unmapped === 1 ? 'case has' : 'cases have'} no mapped
                   location yet — the list shows {mapData.unmapped === 1 ? 'it' : 'them'}.
                 </p>
               )}
+              {!mapLoading && !mapError && mapData &&
+                mapData.points.length === 0 && mapData.areas.length === 0 && (
+                  <p role="status" className="text-sm text-muted">
+                    {mapData.unmapped > 0
+                      ? `${mapData.unmapped} matching ${mapData.unmapped === 1 ? 'case has' : 'cases have'} no mapped location. ${mapData.unmapped === 1 ? 'It is' : 'They are'} in List view.`
+                      : 'No cases match this filter.'}
+                  </p>
+                )}
               <CaseMap
                 points={mapData?.points || []}
                 areas={mapData?.areas || []}
-                onOpenCase={openCase}
+                selectedId={mapCase?.id}
+                onOpenCase={openMapCase}
                 onOpenArea={showVillage}
-              />
+                onMapClick={closeMapCase}
+              >
+                {mapCase && (
+                  <MapCaseCard
+                    detail={mapCase}
+                    user={user}
+                    onClose={closeMapCase}
+                    onOpen={() => {
+                      setDetail(mapCase)
+                      setMapCase(null)
+                    }}
+                  />
+                )}
+              </CaseMap>
               {mapData?.areas?.length > 0 && (
                 <p className="text-xs text-muted">
                   Pins are cases whose location you may see. Numbered circles count the other cases
