@@ -6,8 +6,9 @@
  *
  *   1. Step 1's map pin-drop is deferred. The design asks for a Leaflet
  *      pin, but a tile fetch that fails live is a grey box in front of an
- *      examiner, so location is captured as village + address text and
- *      latitude/longitude are left null (the model already allows null).
+ *      examiner, so location is captured as a controlled village (a coded
+ *      area from /api/locations/) plus address text, and latitude/longitude
+ *      are left null. The case is mapped at its village's centre point.
  *      The pin's privacy banner went with it — it promises something about
  *      "your exact pin" that this build does not yet collect.
  *
@@ -20,7 +21,7 @@
  * anything is sent, which only works if nothing was sent earlier.
  */
 
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 
@@ -30,15 +31,6 @@ const STEPS = ['Household', 'Home & damage', 'Safety & needs', 'Photos', 'Review
 // to match a TextChoices member in cases.models.CaseRecord, or the serializer
 // rejects the request — the label is what the household reads, the value is
 // what the scoring engine keys on.
-const VILLAGES = [
-  'Kg. Bechah Laut',
-  'Kg. Tendong',
-  'Kg. Lubok Jong',
-  'Taman Sri Intan',
-  'Taman Mesra',
-  'Pasir Mas town',
-]
-
 const DAMAGE_CATEGORIES = [
   { value: 'cleanup', label: 'Cleanup', desc: 'Mud, debris and silt removal' },
   { value: 'repair', label: 'Repair', desc: 'Structural or utility damage' },
@@ -159,7 +151,7 @@ function Stepper({ current }) {
 
 /* ---------------------------------------------------------------- step 1 */
 
-function StepHousehold({ data, set }) {
+function StepHousehold({ data, set, villages, onRetryVillages }) {
   return (
     <>
       <div className="card" style={{ marginBottom: '2.4rem' }}>
@@ -240,14 +232,37 @@ function StepHousehold({ data, set }) {
             <label>
               Village / area <Required />
             </label>
-            <select className="input" value={data.village} onChange={(e) => set({ village: e.target.value })}>
-              <option value="">Choose your village…</option>
-              {VILLAGES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
+            <select
+              className="input"
+              value={data.location_code}
+              onChange={(e) => set({ location_code: e.target.value })}
+              disabled={villages.loading || Boolean(villages.error)}
+            >
+              <option value="">{villages.loading ? 'Loading villages…' : 'Choose your village…'}</option>
+              {byDistrict(villages.rows).map(([district, rows]) => (
+                <optgroup key={district} label={district}>
+                  {rows.map((v) => (
+                    <option key={v.code} value={v.code}>
+                      {v.name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
+            {villages.error ? (
+              <p className="help" role="alert" style={{ color: 'var(--danger-600)' }}>
+                Couldn&apos;t load villages.{' '}
+                <button
+                  type="button"
+                  onClick={onRetryVillages}
+                  style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+                >
+                  Try again
+                </button>
+              </p>
+            ) : (
+              <p className="help">Not listed? Choose the nearest village and describe the place below.</p>
+            )}
           </div>
           <div className="field">
             <label>
@@ -258,7 +273,7 @@ function StepHousehold({ data, set }) {
               type="text"
               value={data.address}
               onChange={(e) => set({ address: e.target.value })}
-              placeholder="No. 14, Jalan Masjid, Kg. Bechah Laut"
+              placeholder="No. 14, Jalan Masjid, near the surau"
             />
             <span className="help">Road, house number, or a nearby landmark (masjid, balai raya, school).</span>
           </div>
@@ -599,11 +614,26 @@ function StepPhotos({ data, set }) {
 
 /* ---------------------------------------------------------------- step 5 */
 
+// The form lists villages under their district, as the location table does.
+function byDistrict(rows) {
+  const groups = new Map()
+  rows.forEach((row) => {
+    if (!groups.has(row.district)) groups.set(row.district, [])
+    groups.get(row.district).push(row)
+  })
+  return [...groups.entries()]
+}
+
+function villageLabel(rows, code) {
+  const village = rows.find((row) => row.code === code)
+  return village ? `${village.name}, ${village.district}` : ''
+}
+
 function labelFor(list, value) {
   return list.find((o) => o.value === value)?.label ?? '—'
 }
 
-function StepReview({ data, goTo }) {
+function StepReview({ data, goTo, villages }) {
   const flagLabels = (list, values) =>
     values.length ? values.map((v) => labelFor(list, v)).join(' · ') : 'None'
 
@@ -633,7 +663,7 @@ function StepReview({ data, goTo }) {
         ['Household members', `${data.household_size}`],
         ['Mobile number', data.phone],
         ['Alternative contact', data.alt_contact],
-        ['Village / area', data.village],
+        ['Village / area', villageLabel(villages.rows, data.location_code)],
         ['Address or landmark', data.address],
       ])}
 
@@ -670,7 +700,7 @@ function StepReview({ data, goTo }) {
 // the steps rather than inside them so "can I continue?" is answerable
 // without rendering anything.
 const REQUIRED_BY_STEP = [
-  ['full_name', 'phone', 'village', 'address'],
+  ['full_name', 'phone', 'location_code', 'address'],
   ['damage_category', 'description', 'flood_depth', 'liveability', 'access_level'],
   ['urgency'],
   [],
@@ -688,7 +718,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
     phone: user.phone || '',
     alt_contact: '',
     household_size: 1,
-    village: '',
+    location_code: '',
     address: '',
     damage_category: '',
     description: '',
@@ -702,6 +732,24 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
   })
 
   const set = (patch) => setData((current) => ({ ...current, ...patch }))
+
+  // Villages come from the controlled location table, not a list in this file.
+  const [villages, setVillages] = useState({ rows: [], loading: true, error: null })
+  const [villagesAttempt, setVillagesAttempt] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    api
+      .locations()
+      .then((rows) => !cancelled && setVillages({ rows, loading: false, error: null }))
+      .catch((err) => !cancelled && setVillages({ rows: [], loading: false, error: err.message }))
+    return () => {
+      cancelled = true
+    }
+  }, [villagesAttempt])
+  function retryVillages() {
+    setVillages({ rows: [], loading: true, error: null })
+    setVillagesAttempt((n) => n + 1)
+  }
 
   const missing = REQUIRED_BY_STEP[step].filter((field) => {
     const value = data[field]
@@ -719,7 +767,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
       // Photos go as a second argument: they cannot travel inside JSON, so the
       // client switches the whole request to multipart when any are attached.
       const created = await api.createCase({
-        village: data.village,
+        location_code: data.location_code,
         address: data.address,
         household_size: data.household_size,
         damage_category: data.damage_category,
@@ -733,7 +781,9 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
       }, data.photos)
       onSubmitted(created)
     } catch (err) {
-      setError(err.message)
+      // DRF answers a refused field with {field: [message]}; show that message
+      // (e.g. a village retired while the form was open), not a generic one.
+      setError(Object.values(err.fields || {}).flat()[0] || err.message)
       setBusy(false)
     }
   }
@@ -816,11 +866,13 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
 
         <Stepper current={step} />
 
-        {step === 0 && <StepHousehold data={data} set={set} />}
+        {step === 0 && (
+          <StepHousehold data={data} set={set} villages={villages} onRetryVillages={retryVillages} />
+        )}
         {step === 1 && <StepDamage data={data} set={set} />}
         {step === 2 && <StepNeeds data={data} set={set} />}
         {step === 3 && <StepPhotos data={data} set={set} />}
-        {step === 4 && <StepReview data={data} goTo={setStep} />}
+        {step === 4 && <StepReview data={data} goTo={setStep} villages={villages} />}
 
         {error && (
           <div

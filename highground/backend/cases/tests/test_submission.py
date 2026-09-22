@@ -18,12 +18,13 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 from accounts.models import UserAccount
-from cases.models import CaseEventLog, CasePhoto, CaseRecord
+from cases.models import CaseEventLog, CasePhoto, CaseRecord, LocationArea
 
 URL = "/api/cases/"
 
+# Kampung Tendong, Pasir Mas — one of the starter villages loaded by migration.
 VALID = {
-    "village": "Kg. Bechah Laut",
+    "location_code": "MY0307-V001",
     "address": "No. 14, Jalan Masjid",
     "household_size": 5,
     "damage_category": "cleanup",
@@ -104,6 +105,11 @@ class FieldWhitelistTests(SubmissionTestCase):
         self.post(reference="FRC-0001")
         self.assertNotEqual(CaseRecord.objects.get().reference, "FRC-0001")
 
+    def test_a_household_cannot_write_a_free_text_village(self):
+        """The village name comes from the chosen area, not from the body."""
+        self.post(village="Somewhere Invented")
+        self.assertEqual(CaseRecord.objects.get().village, "Kampung Tendong")
+
 
 class ValidationTests(SubmissionTestCase):
     def setUp(self):
@@ -131,6 +137,44 @@ class ValidationTests(SubmissionTestCase):
 
     def test_a_household_of_zero_is_refused(self):
         response = self.post(household_size=0)
+        self.assertEqual(response.status_code, 400)
+
+
+class LocationTests(SubmissionTestCase):
+    """A case is filed under a controlled village, never under free text."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.resident)
+
+    def test_the_case_stores_the_area_and_its_name(self):
+        response = self.post()
+
+        self.assertEqual(response.status_code, 201, response.content)
+        case = CaseRecord.objects.get()
+        self.assertEqual(case.location_area.code, "MY0307-V001")
+        self.assertEqual(case.village, "Kampung Tendong")
+        self.assertEqual(response.json()["village"], "Kampung Tendong")
+
+    def test_a_village_is_required(self):
+        payload = {key: value for key, value in VALID.items() if key != "location_code"}
+        response = self.client.post(URL, payload, content_type="application/json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("location_code", response.json())
+
+    def test_an_unknown_code_is_refused(self):
+        response = self.post(location_code="MY0307-V999")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_a_retired_village_is_refused(self):
+        LocationArea.objects.filter(code="MY0307-V001").update(active=False)
+        response = self.post()
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_district_is_not_a_village(self):
+        response = self.post(location_code="MY0307")
         self.assertEqual(response.status_code, 400)
 
 

@@ -973,6 +973,7 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 .ops-pin--success { background-color: var(--success-600); }
 .ops-pin--selected { box-shadow: 0 0 0 5px rgba(13, 148, 136, 0.25); }
 .ops-pin--ring { box-shadow: 0 0 0 3px var(--teal-600); }
+.ops-pin--neutral { background-color: var(--grey-500); }
 .ops-pin__count {
   position: absolute; top: -1rem; right: -1.2rem; transform: rotate(45deg);
   font-size: var(--fs-12); font-weight: 700; color: var(--ops-text);
@@ -986,6 +987,22 @@ a.map-kpi:hover { border-color: var(--teal-600); }
   background-color: var(--white); border: 2px solid var(--teal-600);
   box-shadow: var(--shadow-md);
 }
+/* Village count markers take the band colour of their most urgent case. */
+.ops-marker--danger  { border-color: var(--danger-600);  color: var(--danger-600); }
+.ops-marker--warning { border-color: var(--warning-500); color: var(--warning-600); }
+.ops-marker--success { border-color: var(--success-600); color: var(--success-600); }
+.ops-marker--neutral { border-color: var(--grey-500);    color: var(--grey-700); }
+
+/* Leaflet case map (07 Map view). Leaflet positions the icon box; the pin
+   inside it keeps the prototype's absolute positioning. */
+.case-map { display: flex; flex-direction: column; gap: var(--sp-12); flex: 1 1 auto; min-height: 40rem; }
+.case-map__canvas {
+  flex: 1 1 auto; min-height: 36rem;
+  border: 1px solid var(--grey-200); border-radius: var(--radius-md); overflow: hidden;
+}
+.case-map__icon { background: none; border: 0; }
+.case-map__icon .ops-pin, .case-map__icon .ops-marker { top: 0; left: 0; }
+
 .ops-poi {
   position: absolute; width: 2.4rem; height: 2.4rem; border-radius: var(--radius-sm); z-index: 4;
   display: flex; align-items: center; justify-content: center;

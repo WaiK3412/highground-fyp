@@ -11,12 +11,14 @@ stored as a literal.
 import random
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand
+from decimal import Decimal
+
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseRecord, CaseTask, DropOffPoint
+from cases.models import CaseEventLog, CaseRecord, CaseTask, DropOffPoint, LocationArea
 from scoring.engine import CaseScoreInput, Criterion, Rubric, score_case
 from scoring.models import (
     AidPackage,
@@ -47,16 +49,34 @@ ORGS = [
     ("Sukarelawan Kampung Pasir Mas", "volunteer_group", "019-983 4471", "Pasir Mas"),
 ]
 
-VILLAGES = [
-    ("Kampung Kubang Kerian", "Jalan Hospital, Kubang Kerian", 6.1361, 102.2861),
-    ("Kampung Pasir Mas", "Jalan Che Latiff, Pasir Mas", 6.0498, 102.1399),
-    ("Kampung Tendong", "Jalan Tendong, Pasir Mas", 6.0912, 102.1004),
-    ("Kampung Banggu", "Jalan Kuala Krai, Banggu", 5.5312, 102.2003),
-    ("Kampung Manek Urai", "Jalan Manek Urai Lama", 5.4890, 102.1755),
-    ("Kampung Salor", "Jalan Salor, Kota Bharu", 6.0821, 102.2645),
-    ("Taman Sri Kelantan", "Jalan Sultan Yahya Petra", 6.1254, 102.2398),
-    ("Kampung Chicha", "Jalan Chicha Tinggi, Tanah Merah", 5.8062, 102.1487),
-]
+# Villages come from the controlled location table (migration 0008), so demo
+# cases land where real submissions do. Street names are demo text.
+DEMO_STREETS = {
+    "MY0304-V001": "Jalan Hospital, Kubang Kerian",
+    "MY0304-V002": "Jalan Salor, Kota Bharu",
+    "MY0304-V003": "Jalan Banggu, Kota Bharu",
+    "MY0304-V004": "Jalan Pengkalan Chepa, Kota Bharu",
+    "MY0304-V005": "Jalan Kadok, Ketereh",
+    "MY0307-V001": "Jalan Tendong, Pasir Mas",
+    "MY0307-V002": "Jalan Rantau Panjang, Pasir Mas",
+    "MY0307-V003": "Jalan Meranti, Pasir Mas",
+    "MY0307-V004": "Jalan Kangkong, Pasir Mas",
+    "MY0307-V005": "Jalan Che Latiff, Pasir Mas",
+    "MY0307-V006": "Jalan Gual Periok, Pasir Mas",
+    "MY0307-V007": "Jalan Bunut Susu, Pasir Mas",
+}
+
+
+def near(area, dlat, dlng):
+    """An invented household point offset from a village's centre.
+
+    Demo coordinates only — they stand in for an officer-confirmed location
+    and do not correspond to any real house.
+    """
+    return (
+        area.latitude + Decimal(str(round(dlat, 6))),
+        area.longitude + Decimal(str(round(dlng, 6))),
+    )
 
 DESCRIPTIONS = [
     "Water reached the ceiling of the kitchen; all lower cabinets and the fridge are destroyed.",
@@ -184,14 +204,24 @@ class Command(BaseCommand):
         ]:
             AidPackage.objects.create(name=name, description=desc, items=items)
 
+        villages = list(
+            LocationArea.objects.filter(
+                level=LocationArea.Level.VILLAGE, active=True, code__in=DEMO_STREETS
+            ).order_by("code")
+        )
+        if not villages:
+            raise CommandError("No starter villages found — run `manage.py migrate` first.")
+
         # ---------------- the canonical case ----------------
         cases = []
+        kubang_kerian = LocationArea.objects.get(code="MY0304-V001")
+        lat, lng = near(kubang_kerian, 0.004, 0.002)
         frc = self._make_case(
             reference="FRC-1042",
             submitted_by=resident,
-            village="Kampung Kubang Kerian",
+            area=kubang_kerian,
             address="Lot 4231, Jalan Hospital, Kubang Kerian",
-            lat=6.1361, lng=102.2861,
+            lat=lat, lng=lng,
             description=(
                 "Floodwater reached waist height indoors and has not fully receded. "
                 "The medicine store for two elderly parents was destroyed and the access "
@@ -221,7 +251,8 @@ class Command(BaseCommand):
             CaseRecord.Status.REJECTED, CaseRecord.Status.CLOSED,
         ]
         for i, status in enumerate(statuses, start=1):
-            village, address, lat, lng = VILLAGES[i % len(VILLAGES)]
+            area = villages[i % len(villages)]
+            lat, lng = near(area, random.uniform(-0.01, 0.01), random.uniform(-0.01, 0.01))
             claimed = status in {
                 CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS,
                 CaseRecord.Status.PENDING_CONFIRM, CaseRecord.Status.CLOSED,
@@ -229,10 +260,10 @@ class Command(BaseCommand):
             case = self._make_case(
                 reference=f"FRC-{1043 + i}",
                 submitted_by=random.choice(residents),
-                village=village,
-                address=f"Lot {random.randint(100, 9000)}, {address}",
-                lat=lat + random.uniform(-0.01, 0.01),
-                lng=lng + random.uniform(-0.01, 0.01),
+                area=area,
+                address=f"Lot {random.randint(100, 9000)}, {DEMO_STREETS[area.code]}",
+                lat=lat,
+                lng=lng,
                 description=DESCRIPTIONS[i % len(DESCRIPTIONS)],
                 damage_category=random.choice(list(CaseRecord.DamageCategory.values)),
                 urgency=random.choice(list(CaseRecord.Urgency.values)),
@@ -303,13 +334,14 @@ class Command(BaseCommand):
 
     # ------------------------------------------------------------------
 
-    def _make_case(self, *, reference, submitted_by, village, address, lat, lng,
+    def _make_case(self, *, reference, submitted_by, area, address, lat, lng,
                    description, damage_category, urgency, liveability, flood_depth,
                    access_level, needs, vulns, household_size, status, created_at,
                     verified_by=None, claimed_by=None):
         case = CaseRecord.objects.create(
             reference=reference, submitted_by_user=submitted_by,
-            village=village, address=address, latitude=lat, longitude=lng,
+            location_area=area, village=area.name,
+            address=address, latitude=lat, longitude=lng,
             description=description, damage_category=damage_category,
             urgency=urgency, liveability=liveability, flood_depth=flood_depth,
             access_level=access_level, needs_flags=needs, vulnerability_flags=vulns,

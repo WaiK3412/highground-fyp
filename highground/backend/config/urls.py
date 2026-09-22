@@ -24,6 +24,8 @@ urlpatterns = [
     # cases
     path("api/cases/", cases_api.CaseListView.as_view()),
     path("api/cases/stats/", cases_api.queue_stats),
+    path("api/cases/map/", cases_api.case_map),
+    path("api/locations/", cases_api.locations),
     path("api/cases/<int:pk>/", cases_api.case_detail),
     path("api/cases/<int:pk>/claim/", cases_api.claim_case),
     path("api/cases/<int:pk>/release/", cases_api.release_case),

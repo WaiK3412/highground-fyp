@@ -73,9 +73,16 @@ export const api = {
     ).toString()
     return request('/api/cases/' + (query ? `?${query}` : ''))
   },
+  caseMap: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v),
+    ).toString()
+    return request('/api/cases/map/' + (query ? `?${query}` : ''))
+  },
   createCase: (payload, files) =>
     request('/api/cases/', { method: 'POST', body: payload, files, fileField: 'photos' }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
+  locations: () => request('/api/locations/'),
   claimCase: (id) => request(`/api/cases/${id}/claim/`, { method: 'POST' }),
   releaseCase: (id, reason) =>
     request(`/api/cases/${id}/release/`, { method: 'POST', body: { reason } }),

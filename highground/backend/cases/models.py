@@ -25,6 +25,95 @@ class DropOffPoint(models.Model):
         return self.name
 
 
+class LocationArea(models.Model):
+    """A controlled place a case can be filed under (see the locations ADR).
+
+    State and district rows carry the official OCHA P-codes from the HDX
+    Malaysia gazetteer (COD-AB, administrative levels 1-2). Nothing official
+    and open exists below district, so villages get project codes that extend
+    their district's P-code — the extension OCHA's own guidance describes for
+    settlements below the lowest coded level.
+
+    A code, once issued, is never reused for a different place: an area is
+    retired with `active`, never deleted, and cases keep pointing at it.
+    """
+
+    class Level(models.TextChoices):
+        STATE = "state", "State"
+        DISTRICT = "district", "District"
+        VILLAGE = "village", "Village"
+
+    class CentroidSource(models.TextChoices):
+        OFFICIAL = "official", "Official gazetteer"
+        OSM = "osm", "OpenStreetMap"
+        APPROXIMATE = "approximate", "Approximate"
+
+    # Which level each level must sit under. Mukim can slot in between
+    # district and village later without changing any existing code.
+    PARENT_LEVEL = {Level.DISTRICT: Level.STATE, Level.VILLAGE: Level.DISTRICT}
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=120)
+    # Villages are the only level that grows after launch (districts come from
+    # the gazetteer), so a new row defaults to one.
+    level = models.CharField(max_length=10, choices=Level, default=Level.VILLAGE)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    # A representative centre point, not a boundary: enough to place a
+    # village marker without claiming precision the data does not have.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    centroid_source = models.CharField(max_length=20, choices=CentroidSource, blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "location_area"
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.name} [{self.code}]"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        errors = {}
+        expected = self.PARENT_LEVEL.get(self.level)
+        if expected is None and self.parent_id is not None:
+            errors["parent"] = "A state has no parent area."
+        elif expected is not None and (self.parent is None or self.parent.level != expected):
+            errors["parent"] = f"A {self.get_level_display().lower()} must sit under a {expected.label.lower()}."
+        if self.level == self.Level.VILLAGE and (self.latitude is None or self.longitude is None):
+            errors["latitude"] = "A village needs a centre point so it can be placed on the map."
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).values_list("code", flat=True).first()
+            if original is not None and original != self.code:
+                errors["code"] = "A published code never changes; retire the area instead."
+        if errors:
+            raise ValidationError(errors)
+
+    @classmethod
+    def next_village_code(cls, district):
+        """The next unused project code under a district, e.g. MY0307-V008.
+
+        Retired villages keep their rows, so counting from the highest code
+        ever issued means a number is never handed to a second place. Two
+        simultaneous additions under one district can compute the same code;
+        the unique constraint then refuses the second instead of duplicating.
+        """
+        prefix = f"{district.code}-V"
+        numbers = [
+            int(code[len(prefix):])
+            for code in cls.objects.filter(code__startswith=prefix).values_list("code", flat=True)
+            if code[len(prefix):].isdigit()
+        ]
+        return f"{prefix}{max(numbers, default=0) + 1:03d}"
+
+
 class CaseRecord(models.Model):
     """A household's aid/recovery request — the hub of the whole system."""
 
@@ -102,6 +191,15 @@ class CaseRecord(models.Model):
         null=True,
         blank=True,
         related_name="scored_cases",
+    )
+    # The controlled place. `village` below stays as the name at the time of
+    # filing, so older free-text cases and the report's ERD column still read.
+    location_area = models.ForeignKey(
+        LocationArea,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="cases",
     )
 
     damage_category = models.CharField(max_length=20, choices=DamageCategory)

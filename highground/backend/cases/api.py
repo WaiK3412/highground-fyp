@@ -28,7 +28,7 @@ from accounts.permissions import (
 )
 from accounts.models import UserAccount
 
-from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask
+from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
 
 
 class ScoreComponentSerializer(serializers.Serializer):
@@ -263,10 +263,26 @@ class CaseCreateSerializer(serializers.ModelSerializer):
     server decides what you get.
     """
 
+    # A code from /api/locations/, not free text: a household cannot file
+    # under a retired or invented place, and every case lands on the map.
+    location_code = serializers.SlugRelatedField(
+        source="location_area",
+        slug_field="code",
+        queryset=LocationArea.objects.filter(
+            level=LocationArea.Level.VILLAGE, active=True, parent__active=True
+        ),
+        write_only=True,
+        error_messages={
+            "required": "Choose your village.",
+            "null": "Choose your village.",
+            "does_not_exist": "Choose a village from the list.",
+        },
+    )
+
     class Meta:
         model = CaseRecord
         fields = [
-            "village",
+            "location_code",
             "address",
             "household_size",
             "damage_category",
@@ -295,6 +311,12 @@ class CaseCreateSerializer(serializers.ModelSerializer):
     def validate_needs_flags(self, value):
         return _known_flags(value, NEEDS_VOCAB, "needs flags")
 
+    def validate(self, attrs):
+        # The name as filed stays on the case, so it still reads the same if
+        # the area is later renamed or retired.
+        attrs["village"] = attrs["location_area"].name
+        return attrs
+
 
 def _next_reference():
     """Next FRC- number, continuing the seed data's series.
@@ -316,6 +338,47 @@ def _next_reference():
         return "FRC-1042"
 
 
+def _queue_queryset(request):
+    """The queue as this user may see it, with the list's filters applied.
+
+    Shared by the list and the map so the two can never disagree about which
+    cases exist for a user.
+    """
+    queryset = CaseRecord.objects.select_related(
+        "claimed_by_org", "submitted_by_user"
+    ).all()
+    queryset = visible_cases(request.user, queryset)
+
+    status_filter = request.query_params.get("status")
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+    search = request.query_params.get("q")
+    if search:
+        from django.db.models import Q
+
+        # The controlled village name as well as the text a case was filed
+        # with, so a village marker's name finds older free-text cases too.
+        search_query = (
+            Q(reference__icontains=search)
+            | Q(village__icontains=search)
+            | Q(location_area__name__icontains=search)
+        )
+        # An NGO may browse the shared coordination queue, but private
+        # household descriptions only become searchable after its own
+        # organisation claims the case. Otherwise even a yes/no search
+        # result could reveal sensitive circumstances.
+        if request.user.role == UserAccount.Role.NGO_VOLUNTEER:
+            if request.user.organization_id:
+                search_query |= Q(
+                    claimed_by_org=request.user.organization,
+                    description__icontains=search,
+                )
+        else:
+            search_query |= Q(description__icontains=search)
+        queryset = queryset.filter(search_query)
+    return queryset
+
+
 class CaseListView(ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     # A photo cannot travel inside JSON, so a submission with images arrives as
@@ -328,35 +391,7 @@ class CaseListView(ListCreateAPIView):
         return CaseCreateSerializer if self.request.method == "POST" else CaseListSerializer
 
     def get_queryset(self):
-        queryset = CaseRecord.objects.select_related(
-            "claimed_by_org", "submitted_by_user"
-        ).all()
-        queryset = visible_cases(self.request.user, queryset)
-
-        status_filter = self.request.query_params.get("status")
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        search = self.request.query_params.get("q")
-        if search:
-            from django.db.models import Q
-
-            search_query = Q(reference__icontains=search) | Q(
-                village__icontains=search
-            )
-            # An NGO may browse the shared coordination queue, but private
-            # household descriptions only become searchable after its own
-            # organisation claims the case. Otherwise even a yes/no search
-            # result could reveal sensitive circumstances.
-            if self.request.user.role == UserAccount.Role.NGO_VOLUNTEER:
-                if self.request.user.organization_id:
-                    search_query |= Q(
-                        claimed_by_org=self.request.user.organization,
-                        description__icontains=search,
-                    )
-            else:
-                search_query |= Q(description__icontains=search)
-            queryset = queryset.filter(search_query)
-        return queryset
+        return _queue_queryset(self.request)
 
     def create(self, request, *args, **kwargs):
         """Create a case from a household's submission (FR3).
@@ -461,6 +496,109 @@ def queue_stats(request):
             "unclaimed": queryset.filter(claimed_by_org__isnull=True).count(),
             "in_progress": queryset.filter(status="in_progress").count(),
         }
+    )
+
+
+BAND_RANK = {"High": 3, "Medium": 2, "Low": 1}
+
+
+@api_view(["GET"])
+@permission_classes([IsCoordinator])
+def case_map(request):
+    """The visible queue on a map, at the precision each role may see.
+
+    Same cases and filters as the list, and never more about them. A case
+    whose exact location this user may see (may_see_exact_location) is a
+    point; any other case is only counted into its village. Published points
+    can be re-identified to a household even at low resolution (Brownstein et
+    al. 2006), and the village is already on the list, so counting it adds
+    nothing an NGO could not already read.
+    """
+    cases = _queue_queryset(request).select_related("location_area", "rubric_version")
+    points, areas, unmapped = [], {}, 0
+    for case in cases:
+        area = case.location_area
+        area_placed = area is not None and area.latitude is not None
+        if may_see_exact_location(request.user, case):
+            if case.latitude is not None and case.longitude is not None:
+                latitude, longitude, precision = case.latitude, case.longitude, "exact"
+            elif area_placed:
+                # No household pin yet (resident pin-drop is deferred).
+                latitude, longitude, precision = area.latitude, area.longitude, "village"
+            else:
+                unmapped += 1
+                continue
+            points.append(
+                {
+                    "id": case.id,
+                    "reference": case.reference,
+                    "village": case.village,
+                    "latitude": str(latitude),
+                    "longitude": str(longitude),
+                    "precision": precision,
+                    "status": case.status,
+                    "status_display": case.get_status_display(),
+                    "score_total": case.score_total,
+                    "priority_band": case.priority_band,
+                    "claimed_by": case.claimed_by_org.name if case.claimed_by_org_id else None,
+                    "claimed_by_you": bool(
+                        case.claimed_by_org_id
+                        and case.claimed_by_org_id == request.user.organization_id
+                    ),
+                }
+            )
+        elif area_placed:
+            entry = areas.setdefault(
+                area.code,
+                {
+                    "code": area.code,
+                    "name": area.name,
+                    "latitude": str(area.latitude),
+                    "longitude": str(area.longitude),
+                    "case_count": 0,
+                    "highest_band": "unscored",
+                },
+            )
+            entry["case_count"] += 1
+            band = case.priority_band
+            if BAND_RANK.get(band, 0) > BAND_RANK.get(entry["highest_band"], 0):
+                entry["highest_band"] = band
+        else:
+            unmapped += 1
+    return Response(
+        {
+            "points": points,
+            "areas": sorted(areas.values(), key=lambda entry: entry["code"]),
+            "unmapped": unmapped,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def locations(request):
+    """The villages a household can file a case under, grouped by district.
+
+    Public geography, but still behind login like the rest of the API. Centre
+    points stay out: the form needs names and codes, not coordinates.
+    """
+    villages = (
+        LocationArea.objects.filter(
+            level=LocationArea.Level.VILLAGE, active=True, parent__active=True
+        )
+        .select_related("parent")
+        .order_by("parent__name", "name")
+    )
+    return Response(
+        [
+            {
+                "code": village.code,
+                "name": village.name,
+                "district": village.parent.name,
+                "district_code": village.parent.code,
+            }
+            for village in villages
+        ]
     )
 
 

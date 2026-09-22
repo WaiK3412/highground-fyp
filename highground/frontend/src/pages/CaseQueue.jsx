@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import CaseMap from './CaseMap'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All' },
@@ -238,6 +239,10 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
   const [loading, setLoading] = useState(true)
 
   const [reloadKey, setReloadKey] = useState(0)
+  // List stays the default: it works without map tiles and holds every case.
+  const [view, setView] = useState('list')
+  const [mapData, setMapData] = useState(null)
+  const [mapError, setMapError] = useState(null)
 
   useEffect(() => {
     api
@@ -259,6 +264,30 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
       cancelled = true
     }
   }, [status, search, reloadKey])
+
+  // The map is fetched only when shown, with the same filters as the list.
+  useEffect(() => {
+    if (view !== 'map') return undefined
+    let cancelled = false
+    api
+      .caseMap({ status, q: search })
+      .then((data) => {
+        if (cancelled) return
+        setMapData(data)
+        setMapError(null)
+      })
+      .catch((err) => !cancelled && setMapError(err.message))
+    return () => {
+      cancelled = true
+    }
+  }, [view, status, search, reloadKey])
+
+  const openCase = (id) => api.caseDetail(id).then(setDetail)
+  // A village marker stands for cases the list can show; go there.
+  const showVillage = (name) => {
+    setSearch(name)
+    setView('list')
+  }
 
   // Re-fetch after an action so the screen shows what the server recorded,
   // not what we assumed it would record.
@@ -422,6 +451,22 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               from the published rubric v3.0.
             </p>
           </div>
+          <div className="view-toggle" role="group" aria-label="Queue view">
+            {[['list', 'List'], ['map', 'Map']].map(([key, label]) => (
+              <a
+                key={key}
+                href={`#${key}`}
+                className={view === key ? 'active' : undefined}
+                aria-pressed={view === key}
+                onClick={(e) => {
+                  e.preventDefault()
+                  setView(key)
+                }}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </div>
 
         {stats && (
@@ -478,6 +523,34 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             gap: 'var(--sp-16)',
           }}
         >
+          {view === 'map' ? (
+            <div className="stack" style={{ gap: 'var(--sp-12)', minHeight: 0 }}>
+              {mapError && (
+                <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>
+                  {mapError}
+                </p>
+              )}
+              {mapData?.unmapped > 0 && (
+                <p className="text-sm text-muted">
+                  {mapData.unmapped} {mapData.unmapped === 1 ? 'case has' : 'cases have'} no mapped
+                  location yet — the list shows {mapData.unmapped === 1 ? 'it' : 'them'}.
+                </p>
+              )}
+              <CaseMap
+                points={mapData?.points || []}
+                areas={mapData?.areas || []}
+                onOpenCase={openCase}
+                onOpenArea={showVillage}
+              />
+              {mapData?.areas?.length > 0 && (
+                <p className="text-xs text-muted">
+                  Pins are cases whose location you may see. Numbered circles count the other cases
+                  by village; exact locations stay with the district office and the claiming
+                  organisation.
+                </p>
+              )}
+            </div>
+          ) : (
           <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
             {notice && (
               <div className="banner banner--info">
@@ -522,10 +595,11 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
                 busy={claimingId === item.id}
                 selected={detail?.id === item.id}
                 onClaim={claimFromCard}
-                onOpen={(id) => api.caseDetail(id).then(setDetail)}
+                onOpen={openCase}
               />
             ))}
           </div>
+          )}
 
           {detail && (
             <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>

@@ -32,3 +32,14 @@ class SeedDemoTests(TestCase):
             canonical.events.order_by("created_at").values_list("event_type", flat=True)
         )
         self.assertLess(event_types.index("verified"), event_types.index("score_computed"))
+
+    def test_seeded_cases_are_filed_under_controlled_villages(self):
+        call_command("seed_demo", stdout=StringIO())
+
+        for case in CaseRecord.objects.select_related("location_area"):
+            self.assertIsNotNone(case.location_area, case.reference)
+            self.assertEqual(case.location_area.level, "village")
+            self.assertEqual(case.village, case.location_area.name)
+        self.assertEqual(
+            CaseRecord.objects.get(reference="FRC-1042").location_area.code, "MY0304-V001"
+        )

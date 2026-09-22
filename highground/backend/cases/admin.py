@@ -12,6 +12,7 @@ from .models import (
     CommunityPledge,
     DropOffPoint,
     DuplicateCaseMatch,
+    LocationArea,
 )
 
 
@@ -76,7 +77,10 @@ class CaseRecordAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        ("Location", {"fields": ("village", "address", "latitude", "longitude")}),
+        (
+            "Location",
+            {"fields": ("location_area", "village", "address", "latitude", "longitude")},
+        ),
         (
             "People & organisations",
             {"fields": ("submitted_by_user", "verified_by_user", "claimed_by_org")},
@@ -141,6 +145,47 @@ class CommunityPledgeAdmin(admin.ModelAdmin):
 class DropOffPointAdmin(admin.ModelAdmin):
     list_display = ("name", "area", "active")
     list_filter = ("active", "area")
+
+
+@admin.register(LocationArea)
+class LocationAreaAdmin(admin.ModelAdmin):
+    """Where new villages are added; states and districts come from the gazetteer.
+
+    Codes are issued, not typed: a new village takes the next free code under
+    its district, and no code is edited or deleted afterwards, because cases
+    and reports refer to it. Retire a place by clearing `active`.
+    """
+
+    list_display = ("code", "name", "level", "parent", "centroid_source", "active")
+    list_filter = ("level", "active", "parent")
+    search_fields = ("code", "name")
+
+    def get_fields(self, request, obj=None):
+        place = ("name", "latitude", "longitude", "centroid_source", "active")
+        if obj is None:
+            # The add form only creates villages; the level defaults to one.
+            return ("parent",) + place
+        return ("code", "level", "parent") + place
+
+    def get_readonly_fields(self, request, obj=None):
+        # A village's code embeds its district, so neither can move later.
+        return ("code", "level", "parent") if obj else ()
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "parent":
+            kwargs["queryset"] = LocationArea.objects.filter(
+                level=LocationArea.Level.DISTRICT, active=True
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.level = LocationArea.Level.VILLAGE
+            obj.code = LocationArea.next_village_code(obj.parent)
+        super().save_model(request, obj, form, change)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 admin.site.register(CasePhoto)
