@@ -1,0 +1,3944 @@
+{
+  "schema": 1,
+  "note": "Synthetic, fictional records written for evaluation only. Not field data. Chinese, Tamil, Malay dialect examples need native-speaker review.",
+  "families": {
+    "F01": {
+      "split": "dev",
+      "scenario": "Malay abbreviations (Jln/Kg) and name shortening; next-door Lot 88 vs Lot 89 hard negative"
+    },
+    "F02": {
+      "split": "dev",
+      "scenario": "Common names (Muhammad/Mohd bin Abdullah) in one village with generic text; no duplicates"
+    },
+    "F03": {
+      "split": "dev",
+      "scenario": "Son files for mother (different name and phone, same address); same first name on same street"
+    },
+    "F04": {
+      "split": "dev",
+      "scenario": "Malay-English duplicate with household pins 13 m apart; neighbour pin 60 m away"
+    },
+    "F05": {
+      "split": "dev",
+      "scenario": "Nearby pins in one terrace row, similar cleanup text; no duplicates"
+    },
+    "F06": {
+      "split": "dev",
+      "scenario": "Malay-English duplicate, one detailed and one terse; different transport need"
+    },
+    "F07": {
+      "split": "dev",
+      "scenario": "Malay-English duplicate with overlapping needs; same-name neighbour in same taman"
+    },
+    "F08": {
+      "split": "dev",
+      "scenario": "Cross-village duplicate: second report filed at evacuation centre coded to Kg Sireh"
+    },
+    "F09": {
+      "split": "dev",
+      "scenario": "Kelantan dialect terse report vs detailed standard Malay (agriculture); similar-name farmer"
+    },
+    "F10": {
+      "split": "dev",
+      "scenario": "One family phone shared by three separate households on different streets; no duplicates"
+    },
+    "F11": {
+      "split": "dev",
+      "scenario": "Same-language Malay triple: reordered text, daughter files third report"
+    },
+    "F12": {
+      "split": "dev",
+      "scenario": "Cross-village duplicate: resident relocates to sibling in Tok Uban and re-files there"
+    },
+    "F13": {
+      "split": "dev",
+      "scenario": "Terengganu dialect vs standard Malay; sister next door shares brother's phone"
+    },
+    "F14": {
+      "split": "dev",
+      "scenario": "Identical generic descriptions from different households; no duplicates"
+    },
+    "F15": {
+      "split": "dev",
+      "scenario": "Daughter in KL files in English for father (Malay report); another Nurul in village"
+    },
+    "F16": {
+      "split": "dev",
+      "scenario": "Overlapping but different needs lists; second report has no address"
+    },
+    "F17": {
+      "split": "dev",
+      "scenario": "Terengganu dialect vs standard Malay, second report missing phone"
+    },
+    "F18": {
+      "split": "dev",
+      "scenario": "Several women named Siti with similar lot numbers; no duplicates"
+    },
+    "F19": {
+      "split": "dev",
+      "scenario": "Code-switched Malay-English triple with spelling variant (Aishah/Aisyah); same-lorong Siti"
+    },
+    "F20": {
+      "split": "dev",
+      "scenario": "Chinese-Malay duplicate; neighbour with near-identical name"
+    },
+    "F21": {
+      "split": "dev",
+      "scenario": "Tamil-Malay duplicate (Saraswathy/Saraswathi spelling); same-name neighbour"
+    },
+    "F22": {
+      "split": "dev",
+      "scenario": "Same street name and house number in two different taman; no duplicates"
+    },
+    "F23": {
+      "split": "dev",
+      "scenario": "Malay-English duplicate with pins and phone format variants; same-name neighbour 28 m away"
+    },
+    "F24": {
+      "split": "dev",
+      "scenario": "Chinese-English duplicate from shop-house owner"
+    },
+    "F25": {
+      "split": "dev",
+      "scenario": "Malay-English duplicate about lost documents, both without phone"
+    },
+    "F26": {
+      "split": "dev",
+      "scenario": "Chinese-English duplicate with Jln/Tmn abbreviations; neighbour at No. 24"
+    },
+    "F27": {
+      "split": "dev",
+      "scenario": "Tamil-Malay duplicate; common Tamil name on same estate road"
+    },
+    "F28": {
+      "split": "dev",
+      "scenario": "Chinese-English duplicate, same number in 60/0 formats, pins 11 m apart; similar-name neighbour"
+    },
+    "F29": {
+      "split": "dev",
+      "scenario": "Tamil-English duplicate with name romanisation variant"
+    },
+    "F30": {
+      "split": "dev",
+      "scenario": "Common Tamil names and generic Tamil text on one road; no duplicates"
+    },
+    "F31": {
+      "split": "dev",
+      "scenario": "Chinese-Malay duplicate, detailed vs terse; transposed house number neighbour"
+    },
+    "F32": {
+      "split": "dev",
+      "scenario": "Son files in Malay for Tamil-speaking mother; same-name neighbour"
+    },
+    "F33": {
+      "split": "dev",
+      "scenario": "One shop phone shared by two Chinese households plus generic Chinese text; no duplicates"
+    },
+    "F34": {
+      "split": "heldout",
+      "scenario": "Abbreviations (Abd/Jln/Kg, 2 vs II) in names and address; brother next door"
+    },
+    "F35": {
+      "split": "heldout",
+      "scenario": "Several Nurul/Nur Ain names with generic text; no duplicates"
+    },
+    "F36": {
+      "split": "heldout",
+      "scenario": "Grandson files in English for grandmother; pins 10 m apart; same-name neighbour 35 m"
+    },
+    "F37": {
+      "split": "heldout",
+      "scenario": "Identical generic descriptions from different households; no duplicates"
+    },
+    "F38": {
+      "split": "heldout",
+      "scenario": "Code-switched vs standard Malay duplicate; near-identical name at 3B vs 3A"
+    },
+    "F39": {
+      "split": "heldout",
+      "scenario": "Terse report with no phone or address vs detailed report"
+    },
+    "F40": {
+      "split": "heldout",
+      "scenario": "Kelantan dialect vs standard Malay (agriculture); same first name with no address detail"
+    },
+    "F41": {
+      "split": "heldout",
+      "scenario": "Malay triple with village-name typo and mistyped lot number; similar-name neighbour"
+    },
+    "F42": {
+      "split": "heldout",
+      "scenario": "Riverside houses with pins 40-120 m apart and similar text; no duplicates"
+    },
+    "F43": {
+      "split": "heldout",
+      "scenario": "Cross-village duplicate: resident moves to son's house and files in English under Kubang Kerian"
+    },
+    "F44": {
+      "split": "heldout",
+      "scenario": "Malay-English duplicate with superset/subset needs"
+    },
+    "F45": {
+      "split": "heldout",
+      "scenario": "Village head's phone used by several elderly households; no duplicates"
+    },
+    "F46": {
+      "split": "heldout",
+      "scenario": "Standard Malay vs Kelantan dialect duplicate with pins 20 m apart; neighbour 90 m"
+    },
+    "F47": {
+      "split": "heldout",
+      "scenario": "Chinese-English duplicate with +60 phone; neighbour Lee Kah Ho"
+    },
+    "F48": {
+      "split": "heldout",
+      "scenario": "Tamil-English duplicate (baby supplies); same-name neighbour on temple road"
+    },
+    "F49": {
+      "split": "heldout",
+      "scenario": "Cross-village duplicate: Kemaman resident re-files from sister's house in Semambu (Kuantan)"
+    },
+    "F50": {
+      "split": "heldout",
+      "scenario": "Siblings on different streets share one phone; no duplicates"
+    },
+    "F51": {
+      "split": "heldout",
+      "scenario": "Terengganu dialect vs standard Malay duplicate; same-first-name neighbour"
+    },
+    "F52": {
+      "split": "heldout",
+      "scenario": "Malay-English duplicate with pins 32 m apart; similar-name household 70 m away"
+    },
+    "F53": {
+      "split": "heldout",
+      "scenario": "Identical generic Malay text across households; no duplicates"
+    },
+    "F54": {
+      "split": "heldout",
+      "scenario": "English report without address vs Malay report; same-name resident with different need"
+    },
+    "F55": {
+      "split": "heldout",
+      "scenario": "Chinese-Malay duplicate with pins 19 m apart; similar-name shop 40 m away"
+    },
+    "F56": {
+      "split": "heldout",
+      "scenario": "Same street name and number in different taman; no duplicates"
+    },
+    "F57": {
+      "split": "heldout",
+      "scenario": "Chinese-English duplicate; English report very terse"
+    },
+    "F58": {
+      "split": "heldout",
+      "scenario": "Tamil-Malay duplicate from lorry driver"
+    },
+    "F59": {
+      "split": "heldout",
+      "scenario": "Same person changes phone number between reports"
+    },
+    "F60": {
+      "split": "heldout",
+      "scenario": "Chinese-English duplicate for elderly parents"
+    },
+    "F61": {
+      "split": "heldout",
+      "scenario": "Tamil-Malay duplicate on estate road; same-name neighbour"
+    },
+    "F62": {
+      "split": "heldout",
+      "scenario": "Grandson files in English for Tamil-speaking grandmother"
+    },
+    "F63": {
+      "split": "heldout",
+      "scenario": "Identical generic Chinese text and shared shop phone; no duplicates"
+    },
+    "F64": {
+      "split": "heldout",
+      "scenario": "Exact same name in two households plus a third similar name; no duplicates"
+    },
+    "F65": {
+      "split": "heldout",
+      "scenario": "Malay/English/code-switched triple including a follow-up report"
+    },
+    "F66": {
+      "split": "dev",
+      "scenario": "Three reports from the resident, his wife and his brother; similar-name neighbour pinned 45 m away"
+    },
+    "F67": {
+      "split": "heldout",
+      "scenario": "Chinese-Malay duplicate in Kubang Kerian"
+    },
+    "F68": {
+      "split": "heldout",
+      "scenario": "Malay-English duplicate with pins 16 m apart; similar-name neighbour ~50 m"
+    }
+  },
+  "records": [
+    {
+      "id": "R001",
+      "family": "F01",
+      "household": "H001",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Ahmad bin Ismail",
+      "phone": "012-555 0142",
+      "address": "Lot 88, Jln Masjid, Kg Sireh",
+      "latitude": 6.129029,
+      "longitude": 102.244204,
+      "damage_category": "repair",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "Air masuk rumah paras pinggang. Dinding dapur retak, lantai papan reput. Perlu bantuan baiki.",
+      "note": "original report, abbreviated address"
+    },
+    {
+      "id": "R002",
+      "family": "F01",
+      "household": "H001",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Ahmad Ismail",
+      "phone": "0125550142",
+      "address": "Lot 88 Jalan Masjid Kampung Sireh",
+      "latitude": 6.129083,
+      "longitude": 102.244276,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "dinding dapur retak lepas banjir, lantai papan dah reput. mohon bantu baiki rumah",
+      "note": "same person resubmits; full forms, no-space phone"
+    },
+    {
+      "id": "R003",
+      "family": "F01",
+      "household": "H002",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Rosli bin Hamzah",
+      "phone": "019-555 2208",
+      "address": "Lot 89, Jln Masjid, Kg Sireh",
+      "latitude": 6.129163,
+      "longitude": 102.244475,
+      "damage_category": "repair",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "Rumah kena banjir paras pinggang, dinding bilik retak, lantai reput.",
+      "note": "next-door neighbour, near-identical damage"
+    },
+    {
+      "id": "R004",
+      "family": "F01",
+      "household": "H001",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Rokiah binti Salleh",
+      "phone": "",
+      "address": "Lot 88, Jalan Masjid, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "water"
+      ],
+      "description": "Suami dah isi borang tapi takde orang datang lagi. Dapur retak, lantai papan reput.",
+      "note": "wife files third report; different name, no phone"
+    },
+    {
+      "id": "R005",
+      "family": "F01",
+      "household": "H003",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Ismail bin Ahmad",
+      "phone": "013-555 0871",
+      "address": "Lot 87, Jln Masjid, Kg Sireh",
+      "latitude": 6.128957,
+      "longitude": 102.243978,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Lantai papan reput dan dinding retak lepas air naik.",
+      "note": "Lot 87 neighbour; reversed name of Ahmad bin Ismail"
+    },
+    {
+      "id": "R006",
+      "family": "F02",
+      "household": "H004",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Muhammad bin Abdullah",
+      "phone": "013-555 1001",
+      "address": "No. 4, Lorong 3, Jalan Sireh, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah dimasuki air. Perlukan bantuan makanan.",
+      "note": "common name A"
+    },
+    {
+      "id": "R007",
+      "family": "F02",
+      "household": "H005",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Muhammad bin Abdullah",
+      "phone": "017-555 2402",
+      "address": "No. 17, Lorong 5, Jalan Sireh, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "Rumah dimasuki air, perlu makanan dan air.",
+      "note": "identical name, different lorong and phone"
+    },
+    {
+      "id": "R008",
+      "family": "F02",
+      "household": "H006",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Mohd bin Abdullah",
+      "phone": "",
+      "address": "No. 6, Lorong 3, Jalan Sireh, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "rumah masuk air. nak bantuan makanan",
+      "note": "Mohd variant, same lorong as A"
+    },
+    {
+      "id": "R009",
+      "family": "F02",
+      "household": "H007",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Muhammad Hafiz bin Abdullah",
+      "phone": "011-5550 3120",
+      "address": "No. 4A, Lorong 3, Jalan Sireh, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "bedding"
+      ],
+      "description": "Air masuk rumah, tilam basah. Perlukan makanan.",
+      "note": "similar name, house 4A next to A"
+    },
+    {
+      "id": "R010",
+      "family": "F03",
+      "household": "H008",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Che Minah binti Daud",
+      "phone": "",
+      "address": "No. 14, Lorong Haji Yusof, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "clothing",
+        "medicine"
+      ],
+      "description": "Mak cik duduk sorang, tilam dan baju habis basah. Ubat darah tinggi hanyut.",
+      "note": "elderly resident, no phone"
+    },
+    {
+      "id": "R011",
+      "family": "F03",
+      "household": "H008",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Mohd Faizal bin Hassan",
+      "phone": "017-555 3391",
+      "address": "14 Lor Hj Yusof Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "medicine"
+      ],
+      "description": "Saya anak, lapor bagi pihak mak saya Che Minah. Tilam, baju semua rosak. Mak perlukan ubat darah tinggi.",
+      "note": "son files for mother; different name/phone, abbreviated address"
+    },
+    {
+      "id": "R012",
+      "family": "F03",
+      "household": "H009",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Che Minah binti Ali",
+      "phone": "014-555 8870",
+      "address": "No. 3, Lorong Haji Yusof, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Tilam dan bantal basah kena banjir. Perlukan tilam baru.",
+      "note": "same first name, same lorong, different household"
+    },
+    {
+      "id": "R013",
+      "family": "F04",
+      "household": "H010",
+      "village_code": "KLT-KB-01",
+      "language": "en",
+      "submitter_name": "Nor Azlina binti Karim",
+      "phone": "013-555 7710",
+      "address": "Lot 205, Jalan Pantai Cahaya Bulan, Kg Sireh",
+      "latitude": 6.130196,
+      "longitude": 102.24041,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Mud about 1 foot inside the whole house. Need help to clean and disinfect, kids getting skin rash.",
+      "note": "English report"
+    },
+    {
+      "id": "R014",
+      "family": "F04",
+      "household": "H010",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Nor Azlina Karim",
+      "phone": "+60 13-555 7710",
+      "address": "Lot 205 Jln PCB, Kg Sireh",
+      "latitude": 6.130277,
+      "longitude": 102.240491,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur setinggi sekaki dalam rumah. Perlu bantuan cuci, anak-anak dah naik ruam kulit.",
+      "note": "Malay report; +60 phone; local street acronym PCB"
+    },
+    {
+      "id": "R015",
+      "family": "F04",
+      "household": "H011",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Zainab binti Omar",
+      "phone": "",
+      "address": "Lot 207, Jalan Pantai Cahaya Bulan, Kg Sireh",
+      "latitude": 6.130017,
+      "longitude": 102.240906,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur tebal dalam rumah, perlu bantuan cuci.",
+      "note": "neighbour two lots away, pin ~60 m"
+    },
+    {
+      "id": "R016",
+      "family": "F05",
+      "household": "H012",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Hafizah binti Musa",
+      "phone": "012-555 7301",
+      "address": "No. 21, Taman Sireh Jaya",
+      "latitude": 6.126963,
+      "longitude": 102.246915,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumah teres penuh lumpur, perlu bantuan cuci.",
+      "note": "terrace unit 21"
+    },
+    {
+      "id": "R017",
+      "family": "F05",
+      "household": "H013",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Azhar bin Kadir",
+      "phone": "019-555 4302",
+      "address": "No. 23, Taman Sireh Jaya",
+      "latitude": 6.126998,
+      "longitude": 102.247113,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Lumpur dalam rumah teres, perlu cuci dan sabun.",
+      "note": "unit 23, pin ~22 m away"
+    },
+    {
+      "id": "R018",
+      "family": "F05",
+      "household": "H014",
+      "village_code": "KLT-KB-01",
+      "language": "en",
+      "submitter_name": "Lee Mei Yee",
+      "phone": "016-555 1903",
+      "address": "No. 25, Taman Sireh Jaya",
+      "latitude": 6.127043,
+      "longitude": 102.247303,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Terrace house full of mud, need cleaning help.",
+      "note": "unit 25, pin ~44 m from 21"
+    },
+    {
+      "id": "R019",
+      "family": "F06",
+      "household": "H015",
+      "village_code": "KLT-KB-01",
+      "language": "en",
+      "submitter_name": "Kamarul Ariffin bin Yusoff",
+      "phone": "018-555 6612",
+      "address": "No. 30, Jalan Hospital, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "Motorcycle and car both submerged, cannot go to work. Need transport help or info on insurance claim.",
+      "note": "detailed English report"
+    },
+    {
+      "id": "R020",
+      "family": "F06",
+      "household": "H015",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Kamarul Ariffin",
+      "phone": "",
+      "address": "30 Jln Hospital",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "motor dgn kereta tenggelam. x boleh pi kerja",
+      "note": "terse Malay SMS-style, no phone"
+    },
+    {
+      "id": "R021",
+      "family": "F07",
+      "household": "H016",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Nurul Ain binti Mohd Noor",
+      "phone": "014-555 9031",
+      "address": "No. 12, Taman Sireh Indah",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "hygiene"
+      ],
+      "description": "Dapur rosak tak boleh masak. Perlukan makanan siap dan air minuman. Pad wanita pun perlu.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R022",
+      "family": "F07",
+      "household": "H016",
+      "village_code": "KLT-KB-01",
+      "language": "en",
+      "submitter_name": "Nurul Ain Mohd Noor",
+      "phone": "014-5559031",
+      "address": "12 Tmn Sireh Indah",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "hygiene"
+      ],
+      "description": "Kitchen destroyed, can't cook. Need ready food, drinking water and sanitary pads.",
+      "note": "English report; needs list omits water"
+    },
+    {
+      "id": "R023",
+      "family": "F07",
+      "household": "H017",
+      "village_code": "KLT-KB-01",
+      "language": "en",
+      "submitter_name": "Nurul Ain binti Hashim",
+      "phone": "",
+      "address": "No. 21, Taman Sireh Indah",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Need food, kitchen damaged.",
+      "note": "same given name, house 21 vs 12"
+    },
+    {
+      "id": "R024",
+      "family": "F08",
+      "household": "H018",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Hasnah binti Yaakob",
+      "phone": "014-555 2290",
+      "address": "Lot 1021, Kg Tok Uban, Pasir Mas",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "clothing",
+        "hygiene"
+      ],
+      "description": "Rumah tenggelam sampai bumbung. Sekarang duduk PPS. Semua barang hanyut.",
+      "note": "home-village report"
+    },
+    {
+      "id": "R025",
+      "family": "F08",
+      "household": "H018",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Hasnah Yaakob",
+      "phone": "0145552290",
+      "address": "PPS SK Sireh (asal Kg Tok Uban)",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "clothing",
+        "hygiene",
+        "food"
+      ],
+      "description": "Mangsa dari Tok Uban. Rumah tenggelam, pakaian dan barang keperluan habis hanyut.",
+      "note": "filed at evacuation centre under a different village code"
+    },
+    {
+      "id": "R026",
+      "family": "F08",
+      "household": "H019",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Hasnah binti Yusof",
+      "phone": "",
+      "address": "Lot 1024, Kg Tok Uban, Pasir Mas",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah tenggelam, barang hanyut.",
+      "note": "similar name, neighbouring lot"
+    },
+    {
+      "id": "R027",
+      "family": "F09",
+      "household": "H020",
+      "village_code": "KLT-PM-01",
+      "language": "ms-dialect",
+      "submitter_name": "Mat Zin bin Deraman",
+      "phone": "",
+      "address": "Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [],
+      "description": "Sawoh ambo tenggelang, padi habih rosak. Kerbau duo ekor mati.",
+      "note": "Kelantanese, village-only address, no phone"
+    },
+    {
+      "id": "R028",
+      "family": "F09",
+      "household": "H020",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Mat Zin Deraman",
+      "phone": "013-555 8802",
+      "address": "Lot 455, Jalan Tok Uban-Rantau Panjang, Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [
+        "food"
+      ],
+      "description": "Sawah padi seluas 2 ekar tenggelam, tanaman musnah. Dua ekor kerbau mati lemas. Perlukan bantuan benih dan baja.",
+      "note": "detailed standard Malay"
+    },
+    {
+      "id": "R029",
+      "family": "F09",
+      "household": "H021",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Mat Zain bin Daud",
+      "phone": "019-555 6674",
+      "address": "Lot 461, Jalan Tok Uban-Rantau Panjang, Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [],
+      "description": "Sawah padi tenggelam, padi rosak semua.",
+      "note": "similar name, adjacent paddy lot"
+    },
+    {
+      "id": "R030",
+      "family": "F10",
+      "household": "H022",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Rohani binti Salleh",
+      "phone": "019-555 7788",
+      "address": "Lot 60, Jalan Surau, Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Dinding rumah retak, pintu dapur tercabut.",
+      "note": "sister A uses brother's phone"
+    },
+    {
+      "id": "R031",
+      "family": "F10",
+      "household": "H023",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Rosnani binti Salleh",
+      "phone": "019-555 7788",
+      "address": "Lot 212, Jalan Sekolah, Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Dinding retak dan pintu rosak lepas banjir.",
+      "note": "sister B, different street, same phone"
+    },
+    {
+      "id": "R032",
+      "family": "F10",
+      "household": "H024",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Salleh bin Omar",
+      "phone": "0195557788",
+      "address": "Lot 61, Jalan Surau, Kg Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah pakcik rosak, dinding retak. Anak tolong isi borang.",
+      "note": "father next to sister A, same phone"
+    },
+    {
+      "id": "R033",
+      "family": "F11",
+      "household": "H025",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Zakaria bin Ali",
+      "phone": "013-555 6120",
+      "address": "Lot 233, Jln Pasar, Kg Tok Uban",
+      "latitude": 6.007305,
+      "longitude": 102.147507,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Lumpur dalam rumah setebal 2 kaki. Telaga tercemar. Perlu bantuan cuci rumah dan bekalan sabun.",
+      "note": "first report"
+    },
+    {
+      "id": "R034",
+      "family": "F11",
+      "household": "H025",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Zakaria Ali",
+      "phone": "0135556120",
+      "address": "Lot 233 Jalan Pasar Kampung Tok Uban",
+      "latitude": 6.007377,
+      "longitude": 102.147562,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Telaga dah tercemar. Rumah penuh lumpur 2 kaki. Tolong hantar orang cuci.",
+      "note": "same person, reordered sentences"
+    },
+    {
+      "id": "R035",
+      "family": "F11",
+      "household": "H025",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Aminah binti Zakaria",
+      "phone": "019-555 3002",
+      "address": "Lot 233, Jalan Pasar, Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "hygiene",
+        "cleaning_supplies"
+      ],
+      "description": "Rumah ayah saya Zakaria Ali penuh lumpur, telaga tercemar. Minta bantuan.",
+      "note": "daughter files; different name/phone"
+    },
+    {
+      "id": "R036",
+      "family": "F11",
+      "household": "H026",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Zakaria bin Awang",
+      "phone": "017-555 2230",
+      "address": "Lot 235, Jln Pasar, Kg Tok Uban",
+      "latitude": 6.007529,
+      "longitude": 102.147778,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumah penuh lumpur, telaga pun kotor.",
+      "note": "same first name, next lot, pin ~35 m"
+    },
+    {
+      "id": "R037",
+      "family": "F12",
+      "household": "H027",
+      "village_code": "KLT-KB-01",
+      "language": "ms",
+      "submitter_name": "Norhayati binti Che Mat",
+      "phone": "011-5557 3450",
+      "address": "Lot 540, Jalan Kuala Krai, Kg Sireh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "food",
+        "clothing"
+      ],
+      "description": "Rumah rosak teruk, tak boleh duduk. Anak-anak perlukan tilam dan baju.",
+      "note": "home-village report"
+    },
+    {
+      "id": "R038",
+      "family": "F12",
+      "household": "H027",
+      "village_code": "KLT-PM-01",
+      "language": "ms-en",
+      "submitter_name": "Norhayati Che Mat",
+      "phone": "01155573450",
+      "address": "c/o rumah adik, Lot 88 Kg Tok Uban (rumah asal Kg Sireh)",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "clothing"
+      ],
+      "description": "Sekarang tumpang rumah adik kat Tok Uban. Need tilam and baju for 4 kids. Rumah kat Sireh dah rosak teruk.",
+      "note": "re-filed under host village code; code-switched"
+    },
+    {
+      "id": "R039",
+      "family": "F13",
+      "household": "H028",
+      "village_code": "TRG-KT-01",
+      "language": "ms-dialect",
+      "submitter_name": "Wan Zulkifli bin Wan Hassan",
+      "phone": "019-555 1123",
+      "address": "Lot 312, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Ae masuk rumoh sapa dade. Dinding papang tercabut, atap bocor. Mintak tolong baiki.",
+      "note": "Terengganu dialect"
+    },
+    {
+      "id": "R040",
+      "family": "F13",
+      "household": "H028",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Wan Zulkifli Wan Hassan",
+      "phone": "0195551123",
+      "address": "Lot 312 Kampung Pulau Rusa, Kuala Terengganu",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Air masuk rumah sampai paras dada. Dinding papan tercabut dan atap bocor. Mohon bantuan membaiki rumah.",
+      "note": "standard Malay"
+    },
+    {
+      "id": "R041",
+      "family": "F13",
+      "household": "H029",
+      "village_code": "TRG-KT-01",
+      "language": "ms-dialect",
+      "submitter_name": "Wan Azizah binti Wan Hassan",
+      "phone": "019-555 1123",
+      "address": "Lot 318, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumoh kena ae, dinding papang rosok.",
+      "note": "sister, own house, shares brother's phone"
+    },
+    {
+      "id": "R042",
+      "family": "F14",
+      "household": "H030",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Kamaruddin bin Ngah",
+      "phone": "013-555 2210",
+      "address": "Lot 45, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "rumah banjir, perlu bantuan makanan",
+      "note": "generic text A"
+    },
+    {
+      "id": "R043",
+      "family": "F14",
+      "household": "H031",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Rahimah binti Said",
+      "phone": "",
+      "address": "Lot 102, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "rumah banjir, perlu bantuan makanan",
+      "note": "identical text, different household"
+    },
+    {
+      "id": "R044",
+      "family": "F14",
+      "household": "H032",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Yusof bin Embong",
+      "phone": "017-555 9312",
+      "address": "Lot 230, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah banjir. Perlu bantuan makanan.",
+      "note": "identical text, punctuation differs"
+    },
+    {
+      "id": "R045",
+      "family": "F14",
+      "household": "H033",
+      "village_code": "TRG-KT-01",
+      "language": "en",
+      "submitter_name": "Hanis binti Yusof",
+      "phone": "011-5550 7813",
+      "address": "Lot 231, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "house flooded, need food aid",
+      "note": "English version of the generic text; lives next to c"
+    },
+    {
+      "id": "R046",
+      "family": "F15",
+      "household": "H034",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Ismail bin Mamat",
+      "phone": "",
+      "address": "Lot 77, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food",
+        "medicine"
+      ],
+      "description": "Rumah rosak teruk, tangga runtuh. Saya ada kencing manis, ubat habis.",
+      "note": "father, no phone"
+    },
+    {
+      "id": "R047",
+      "family": "F15",
+      "household": "H034",
+      "village_code": "TRG-KT-01",
+      "language": "en",
+      "submitter_name": "Nurul Huda binti Ismail",
+      "phone": "+60 11-5550 8834",
+      "address": "Lot 77 Kampung Pulau Rusa, Kuala Terengganu",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "medicine"
+      ],
+      "description": "Filing for my father Ismail Mamat (I am in KL). His house stairs collapsed and he's diabetic, ran out of insulin. Please help.",
+      "note": "daughter files; different name/phone"
+    },
+    {
+      "id": "R048",
+      "family": "F15",
+      "household": "H035",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Nurul Izzah binti Mat",
+      "phone": "017-555 0021",
+      "address": "Lot 81, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Tangga rumah runtuh, rumah rosak.",
+      "note": "neighbour, similar damage"
+    },
+    {
+      "id": "R049",
+      "family": "F16",
+      "household": "H036",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Fatimah binti Awang",
+      "phone": "013-555 4410",
+      "address": "Lot 150, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "baby_supplies"
+      ],
+      "description": "Anak kecil 3 orang, susu dan lampin habis. Air bersih takde.",
+      "note": "first report"
+    },
+    {
+      "id": "R050",
+      "family": "F16",
+      "household": "H036",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Fatimah Awang",
+      "phone": "013 555 4410",
+      "address": "",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies",
+        "hygiene"
+      ],
+      "description": "Perlukan susu formula, lampin bayi dan sabun. Anak 3 orang masih kecil.",
+      "note": "address left blank; phone spaced"
+    },
+    {
+      "id": "R051",
+      "family": "F16",
+      "household": "H037",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Fatimah binti Abdullah",
+      "phone": "",
+      "address": "Lot 162, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies"
+      ],
+      "description": "Perlukan lampin dan susu anak.",
+      "note": "same first name, same need"
+    },
+    {
+      "id": "R052",
+      "family": "F17",
+      "household": "H038",
+      "village_code": "TRG-KT-01",
+      "language": "ms-dialect",
+      "submitter_name": "Mek Nah binti Muda",
+      "phone": "019-555 6602",
+      "address": "Lot 290 Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Rumoh ambe bocor teruk, tilang basoh sokmo. Nok mintak tilang ngan selimut.",
+      "note": "dialect"
+    },
+    {
+      "id": "R053",
+      "family": "F17",
+      "household": "H038",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Mek Nah Muda",
+      "phone": "",
+      "address": "Lot 290, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Tilam dan selimut basah, bumbung bocor. Mohon bantuan tilam.",
+      "note": "standard Malay, no phone"
+    },
+    {
+      "id": "R054",
+      "family": "F18",
+      "household": "H039",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Siti Nor binti Ali",
+      "phone": "012-555 3021",
+      "address": "Lot 20, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumah penuh lumpur. Perlu bantuan cuci.",
+      "note": "Siti A"
+    },
+    {
+      "id": "R055",
+      "family": "F18",
+      "household": "H040",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Siti Noor binti Ali",
+      "phone": "014-555 8812",
+      "address": "Lot 200, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur dalam rumah, perlu tolong cuci.",
+      "note": "near-identical name, lot 200 vs 20"
+    },
+    {
+      "id": "R056",
+      "family": "F18",
+      "household": "H041",
+      "village_code": "TRG-KT-01",
+      "language": "ms",
+      "submitter_name": "Siti Nur binti Awang",
+      "phone": "",
+      "address": "Lot 22, Kg Pulau Rusa",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "rumah penuh lumpur tolong cuci",
+      "note": "another Siti, lot next to A"
+    },
+    {
+      "id": "R057",
+      "family": "F19",
+      "household": "H042",
+      "village_code": "PHG-KTN-01",
+      "language": "ms-en",
+      "submitter_name": "Siti Aishah binti Rahman",
+      "phone": "011-5550 2231",
+      "address": "No. 5, Lorong Sg Isap 3, Kg Sungai Isap",
+      "latitude": 3.800871,
+      "longitude": 103.28708,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "water"
+      ],
+      "description": "Rumah full lumpur, the whole ground floor. Need pressure washer or at least ada orang tolong cuci. Air paip pun tak clean lagi.",
+      "note": "code-switched"
+    },
+    {
+      "id": "R058",
+      "family": "F19",
+      "household": "H042",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Siti Aishah Rahman",
+      "phone": "01155502231",
+      "address": "5 Lorong Sungai Isap 3",
+      "latitude": 3.800934,
+      "longitude": 103.287134,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Tingkat bawah rumah penuh lumpur. Perlukan bantuan mencuci.",
+      "note": "same person, standard Malay"
+    },
+    {
+      "id": "R059",
+      "family": "F19",
+      "household": "H042",
+      "village_code": "PHG-KTN-01",
+      "language": "en",
+      "submitter_name": "Siti Aisyah Rahman",
+      "phone": "",
+      "address": "No 5 Lrg Sg Isap 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "water"
+      ],
+      "description": "Still no clean tap water. Mud everywhere downstairs.",
+      "note": "third report; spelling variant, Lrg abbreviation, no phone"
+    },
+    {
+      "id": "R060",
+      "family": "F19",
+      "household": "H043",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Siti Aminah binti Rahim",
+      "phone": "013-555 9087",
+      "address": "No. 7, Lorong Sungai Isap 3",
+      "latitude": 3.800871,
+      "longitude": 103.287368,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur penuh tingkat bawah, perlu bantuan cuci.",
+      "note": "neighbour, similar name"
+    },
+    {
+      "id": "R061",
+      "family": "F20",
+      "household": "H044",
+      "village_code": "PHG-KTN-01",
+      "language": "zh",
+      "submitter_name": "Lim Siew Lan",
+      "phone": "017-555 6604",
+      "address": "18, Jalan SIM 2/4, Taman Sungai Isap Murni",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "baby_supplies"
+      ],
+      "description": "一楼全部被泥浆覆盖，床垫和被子都湿了，家里有婴儿，需要尿布和奶粉。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R062",
+      "family": "F20",
+      "household": "H044",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Lim Siew Lan",
+      "phone": "+60 17-555 6604",
+      "address": "18 Jalan SIM 2/4, Taman Sungai Isap Murni",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies",
+        "bedding",
+        "hygiene"
+      ],
+      "description": "Tilam dan selimut basah. Ada bayi, perlukan lampin dan susu.",
+      "note": "Malay report, extra hygiene need"
+    },
+    {
+      "id": "R063",
+      "family": "F20",
+      "household": "H045",
+      "village_code": "PHG-KTN-01",
+      "language": "zh",
+      "submitter_name": "Lim Siew Ling",
+      "phone": "012-555 3317",
+      "address": "20, Jalan SIM 2/4, Tmn Sg Isap Murni",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "床垫湿了，需要新的。",
+      "note": "neighbour, one-letter name difference"
+    },
+    {
+      "id": "R064",
+      "family": "F21",
+      "household": "H046",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Saraswathy a/p Ganesan",
+      "phone": "019-555 2210",
+      "address": "No. 11, Lorong Sungai Isap 5",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Siling rumah runtuh, pintu rosak. Perlukan bantuan baiki.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R065",
+      "family": "F21",
+      "household": "H046",
+      "village_code": "PHG-KTN-01",
+      "language": "ta",
+      "submitter_name": "Saraswathi Ganesan",
+      "phone": "",
+      "address": "11 Lrg Sg Isap 5",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "வீட்டின் மேற்கூரை இடிந்து விழுந்தது, கதவு உடைந்தது. பழுதுபார்க்க உதவி தேவை.",
+      "note": "Tamil report, romanisation variant, no phone"
+    },
+    {
+      "id": "R066",
+      "family": "F21",
+      "household": "H047",
+      "village_code": "PHG-KTN-01",
+      "language": "ta",
+      "submitter_name": "Saraswathy a/p Muthu",
+      "phone": "012-555 6674",
+      "address": "No. 13, Lorong Sungai Isap 5",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "கூரை ஒழுகுகிறது, கதவு சேதமடைந்தது.",
+      "note": "same given name, next house"
+    },
+    {
+      "id": "R067",
+      "family": "F22",
+      "household": "H048",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Rahmat bin Sulong",
+      "phone": "013-555 4471",
+      "address": "No. 9, Jalan Mahkota 3, Taman Mahkota Sg Isap",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Pintu depan rosak dan dinding retak.",
+      "note": "Taman Mahkota Sg Isap"
+    },
+    {
+      "id": "R068",
+      "family": "F22",
+      "household": "H049",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Rahimah binti Sulong",
+      "phone": "",
+      "address": "No. 9, Jalan Mahkota 3, Taman Mahkota Jaya",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Dinding retak, pintu depan rosak.",
+      "note": "same street/number, different taman"
+    },
+    {
+      "id": "R069",
+      "family": "F22",
+      "household": "H050",
+      "village_code": "PHG-KTN-01",
+      "language": "en",
+      "submitter_name": "Tan Boon Keat",
+      "phone": "016-555 2290",
+      "address": "9 Jln Mahkota 3, Tmn Sg Isap Jaya",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Front door damaged, wall cracked.",
+      "note": "third taman with same street/number"
+    },
+    {
+      "id": "R070",
+      "family": "F23",
+      "household": "H051",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Mohd Rizal bin Othman",
+      "phone": "+60 19-555 4471",
+      "address": "No. 88, Jalan Sungai Isap Perdana 4",
+      "latitude": 3.802488,
+      "longitude": 103.284649,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Pagar dan dinding belakang roboh dihanyutkan arus. Barang elektrik rosak.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R071",
+      "family": "F23",
+      "household": "H051",
+      "village_code": "PHG-KTN-01",
+      "language": "en",
+      "submitter_name": "Rizal Othman",
+      "phone": "60195554471",
+      "address": "88 Jln Sg Isap Perdana 4",
+      "latitude": 3.802586,
+      "longitude": 103.284748,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Back wall and fence collapsed from strong current. Electrical items damaged.",
+      "note": "English report; 60-prefixed phone"
+    },
+    {
+      "id": "R072",
+      "family": "F23",
+      "household": "H052",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Mohd Rizal bin Osman",
+      "phone": "012-555 7019",
+      "address": "No. 90, Jalan Sungai Isap Perdana 4",
+      "latitude": 3.802649,
+      "longitude": 103.284991,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Dinding belakang roboh, pagar rosak.",
+      "note": "Othman vs Osman, next door"
+    },
+    {
+      "id": "R073",
+      "family": "F24",
+      "household": "H053",
+      "village_code": "PHG-KTN-01",
+      "language": "en",
+      "submitter_name": "Ng Boon Huat",
+      "phone": "016-555 7702",
+      "address": "No. 3, Lorong Sungai Isap Jaya 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "bedding"
+      ],
+      "description": "Hardware store stock washed away, ground floor house also flooded. Need cleaning supplies and bedding for family of five.",
+      "note": "English report"
+    },
+    {
+      "id": "R074",
+      "family": "F24",
+      "household": "H053",
+      "village_code": "PHG-KTN-01",
+      "language": "zh",
+      "submitter_name": "Ng Boon Huat",
+      "phone": "",
+      "address": "3 Lrg Sg Isap Jaya 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "bedding"
+      ],
+      "description": "五金店的货都被冲走了，楼下住家也淹水，需要清洁用品，还有五个人的被褥。",
+      "note": "Chinese report, no phone"
+    },
+    {
+      "id": "R075",
+      "family": "F24",
+      "household": "H054",
+      "village_code": "PHG-KTN-01",
+      "language": "zh",
+      "submitter_name": "Ng Boon Hock",
+      "phone": "016-555 7720",
+      "address": "No. 5, Lorong Sungai Isap Jaya 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "店里和楼下都是泥，需要清洁用品。",
+      "note": "next shop, near-identical name and phone digits"
+    },
+    {
+      "id": "R076",
+      "family": "F25",
+      "household": "H055",
+      "village_code": "PHG-KTN-01",
+      "language": "en",
+      "submitter_name": "Faridah binti Ahmad",
+      "phone": "",
+      "address": "No. 44, Lorong Sungai Isap 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "My late husband's documents (IC, land title) were destroyed in the flood. Need help to replace them.",
+      "note": "English report"
+    },
+    {
+      "id": "R077",
+      "family": "F25",
+      "household": "H055",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Faridah Ahmad",
+      "phone": "",
+      "address": "44 Lrg Sungai Isap 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "Dokumen penting (IC arwah suami, geran tanah) rosak kena banjir. Macam mana nak buat baru?",
+      "note": "Malay report"
+    },
+    {
+      "id": "R078",
+      "family": "F25",
+      "household": "H056",
+      "village_code": "PHG-KTN-01",
+      "language": "ms",
+      "submitter_name": "Faridah binti Ahmad",
+      "phone": "019-555 3318",
+      "address": "No. 12, Lorong Sungai Isap 6",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "Kad pengenalan hilang dalam banjir, perlu buat baru.",
+      "note": "exact same name, different lorong"
+    },
+    {
+      "id": "R079",
+      "family": "F26",
+      "household": "H057",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Tan Ah Kow",
+      "phone": "016-555 8821",
+      "address": "No. 22, Jalan Sultan Ahmad, Taman Sri Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "屋子淹水到胸口，冰箱和洗衣机都坏了，木门腐烂，需要帮忙修理。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R080",
+      "family": "F26",
+      "household": "H057",
+      "village_code": "PHG-TML-01",
+      "language": "en",
+      "submitter_name": "Tan Ah Kow",
+      "phone": "0165558821",
+      "address": "22 Jln Sultan Ahmad, Tmn Sri Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Water reached chest level. Fridge and washing machine spoiled, wooden door rotten. Need repair help.",
+      "note": "English report"
+    },
+    {
+      "id": "R081",
+      "family": "F26",
+      "household": "H058",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Tan Mei Ling",
+      "phone": "012-555 4760",
+      "address": "No. 24, Jalan Sultan Ahmad, Taman Sri Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "家里淹水，电器坏了，需要维修。",
+      "note": "next-door neighbour, same surname"
+    },
+    {
+      "id": "R082",
+      "family": "F27",
+      "household": "H059",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Muniandy a/l Krishnan",
+      "phone": "012-555 4403",
+      "address": "No. 7, Jalan Ladang Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "bedding",
+        "clothing"
+      ],
+      "description": "வீட்டுக்குள் இடுப்பளவு தண்ணீர் புகுந்தது. பாய், போர்வை, துணிகள் எல்லாம் நனைந்துவிட்டன. உணவு தேவை.",
+      "note": "Tamil report"
+    },
+    {
+      "id": "R083",
+      "family": "F27",
+      "household": "H059",
+      "village_code": "PHG-TML-01",
+      "language": "ms",
+      "submitter_name": "Muniandy Krishnan",
+      "phone": "",
+      "address": "7 Jln Ladang Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "bedding"
+      ],
+      "description": "Air masuk rumah paras pinggang. Tikar, selimut, baju semua basah. Perlu makanan.",
+      "note": "Malay report, no phone"
+    },
+    {
+      "id": "R084",
+      "family": "F27",
+      "household": "H060",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Muniandy a/l Suppiah",
+      "phone": "014-555 6120",
+      "address": "No. 15, Jalan Ladang Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "வெள்ளத்தில் வீடு மூழ்கியது. உணவு மற்றும் போர்வை தேவை.",
+      "note": "same given name, same road"
+    },
+    {
+      "id": "R085",
+      "family": "F28",
+      "household": "H061",
+      "village_code": "PHG-TML-01",
+      "language": "en",
+      "submitter_name": "Wong Kok Wai",
+      "phone": "60125550917",
+      "address": "Lot 3, Jalan Temerloh Jaya 2, Taman Temerloh Jaya",
+      "latitude": 3.453905,
+      "longitude": 102.42208,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "water"
+      ],
+      "description": "Shop-house ground floor full of mud 30cm. Need cleaning help and clean water.",
+      "note": "English report"
+    },
+    {
+      "id": "R086",
+      "family": "F28",
+      "household": "H061",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Wong Kok Wai",
+      "phone": "012-555 0917",
+      "address": "3, Jln Temerloh Jaya 2, Tmn Temerloh Jaya",
+      "latitude": 3.453977,
+      "longitude": 102.422143,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "店屋楼下都是泥，大约三十公分，需要帮忙清理，也需要干净的水。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R087",
+      "family": "F28",
+      "household": "H062",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Wong Kah Wai",
+      "phone": "",
+      "address": "5, Jalan Temerloh Jaya 2, Taman Temerloh Jaya",
+      "latitude": 3.453905,
+      "longitude": 102.422368,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "楼下都是泥巴，需要清理。",
+      "note": "next shop-house, similar name"
+    },
+    {
+      "id": "R088",
+      "family": "F29",
+      "household": "H063",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Letchumy a/p Rajoo",
+      "phone": "016-555 3345",
+      "address": "No. 41, Jalan Kuil, Kg Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine",
+        "food",
+        "hygiene"
+      ],
+      "description": "வீடு முழுவதும் வெள்ளம். என் கணவருக்கு சர்க்கரை நோய், மருந்து தீர்ந்துவிட்டது. உணவும் சுகாதாரப் பொருட்களும் தேவை.",
+      "note": "Tamil report"
+    },
+    {
+      "id": "R089",
+      "family": "F29",
+      "household": "H063",
+      "village_code": "PHG-TML-01",
+      "language": "en",
+      "submitter_name": "Letchumi Rajoo",
+      "phone": "0165553345",
+      "address": "41 Jln Kuil Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine",
+        "food"
+      ],
+      "description": "Whole house flooded. Husband is diabetic and medicine finished. Need food and hygiene kit.",
+      "note": "English report, Letchumi spelling"
+    },
+    {
+      "id": "R090",
+      "family": "F29",
+      "household": "H063",
+      "village_code": "PHG-TML-01",
+      "language": "en",
+      "submitter_name": "Priya a/p Maniam",
+      "phone": "019-555 7704",
+      "address": "No. 41, Jalan Kuil, Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine"
+      ],
+      "description": "My mother-in-law Letchumy's house at 41 Jalan Kuil flooded. Father-in-law needs diabetes medicine urgently.",
+      "note": "daughter-in-law files; different name/phone"
+    },
+    {
+      "id": "R091",
+      "family": "F30",
+      "household": "H064",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Ramasamy a/l Muthu",
+      "phone": "013-555 7120",
+      "address": "No. 2, Jalan Kuil, Kg Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "வீடு வெள்ளத்தில் மூழ்கியது, உணவு தேவை.",
+      "note": "generic text A"
+    },
+    {
+      "id": "R092",
+      "family": "F30",
+      "household": "H065",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Ramasamy a/l Maniam",
+      "phone": "",
+      "address": "No. 4, Jalan Kuil, Kg Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "வீடு வெள்ளத்தில் மூழ்கியது, உணவு தேவை.",
+      "note": "same given name, identical text"
+    },
+    {
+      "id": "R093",
+      "family": "F30",
+      "household": "H066",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Selvi a/p Muthu",
+      "phone": "017-555 6601",
+      "address": "No. 6, Jalan Kuil, Kg Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "வீட்டில் வெள்ளம். உணவும் தண்ணீரும் தேவை.",
+      "note": "shares patronymic with A"
+    },
+    {
+      "id": "R094",
+      "family": "F31",
+      "household": "H067",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Chong Mei Fong",
+      "phone": "010-555 2381",
+      "address": "No. 56, Jalan Bahagia, Taman Bahagia, Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "水灾后屋顶漏水，厨房墙壁裂开，地板也起了。需要修理。",
+      "note": "Chinese detailed"
+    },
+    {
+      "id": "R095",
+      "family": "F31",
+      "household": "H067",
+      "village_code": "PHG-TML-01",
+      "language": "ms",
+      "submitter_name": "Chong Mei Fong",
+      "phone": "",
+      "address": "56 Jln Bahagia Tmn Bahagia",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Bumbung bocor, dinding dapur retak.",
+      "note": "Malay terse, no phone"
+    },
+    {
+      "id": "R096",
+      "family": "F31",
+      "household": "H068",
+      "village_code": "PHG-TML-01",
+      "language": "ms",
+      "submitter_name": "Chong Mei Fung",
+      "phone": "010-555 9120",
+      "address": "No. 65, Jalan Bahagia, Taman Bahagia",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Bumbung bocor lepas banjir.",
+      "note": "near-identical name, house 65 vs 56"
+    },
+    {
+      "id": "R097",
+      "family": "F32",
+      "household": "H069",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Rajeswari a/p Subramaniam",
+      "phone": "",
+      "address": "No. 19, Jalan Ladang Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "வீட்டின் சுவர் விரிசல் விட்டது, தரை உடைந்தது.",
+      "note": "mother, Tamil, no phone"
+    },
+    {
+      "id": "R098",
+      "family": "F32",
+      "household": "H069",
+      "village_code": "PHG-TML-01",
+      "language": "ms",
+      "submitter_name": "Kumaresan a/l Rajendran",
+      "phone": "017-555 8841",
+      "address": "19 Jalan Ladang Paya Pulai, Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Saya anak kepada Rajeswari. Dinding rumah ibu retak dan lantai simen pecah selepas banjir.",
+      "note": "son files; different name/phone"
+    },
+    {
+      "id": "R099",
+      "family": "F32",
+      "household": "H070",
+      "village_code": "PHG-TML-01",
+      "language": "ta",
+      "submitter_name": "Rajeswari a/p Ramasamy",
+      "phone": "013-555 2276",
+      "address": "No. 21, Jalan Ladang Paya Pulai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "சுவர் விரிசல், தரை சேதம்.",
+      "note": "same given name, next house"
+    },
+    {
+      "id": "R100",
+      "family": "F33",
+      "household": "H071",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Lau Kim Choo",
+      "phone": "09-555 2288",
+      "address": "No. 8, Jalan Pasar Baru, Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "家里淹水，需要食物。",
+      "note": "uses family shop landline"
+    },
+    {
+      "id": "R101",
+      "family": "F33",
+      "household": "H072",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Lau Kim Hock",
+      "phone": "09-555 2288",
+      "address": "No. 31, Jalan Datuk Bahaman, Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "家里淹水，需要食物和水。",
+      "note": "brother, different street, same shop phone"
+    },
+    {
+      "id": "R102",
+      "family": "F33",
+      "household": "H073",
+      "village_code": "PHG-TML-01",
+      "language": "zh",
+      "submitter_name": "Lau Ah Moi",
+      "phone": "",
+      "address": "No. 10, Jalan Pasar Baru, Temerloh",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "家里淹水，需要食物。",
+      "note": "neighbour of A, identical text"
+    },
+    {
+      "id": "R103",
+      "family": "F34",
+      "household": "H074",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Abdul Rahman bin Che Ros",
+      "phone": "013-555 2764",
+      "address": "Lot 1142, Jln Raja Perempuan Zainab 2, Kg Kubang Kerian",
+      "latitude": 6.095701,
+      "longitude": 102.280581,
+      "damage_category": "repair",
+      "needs": [
+        "water"
+      ],
+      "description": "Lantai rumah mendap, dinding simen retak besar. Tangki air pecah.",
+      "note": "first report"
+    },
+    {
+      "id": "R104",
+      "family": "F34",
+      "household": "H074",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Abd Rahman Che Ros",
+      "phone": "0135552764",
+      "address": "Lot 1142 Jalan Raja Perempuan Zainab II, Kampung Kubang Kerian",
+      "latitude": 6.095773,
+      "longitude": 102.280527,
+      "damage_category": "repair",
+      "needs": [
+        "water"
+      ],
+      "description": "Tangki air pecah dan dinding retak. Lantai dah mendap.",
+      "note": "abbreviated name, roman numeral street"
+    },
+    {
+      "id": "R105",
+      "family": "F34",
+      "household": "H075",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Abdul Rahim bin Che Ros",
+      "phone": "",
+      "address": "Lot 1143, Jln Raja Perempuan Zainab 2, Kg Kubang Kerian",
+      "latitude": 6.095611,
+      "longitude": 102.280807,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Dinding retak, lantai mendap.",
+      "note": "brother next door"
+    },
+    {
+      "id": "R106",
+      "family": "F35",
+      "household": "H076",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Nurul Aina binti Zakaria",
+      "phone": "014-555 2010",
+      "address": "No. 5, Lorong Kubang Kerian 4",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Perlukan makanan, rumah masuk air.",
+      "note": "Nurul A"
+    },
+    {
+      "id": "R107",
+      "family": "F35",
+      "household": "H077",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Nurul Ain binti Zakaria",
+      "phone": "019-555 3310",
+      "address": "No. 15, Lorong Kubang Kerian 4",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah masuk air, perlukan makanan.",
+      "note": "one-letter name diff, same lorong"
+    },
+    {
+      "id": "R108",
+      "family": "F35",
+      "household": "H078",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Nur Ain binti Zakaria",
+      "phone": "",
+      "address": "No. 5, Lorong Kubang Kerian 6",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "rumah masuk air. perlu makanan dan air",
+      "note": "same number, different lorong"
+    },
+    {
+      "id": "R109",
+      "family": "F35",
+      "household": "H079",
+      "village_code": "KLT-KB-02",
+      "language": "en",
+      "submitter_name": "Nurul Aini binti Zakri",
+      "phone": "012-555 4401",
+      "address": "No. 7, Lorong Kubang Kerian 4",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "House flooded, need food.",
+      "note": "similar name, English"
+    },
+    {
+      "id": "R110",
+      "family": "F36",
+      "household": "H080",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Wan Som binti Wan Ali",
+      "phone": "",
+      "address": "No. 8, Lorong Tok Guru, Kg Kubang Kerian",
+      "latitude": 6.098216,
+      "longitude": 102.278955,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "medicine",
+        "food"
+      ],
+      "description": "Saya duduk sorang. Tilam hanyut, ubat jantung basah semua. Takde makanan.",
+      "note": "elderly resident, no phone"
+    },
+    {
+      "id": "R111",
+      "family": "F36",
+      "household": "H080",
+      "village_code": "KLT-KB-02",
+      "language": "en",
+      "submitter_name": "Ahmad Syafiq bin Wan Rosli",
+      "phone": "019-555 6388",
+      "address": "8 Lorong Tok Guru, Kubang Kerian",
+      "latitude": 6.098279,
+      "longitude": 102.279018,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine",
+        "bedding"
+      ],
+      "description": "Reporting for my grandmother Wan Som (lives alone, 78 y/o). Mattress gone, heart medication soaked. Urgent.",
+      "note": "grandson files; different name/phone"
+    },
+    {
+      "id": "R112",
+      "family": "F36",
+      "household": "H081",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Wan Som binti Wan Mat",
+      "phone": "012-555 1190",
+      "address": "No. 10, Lorong Tok Guru, Kg Kubang Kerian",
+      "latitude": 6.098144,
+      "longitude": 102.279244,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Tilam dan bantal basah, perlukan yang baru.",
+      "note": "same given name next door"
+    },
+    {
+      "id": "R113",
+      "family": "F37",
+      "household": "H082",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Hassan bin Yaacob",
+      "phone": "017-555 3001",
+      "address": "Lot 610, Kg Kubang Kerian",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "banjir, rumah rosak, mohon bantuan",
+      "note": "generic A"
+    },
+    {
+      "id": "R114",
+      "family": "F37",
+      "household": "H083",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Hasni binti Yaacob",
+      "phone": "",
+      "address": "Lot 710, Kg Kubang Kerian",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "banjir, rumah rosak, mohon bantuan",
+      "note": "identical text, similar name"
+    },
+    {
+      "id": "R115",
+      "family": "F37",
+      "household": "H084",
+      "village_code": "KLT-KB-02",
+      "language": "en",
+      "submitter_name": "Roslan bin Daud",
+      "phone": "013-555 7820",
+      "address": "Lot 612, Kg Kubang Kerian",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "flood, house damaged, please help",
+      "note": "English generic, next lot to A"
+    },
+    {
+      "id": "R116",
+      "family": "F38",
+      "household": "H085",
+      "village_code": "KLT-KB-02",
+      "language": "ms-en",
+      "submitter_name": "Farah Nadia binti Azmi",
+      "phone": "011-5558 2094",
+      "address": "No. 3A, Lorong Kubang Kerian 7",
+      "latitude": 6.097048,
+      "longitude": 102.283111,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Ceiling runtuh sebab air naik sampai atas. Wiring rosak semua, TNB dah potong supply. Need electrician urgently.",
+      "note": "code-switched"
+    },
+    {
+      "id": "R117",
+      "family": "F38",
+      "household": "H085",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Farah Nadia Azmi",
+      "phone": "01155582094",
+      "address": "3A Lrg Kubang Kerian 7",
+      "latitude": 6.097102,
+      "longitude": 102.283165,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Siling runtuh, pendawaian elektrik rosak. Bekalan elektrik dah dipotong. Perlu juruelektrik.",
+      "note": "standard Malay"
+    },
+    {
+      "id": "R118",
+      "family": "F38",
+      "household": "H086",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Farah Nadiah binti Azman",
+      "phone": "",
+      "address": "No. 3B, Lorong Kubang Kerian 7",
+      "latitude": 6.097004,
+      "longitude": 102.283382,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Siling rumah runtuh, wayar elektrik rosak.",
+      "note": "semi-detached twin unit"
+    },
+    {
+      "id": "R119",
+      "family": "F39",
+      "household": "H087",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Hamzah bin Omar",
+      "phone": "",
+      "address": "",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "rumah penuh lumpur tolong",
+      "note": "terse, no phone/address"
+    },
+    {
+      "id": "R120",
+      "family": "F39",
+      "household": "H087",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Hamzah Omar",
+      "phone": "012-555 7733",
+      "address": "Lot 402, Lorong Kubang Kerian 2",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "water"
+      ],
+      "description": "Lumpur setebal 40 cm dalam rumah dan bilik. Saya dan isteri warga emas tidak mampu cuci sendiri. Air paip pun belum pulih.",
+      "note": "detailed"
+    },
+    {
+      "id": "R121",
+      "family": "F39",
+      "household": "H088",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Hamzah bin Osman",
+      "phone": "",
+      "address": "Lot 404, Lorong Kubang Kerian 2",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumah penuh lumpur, perlu tolong cuci.",
+      "note": "similar name next lot; generic text like terse report"
+    },
+    {
+      "id": "R122",
+      "family": "F40",
+      "household": "H089",
+      "village_code": "KLT-KK-01",
+      "language": "ms-dialect",
+      "submitter_name": "Deraman bin Mamat",
+      "phone": "",
+      "address": "Kg Manek Urai Lama",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [],
+      "description": "Kebung getah ngan pisang ambo habih tumbang. Lembu seekor hanyut.",
+      "note": "dialect, village-only address"
+    },
+    {
+      "id": "R123",
+      "family": "F40",
+      "household": "H089",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Deraman Mamat",
+      "phone": "014-555 0917",
+      "address": "Lot 72, Kg Manek Urai Lama, Kuala Krai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [
+        "food"
+      ],
+      "description": "Kebun getah dan pisang musnah, pokok tumbang. Seekor lembu dihanyutkan arus. Perlukan bantuan pertanian.",
+      "note": "standard Malay, detailed"
+    },
+    {
+      "id": "R124",
+      "family": "F40",
+      "household": "H090",
+      "village_code": "KLT-KK-01",
+      "language": "ms-dialect",
+      "submitter_name": "Deraman bin Daud",
+      "phone": "",
+      "address": "Kg Manek Urai Lama",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "agriculture",
+      "needs": [],
+      "description": "Kebung pisang ambo rosak habih.",
+      "note": "same first name, village-only address"
+    },
+    {
+      "id": "R125",
+      "family": "F41",
+      "household": "H091",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Rohaya binti Ismail",
+      "phone": "019-555 3345",
+      "address": "Lot 205, Kg Manek Urai Baru",
+      "latitude": 5.470355,
+      "longitude": 102.18673,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "clothing"
+      ],
+      "description": "Rumah hanyut sepenuhnya. Kami 6 beranak tiada tempat tinggal, perlukan makanan dan pakaian.",
+      "note": "first report"
+    },
+    {
+      "id": "R126",
+      "family": "F41",
+      "household": "H091",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Rohaya Ismail",
+      "phone": "019-5553345",
+      "address": "Lot 205 Kg Manik Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "clothing",
+        "food"
+      ],
+      "description": "rumah hanyut. 6 org anak beranak xda baju, xda makanan",
+      "note": "SMS-style; Manik typo"
+    },
+    {
+      "id": "R127",
+      "family": "F41",
+      "household": "H091",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Rohaya bt Ismail",
+      "phone": "",
+      "address": "Lot 250, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah kami dah hanyut. Perlu makanan.",
+      "note": "lot number mistyped (250), bt abbreviation"
+    },
+    {
+      "id": "R128",
+      "family": "F41",
+      "household": "H092",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Rohani binti Ismail",
+      "phone": "012-555 4418",
+      "address": "Lot 207, Kg Manek Urai Baru",
+      "latitude": 5.470176,
+      "longitude": 102.186955,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "clothing"
+      ],
+      "description": "Rumah rosak teruk, perlukan makanan dan pakaian.",
+      "note": "neighbour, similar name"
+    },
+    {
+      "id": "R129",
+      "family": "F42",
+      "household": "H093",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Ibrahim bin Yusof",
+      "phone": "013-555 6012",
+      "address": "Lot 11, Kg Manek Urai Lama",
+      "latitude": 5.474038,
+      "longitude": 102.195935,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumah kayu tepi sungai senget, tiang reput.",
+      "note": "river house A"
+    },
+    {
+      "id": "R130",
+      "family": "F42",
+      "household": "H094",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Kalsom binti Hussin",
+      "phone": "",
+      "address": "Lot 12, Kg Manek Urai Lama",
+      "latitude": 5.474218,
+      "longitude": 102.196296,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumah kayu senget, tiang dah reput kena arus.",
+      "note": "~45 m away"
+    },
+    {
+      "id": "R131",
+      "family": "F42",
+      "household": "H095",
+      "village_code": "KLT-KK-01",
+      "language": "ms-dialect",
+      "submitter_name": "Yusoff bin Awang",
+      "phone": "017-555 2098",
+      "address": "Lot 14, Kg Manek Urai Lama",
+      "latitude": 5.474308,
+      "longitude": 102.196927,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumoh senget, tiang reput.",
+      "note": "~115 m from A"
+    },
+    {
+      "id": "R132",
+      "family": "F43",
+      "household": "H096",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Sulaiman bin Hussin",
+      "phone": "017-555 4120",
+      "address": "Lot 18, Kg Manek Urai Lama",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah kayu senget, tiang reput kena arus. Tak selamat duduk.",
+      "note": "home-village report"
+    },
+    {
+      "id": "R133",
+      "family": "F43",
+      "household": "H096",
+      "village_code": "KLT-KB-02",
+      "language": "en",
+      "submitter_name": "Sulaiman Hussin",
+      "phone": "0175554120",
+      "address": "staying with son at No. 22, Jalan Kubang Kerian 3 (house at Manek Urai)",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "My house in Manek Urai is tilted, pillars rotten from current. Not safe. Staying with my son now in Kubang Kerian.",
+      "note": "re-filed under host village code"
+    },
+    {
+      "id": "R134",
+      "family": "F43",
+      "household": "H097",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Sulaiman bin Hussain",
+      "phone": "012-555 8027",
+      "address": "No. 24, Jalan Kubang Kerian 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Tiang rumah reput, dinding senget sikit.",
+      "note": "near-identical name next to son's house in host village"
+    },
+    {
+      "id": "R135",
+      "family": "F44",
+      "household": "H098",
+      "village_code": "KLT-KK-01",
+      "language": "en",
+      "submitter_name": "Norazizah binti Hamid",
+      "phone": "014-555 6721",
+      "address": "Lot 90, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "hygiene",
+        "clothing"
+      ],
+      "description": "Family of 8 incl. 2 elderly. Need food, water, clothes and hygiene kits.",
+      "note": "English report"
+    },
+    {
+      "id": "R136",
+      "family": "F44",
+      "household": "H098",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Norazizah Hamid",
+      "phone": "",
+      "address": "Lot 90 Kampung Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "clothing"
+      ],
+      "description": "Keluarga 8 orang termasuk 2 warga emas. Perlukan makanan dan pakaian.",
+      "note": "Malay report, subset of needs"
+    },
+    {
+      "id": "R137",
+      "family": "F44",
+      "household": "H099",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Norazizah binti Hamzah",
+      "phone": "019-555 6207",
+      "address": "Lot 92, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "clothing"
+      ],
+      "description": "Keluarga besar, perlukan makanan dan pakaian.",
+      "note": "similar name, next lot, similar needs"
+    },
+    {
+      "id": "R138",
+      "family": "F45",
+      "household": "H100",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Esah binti Mat",
+      "phone": "019-555 0808",
+      "address": "Lot 40, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "bedding"
+      ],
+      "description": "Tilam basah, makanan habis.",
+      "note": "form filled via ketua kampung's phone"
+    },
+    {
+      "id": "R139",
+      "family": "F45",
+      "household": "H101",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Limah binti Deris",
+      "phone": "019-555 0808",
+      "address": "Lot 51, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Makanan habis, rumah masuk air.",
+      "note": "same ketua kampung phone"
+    },
+    {
+      "id": "R140",
+      "family": "F45",
+      "household": "H102",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Mamat bin Sulong",
+      "phone": "60195550808",
+      "address": "Lot 77, Kg Manek Urai Baru",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "bedding"
+      ],
+      "description": "Tilam rosak dan tiada makanan.",
+      "note": "same phone in 60 format"
+    },
+    {
+      "id": "R141",
+      "family": "F46",
+      "household": "H103",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Che Pah binti Said",
+      "phone": "",
+      "address": "Lot 301, Kg Manek Urai Lama",
+      "latitude": 5.477182,
+      "longitude": 102.189979,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "medicine"
+      ],
+      "description": "Saya ada asma, inhaler hilang dalam banjir. Makanan pun habis.",
+      "note": "standard Malay"
+    },
+    {
+      "id": "R142",
+      "family": "F46",
+      "household": "H103",
+      "village_code": "KLT-KK-01",
+      "language": "ms-dialect",
+      "submitter_name": "Che Pah Said",
+      "phone": "014-555 3308",
+      "address": "Lot 301 Kg Manek Urai",
+      "latitude": 5.477299,
+      "longitude": 102.190114,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine"
+      ],
+      "description": "Ambo sesak nafah, ubat sedut hilang kena ae bah. Nok mintak ubat.",
+      "note": "dialect, shortened village name"
+    },
+    {
+      "id": "R143",
+      "family": "F46",
+      "household": "H104",
+      "village_code": "KLT-KK-01",
+      "language": "ms",
+      "submitter_name": "Che Pah binti Omar",
+      "phone": "013-555 7461",
+      "address": "Lot 305, Kg Manek Urai Lama",
+      "latitude": 5.477542,
+      "longitude": 102.1907,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine"
+      ],
+      "description": "Ubat darah tinggi hanyut, perlukan ubat.",
+      "note": "same given name, ~90 m"
+    },
+    {
+      "id": "R144",
+      "family": "F47",
+      "household": "H105",
+      "village_code": "TRG-KM-01",
+      "language": "zh",
+      "submitter_name": "Lee Kah Hoe",
+      "phone": "012-555 3908",
+      "address": "No. 15, Jalan Sulaimani, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "房子后面的厨房塌了，屋顶的锌板被风吹走，需要材料修理。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R145",
+      "family": "F47",
+      "household": "H105",
+      "village_code": "TRG-KM-01",
+      "language": "en",
+      "submitter_name": "Lee Kah Hoe",
+      "phone": "+60 12-555 3908",
+      "address": "15 Jln Sulaimani, Chukai, Kemaman",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Back kitchen collapsed and zinc roof sheets blown off. Need materials for repair.",
+      "note": "English report"
+    },
+    {
+      "id": "R146",
+      "family": "F47",
+      "household": "H106",
+      "village_code": "TRG-KM-01",
+      "language": "zh",
+      "submitter_name": "Lee Kah Ho",
+      "phone": "",
+      "address": "No. 17, Jalan Sulaimani, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "厨房屋顶坏了，需要修理。",
+      "note": "next door, near-identical name"
+    },
+    {
+      "id": "R147",
+      "family": "F48",
+      "household": "H107",
+      "village_code": "TRG-KM-01",
+      "language": "en",
+      "submitter_name": "Kavitha a/p Selvaraj",
+      "phone": "011-5552 7781",
+      "address": "No. 4, Jalan Kuil Sri Maha Mariamman, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies",
+        "food",
+        "clothing"
+      ],
+      "description": "Newborn baby 2 months. Need diapers, formula milk and baby clothes. All stock wet.",
+      "note": "English report"
+    },
+    {
+      "id": "R148",
+      "family": "F48",
+      "household": "H107",
+      "village_code": "TRG-KM-01",
+      "language": "ta",
+      "submitter_name": "Kavitha Selvaraj",
+      "phone": "01155527781",
+      "address": "4 Jln Kuil, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies"
+      ],
+      "description": "இரண்டு மாத குழந்தை உள்ளது. டயப்பர், பால் மாவு, குழந்தை துணிகள் தேவை. எல்லாம் நனைந்துவிட்டன.",
+      "note": "Tamil report; shortened street name"
+    },
+    {
+      "id": "R149",
+      "family": "F48",
+      "household": "H108",
+      "village_code": "TRG-KM-01",
+      "language": "ta",
+      "submitter_name": "Kavitha a/p Murugan",
+      "phone": "016-555 0023",
+      "address": "No. 6, Jalan Kuil Sri Maha Mariamman, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "baby_supplies"
+      ],
+      "description": "குழந்தைக்கு பால் மாவும் டயப்பரும் தேவை.",
+      "note": "same given name, same need, next house"
+    },
+    {
+      "id": "R150",
+      "family": "F49",
+      "household": "H109",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Zulkarnain bin Abu Bakar",
+      "phone": "013-555 7811",
+      "address": "Lot 66, Kg Geliga, Kemaman",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "water"
+      ],
+      "description": "Rumah penuh lumpur, perigi tercemar.",
+      "note": "home-village report"
+    },
+    {
+      "id": "R151",
+      "family": "F49",
+      "household": "H109",
+      "village_code": "PHG-KTN-02",
+      "language": "ms-en",
+      "submitter_name": "Zulkarnain Abu Bakar",
+      "phone": "",
+      "address": "Kg Geliga Kemaman (tumpang rumah kakak di Semambu)",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumah kat Geliga full lumpur, perigi pun contaminated. Sekarang tumpang rumah kakak kat Semambu.",
+      "note": "filed under host village code, no phone"
+    },
+    {
+      "id": "R152",
+      "family": "F50",
+      "household": "H110",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Hamidah binti Yusof",
+      "phone": "017-555 6630",
+      "address": "No. 22, Jalan Air Putih 5, Chukai",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur dalam rumah, perlu bantuan cuci.",
+      "note": "sister"
+    },
+    {
+      "id": "R153",
+      "family": "F50",
+      "household": "H111",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Hamidi bin Yusof",
+      "phone": "017-555 6630",
+      "address": "Lot 9, Lorong 2, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Rumah berlumpur, perlukan bantuan cuci dan sabun.",
+      "note": "brother, same phone, other street"
+    },
+    {
+      "id": "R154",
+      "family": "F51",
+      "household": "H112",
+      "village_code": "TRG-KM-01",
+      "language": "ms-dialect",
+      "submitter_name": "Awang bin Jusoh",
+      "phone": "013-555 4299",
+      "address": "Lot 140, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumoh penoh lumpo, lutut tinggi. Dok leh nok cuci sorang, dok larat.",
+      "note": "dialect"
+    },
+    {
+      "id": "R155",
+      "family": "F51",
+      "household": "H112",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Awang Jusoh",
+      "phone": "0135554299",
+      "address": "Lot 140 Kg Geliga, Kemaman",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Lumpur dalam rumah setinggi lutut. Saya sudah tua, tidak larat cuci seorang.",
+      "note": "standard Malay"
+    },
+    {
+      "id": "R156",
+      "family": "F51",
+      "household": "H113",
+      "village_code": "TRG-KM-01",
+      "language": "ms-dialect",
+      "submitter_name": "Awang bin Muda",
+      "phone": "",
+      "address": "Lot 142, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Rumoh penoh lumpo.",
+      "note": "same first name, next lot"
+    },
+    {
+      "id": "R157",
+      "family": "F52",
+      "household": "H114",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Salmah binti Idris",
+      "phone": "",
+      "address": "No. 7, Jalan Air Putih 3, Chukai",
+      "latitude": 4.231022,
+      "longitude": 103.419459,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Dinding bilik air runtuh dan tandas tersumbat lumpur.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R158",
+      "family": "F52",
+      "household": "H114",
+      "village_code": "TRG-KM-01",
+      "language": "en",
+      "submitter_name": "Salmah Idris",
+      "phone": "019-555 8420",
+      "address": "7 Jalan Air Putih 3",
+      "latitude": 4.231201,
+      "longitude": 103.419684,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Bathroom wall collapsed and toilet blocked with mud.",
+      "note": "English report; pin offset"
+    },
+    {
+      "id": "R159",
+      "family": "F52",
+      "household": "H115",
+      "village_code": "TRG-KM-01",
+      "language": "en",
+      "submitter_name": "Salmiah binti Idris",
+      "phone": "013-555 0440",
+      "address": "No. 12, Jalan Air Putih 3, Chukai",
+      "latitude": 4.230977,
+      "longitude": 103.420045,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Toilet blocked with mud, bathroom damaged.",
+      "note": "similar name, ~70 m"
+    },
+    {
+      "id": "R160",
+      "family": "F53",
+      "household": "H116",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Mohd Nor bin Ali",
+      "phone": "012-555 8801",
+      "address": "Lot 210, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "rumah banjir, perlu bantuan makanan",
+      "note": "generic A"
+    },
+    {
+      "id": "R161",
+      "family": "F53",
+      "household": "H117",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Mohd Noor bin Ali",
+      "phone": "",
+      "address": "Lot 21, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "rumah banjir, perlu bantuan makanan",
+      "note": "near-identical name and identical text"
+    },
+    {
+      "id": "R162",
+      "family": "F53",
+      "household": "H118",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Norma binti Ali",
+      "phone": "014-555 2276",
+      "address": "Lot 211, Kg Geliga",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah banjir perlu bantuan makanan",
+      "note": "next lot to A"
+    },
+    {
+      "id": "R163",
+      "family": "F54",
+      "household": "H119",
+      "village_code": "PHG-KTN-02",
+      "language": "en",
+      "submitter_name": "Mohd Hafiz bin Kamaruddin",
+      "phone": "018-555 2051",
+      "address": "",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "Lost my fishing boat engine in the flood, it's my only income. Need help to replace or any aid for fishermen.",
+      "note": "English, no address"
+    },
+    {
+      "id": "R164",
+      "family": "F54",
+      "household": "H119",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Hafiz Kamaruddin",
+      "phone": "0185552051",
+      "address": "No. 31, Jalan Semambu Baru 2",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "Enjin bot hilang dibawa arus. Itu sumber pendapatan saya. Mohon bantuan nelayan.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R165",
+      "family": "F54",
+      "household": "H120",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Mohd Hafiz bin Kamarudin",
+      "phone": "012-555 9204",
+      "address": "No. 58, Jalan Semambu Baru 6",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumah rosak, dinding retak.",
+      "note": "near-identical name, different house and need"
+    },
+    {
+      "id": "R166",
+      "family": "F55",
+      "household": "H121",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Goh Siew Peng",
+      "phone": "012-555 8034",
+      "address": "No. 27, Jalan Semambu Indah 3, Taman Semambu Indah",
+      "latitude": 3.854398,
+      "longitude": 103.30593,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "hygiene"
+      ],
+      "description": "Rumah dan kedai runcit penuh lumpur. Perlukan bantuan cuci dan bahan pembersih.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R167",
+      "family": "F55",
+      "household": "H121",
+      "village_code": "PHG-KTN-02",
+      "language": "zh",
+      "submitter_name": "Goh Siew Peng",
+      "phone": "0125558034",
+      "address": "27 Jln Semambu Indah 3",
+      "latitude": 3.854532,
+      "longitude": 103.306038,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "家和杂货店都是泥巴，需要人帮忙清洗，还要清洁用品。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R168",
+      "family": "F55",
+      "household": "H122",
+      "village_code": "PHG-KTN-02",
+      "language": "zh",
+      "submitter_name": "Goh Swee Peng",
+      "phone": "016-555 3021",
+      "address": "No. 29, Jalan Semambu Indah 3, Taman Semambu Indah",
+      "latitude": 3.854577,
+      "longitude": 103.306245,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "店里都是泥，需要清理。",
+      "note": "next shop, similar name"
+    },
+    {
+      "id": "R169",
+      "family": "F56",
+      "household": "H123",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Kamal bin Harun",
+      "phone": "019-555 6620",
+      "address": "No. 5, Jalan Seri Semambu 1, Taman Seri Semambu",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Pintu dan tingkap rosak kena arus.",
+      "note": "Taman Seri Semambu"
+    },
+    {
+      "id": "R170",
+      "family": "F56",
+      "household": "H124",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Kamaliah binti Harun",
+      "phone": "",
+      "address": "No. 5, Jalan Seri Semambu 1, Taman Semambu Utama",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Tingkap dan pintu rosak.",
+      "note": "same street/number, different taman"
+    },
+    {
+      "id": "R171",
+      "family": "F57",
+      "household": "H125",
+      "village_code": "PHG-KTN-02",
+      "language": "zh",
+      "submitter_name": "Yap Mun Kit",
+      "phone": "016-555 4312",
+      "address": "No. 50, Jalan Semambu Indah 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "身份证和房屋文件都泡水了，字都看不清楚，需要补办。",
+      "note": "Chinese detailed"
+    },
+    {
+      "id": "R172",
+      "family": "F57",
+      "household": "H125",
+      "village_code": "PHG-KTN-02",
+      "language": "en",
+      "submitter_name": "Yap Mun Kit",
+      "phone": "60165554312",
+      "address": "50 Jln Semambu Indah 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "IC and documents wet, need to replace.",
+      "note": "English terse"
+    },
+    {
+      "id": "R173",
+      "family": "F57",
+      "household": "H126",
+      "village_code": "PHG-KTN-02",
+      "language": "en",
+      "submitter_name": "Yap Mun Keat",
+      "phone": "",
+      "address": "No. 52, Jalan Semambu Indah 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "other",
+      "needs": [],
+      "description": "IC wet and damaged, need replacement.",
+      "note": "near-identical name next door, same terse need"
+    },
+    {
+      "id": "R174",
+      "family": "F58",
+      "household": "H127",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Mariappan a/l Velu",
+      "phone": "017-555 2266",
+      "address": "No. 14, Jalan Semambu Baru 8",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "Lori saya tenggelam, tak boleh kerja. Makanan dan air minum dah habis.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R175",
+      "family": "F58",
+      "household": "H127",
+      "village_code": "PHG-KTN-02",
+      "language": "ta",
+      "submitter_name": "Mariappan Velu",
+      "phone": "",
+      "address": "14 Jln Semambu Baru 8",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "என் லாரி வெள்ளத்தில் மூழ்கியது, வேலைக்குப் போக முடியவில்லை. உணவும் குடிநீரும் தீர்ந்துவிட்டன.",
+      "note": "Tamil report, no phone"
+    },
+    {
+      "id": "R176",
+      "family": "F58",
+      "household": "H127",
+      "village_code": "PHG-KTN-02",
+      "language": "ta",
+      "submitter_name": "Valli a/p Kannan",
+      "phone": "016-555 2267",
+      "address": "No. 14, Jalan Semambu Baru 8",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "baby_supplies"
+      ],
+      "description": "என் கணவர் மாரியப்பனின் லாரி மூழ்கியது. வீட்டில் உணவு, குடிநீர், குழந்தைக்குப் பால் மாவு இல்லை.",
+      "note": "wife files third report; different name/phone"
+    },
+    {
+      "id": "R177",
+      "family": "F59",
+      "household": "H128",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Norliza binti Jaafar",
+      "phone": "019-555 1287",
+      "address": "No. 40, Jalan Semambu Baru 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "clothing"
+      ],
+      "description": "Tilam, bantal dan baju anak-anak semua rosak. Perlukan tilam untuk 5 orang.",
+      "note": "first report"
+    },
+    {
+      "id": "R178",
+      "family": "F59",
+      "household": "H128",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Norliza Jaafar",
+      "phone": "011-5550 6632",
+      "address": "40 Jln Semambu Baru 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Guna nombor baru sebab telefon lama rosak kena air. Masih perlukan tilam untuk 5 orang.",
+      "note": "new phone number"
+    },
+    {
+      "id": "R179",
+      "family": "F59",
+      "household": "H129",
+      "village_code": "PHG-KTN-02",
+      "language": "ms",
+      "submitter_name": "Norliza binti Jaffar",
+      "phone": "013-555 0482",
+      "address": "No. 42, Jalan Semambu Baru 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "Tilam rosak, perlukan tilam baru.",
+      "note": "Jaffar vs Jaafar, next door"
+    },
+    {
+      "id": "R180",
+      "family": "F60",
+      "household": "H130",
+      "village_code": "PHG-MTK-01",
+      "language": "en",
+      "submitter_name": "Chan Wai Ming",
+      "phone": "017-555 6690",
+      "address": "No. 12, Jalan Mentakab Jaya 5, Taman Mentakab Jaya",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water",
+        "medicine"
+      ],
+      "description": "Elderly parents both above 80. Need food, drinking water and father's blood pressure medicine.",
+      "note": "English report"
+    },
+    {
+      "id": "R181",
+      "family": "F60",
+      "household": "H130",
+      "village_code": "PHG-MTK-01",
+      "language": "zh",
+      "submitter_name": "Chan Wai Ming",
+      "phone": "",
+      "address": "12 Jln Mentakab Jaya 5",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "medicine",
+        "food"
+      ],
+      "description": "父母都八十多岁了，需要食物、饮用水，还有爸爸的高血压药。",
+      "note": "Chinese report, no phone"
+    },
+    {
+      "id": "R182",
+      "family": "F60",
+      "household": "H131",
+      "village_code": "PHG-MTK-01",
+      "language": "en",
+      "submitter_name": "Chan Wai Meng",
+      "phone": "012-555 3880",
+      "address": "No. 14, Jalan Mentakab Jaya 5, Taman Mentakab Jaya",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "medicine"
+      ],
+      "description": "Need food and medicine for my mother.",
+      "note": "near-identical name next door"
+    },
+    {
+      "id": "R183",
+      "family": "F61",
+      "household": "H132",
+      "village_code": "PHG-MTK-01",
+      "language": "ms",
+      "submitter_name": "Ganesan a/l Periasamy",
+      "phone": "019-555 7703",
+      "address": "No. 9, Jalan Ladang Kerdau, Mentakab",
+      "latitude": 3.486156,
+      "longitude": 102.34674,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumah estet kayu, lantai reput dan dinding bengkok selepas banjir.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R184",
+      "family": "F61",
+      "household": "H132",
+      "village_code": "PHG-MTK-01",
+      "language": "ta",
+      "submitter_name": "Ganesan Periasamy",
+      "phone": "019 555 7703",
+      "address": "9 Jln Ladang Kerdau",
+      "latitude": 3.48621,
+      "longitude": 102.346812,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "மரத்தால் ஆன வீடு. வெள்ளத்திற்குப் பிறகு தரை அழுகிவிட்டது, சுவர் வளைந்துவிட்டது.",
+      "note": "Tamil report"
+    },
+    {
+      "id": "R185",
+      "family": "F61",
+      "household": "H133",
+      "village_code": "PHG-MTK-01",
+      "language": "ta",
+      "submitter_name": "Ganesan a/l Perumal",
+      "phone": "",
+      "address": "No. 11, Jalan Ladang Kerdau, Mentakab",
+      "latitude": 3.486066,
+      "longitude": 102.34701,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "தரை அழுகிவிட்டது.",
+      "note": "same given name, next house"
+    },
+    {
+      "id": "R186",
+      "family": "F62",
+      "household": "H134",
+      "village_code": "PHG-MTK-01",
+      "language": "ta",
+      "submitter_name": "Pushpavalli a/p Arumugam",
+      "phone": "",
+      "address": "No. 33, Lorong Kerdau 2, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "clothing"
+      ],
+      "description": "வீட்டில் இருந்த படுக்கைகளும் துணிகளும் எல்லாம் அடித்துச் செல்லப்பட்டன.",
+      "note": "grandmother, Tamil, no phone"
+    },
+    {
+      "id": "R187",
+      "family": "F62",
+      "household": "H134",
+      "village_code": "PHG-MTK-01",
+      "language": "en",
+      "submitter_name": "Vinod a/l Ravi",
+      "phone": "012-555 9345",
+      "address": "33 Lorong Kerdau 2, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "clothing",
+        "food"
+      ],
+      "description": "Reporting on behalf of my grandmother Pushpavalli. All her mattresses and clothes were washed away. She lives alone.",
+      "note": "grandson files; different name/phone"
+    },
+    {
+      "id": "R188",
+      "family": "F62",
+      "household": "H135",
+      "village_code": "PHG-MTK-01",
+      "language": "ta",
+      "submitter_name": "Pushpa a/p Arumugam",
+      "phone": "017-555 4031",
+      "address": "No. 35, Lorong Kerdau 2, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding"
+      ],
+      "description": "படுக்கை நனைந்துவிட்டது, புதியது தேவை.",
+      "note": "similar name, next house"
+    },
+    {
+      "id": "R189",
+      "family": "F63",
+      "household": "H136",
+      "village_code": "PHG-MTK-01",
+      "language": "zh",
+      "submitter_name": "Teh Ah Lian",
+      "phone": "09-555 7160",
+      "address": "No. 3, Jalan Pasar, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "家里淹水，需要食物。",
+      "note": "shop landline"
+    },
+    {
+      "id": "R190",
+      "family": "F63",
+      "household": "H137",
+      "village_code": "PHG-MTK-01",
+      "language": "zh",
+      "submitter_name": "Teh Ah Hock",
+      "phone": "09-555 7160",
+      "address": "No. 45, Jalan Temerloh, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food"
+      ],
+      "description": "家里淹水，需要食物。",
+      "note": "brother, same shop phone, identical text"
+    },
+    {
+      "id": "R191",
+      "family": "F63",
+      "household": "H138",
+      "village_code": "PHG-MTK-01",
+      "language": "zh",
+      "submitter_name": "Ong Siew Mei",
+      "phone": "",
+      "address": "No. 5, Jalan Pasar, Mentakab",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "food",
+        "water"
+      ],
+      "description": "家里淹水，需要食物和饮用水。",
+      "note": "neighbour of A"
+    },
+    {
+      "id": "R192",
+      "family": "F64",
+      "household": "H139",
+      "village_code": "PHG-MTK-01",
+      "language": "ms",
+      "submitter_name": "Siti Khadijah binti Ahmad",
+      "phone": "013-555 6093",
+      "address": "No. 18, Jalan Mentakab Jaya 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "hygiene",
+        "clothing"
+      ],
+      "description": "Pakaian dan barang mandian habis rosak.",
+      "note": "Khadijah A"
+    },
+    {
+      "id": "R193",
+      "family": "F64",
+      "household": "H140",
+      "village_code": "PHG-MTK-01",
+      "language": "ms",
+      "submitter_name": "Siti Khadijah binti Ahmad",
+      "phone": "019-555 2250",
+      "address": "No. 41, Jalan Mentakab Jaya 7",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "clothing",
+        "hygiene"
+      ],
+      "description": "Barang mandian dan pakaian rosak kena banjir.",
+      "note": "exact same name, different house/phone"
+    },
+    {
+      "id": "R194",
+      "family": "F64",
+      "household": "H141",
+      "village_code": "PHG-MTK-01",
+      "language": "ms",
+      "submitter_name": "Siti Khadijah binti Hamid",
+      "phone": "",
+      "address": "No. 20, Jalan Mentakab Jaya 3",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "clothing"
+      ],
+      "description": "Baju semua basah dan rosak.",
+      "note": "similar name, two doors from A"
+    },
+    {
+      "id": "R195",
+      "family": "F65",
+      "household": "H142",
+      "village_code": "PHG-MTK-01",
+      "language": "ms",
+      "submitter_name": "Azman bin Salleh",
+      "phone": "012-555 6041",
+      "address": "No. 25, Jalan Mentakab Jaya 2",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Pintu dan tingkap rosak, almari dapur hancur.",
+      "note": "first report"
+    },
+    {
+      "id": "R196",
+      "family": "F65",
+      "household": "H142",
+      "village_code": "PHG-MTK-01",
+      "language": "en",
+      "submitter_name": "Azman Salleh",
+      "phone": "+60125556041",
+      "address": "25 Jln Mentakab Jaya 2, Tmn Mentakab Jaya",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Doors and windows damaged, kitchen cabinet destroyed.",
+      "note": "English report, +60 unspaced"
+    },
+    {
+      "id": "R197",
+      "family": "F65",
+      "household": "H142",
+      "village_code": "PHG-MTK-01",
+      "language": "ms-en",
+      "submitter_name": "Azman Salleh",
+      "phone": "012-5556041",
+      "address": "No 25 Jalan Mentakab Jaya 2",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Follow up: pintu dengan tingkap rosak lagi, kitchen cabinet hancur. Belum ada officer datang.",
+      "note": "follow-up report, code-switched"
+    },
+    {
+      "id": "R198",
+      "family": "F66",
+      "household": "H143",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Yusri bin Mahmood",
+      "phone": "013-555 8007",
+      "address": "Lot 800, Kg Tok Uban, Pasir Mas",
+      "latitude": 6.002903,
+      "longitude": 102.150578,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Bumbung zink tercabut, dinding papan pecah kena arus. Tiang rumah dah goyang.",
+      "note": "resident"
+    },
+    {
+      "id": "R199",
+      "family": "F66",
+      "household": "H143",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Salmi binti Hashim",
+      "phone": "019-555 4118",
+      "address": "Lot 800 Kampung Tok Uban",
+      "latitude": 6.002975,
+      "longitude": 102.150651,
+      "damage_category": "repair",
+      "needs": [
+        "food"
+      ],
+      "description": "Rumah suami saya Yusri rosak, zink tercabut, tiang goyang. Kami perlukan bantuan baiki dan makanan.",
+      "note": "wife files; different name/phone"
+    },
+    {
+      "id": "R200",
+      "family": "F66",
+      "household": "H143",
+      "village_code": "KLT-PM-01",
+      "language": "ms-en",
+      "submitter_name": "Yusuf bin Mahmood",
+      "phone": "",
+      "address": "Lot 800, Tok Uban",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Rumah abang saya Yusri, roof zink tercabut, structure tak stable. Please send someone check.",
+      "note": "brother files; code-switched, no phone"
+    },
+    {
+      "id": "R201",
+      "family": "F66",
+      "household": "H144",
+      "village_code": "KLT-PM-01",
+      "language": "ms",
+      "submitter_name": "Yusri bin Mohamad",
+      "phone": "012-555 8070",
+      "address": "Lot 802, Kg Tok Uban, Pasir Mas",
+      "latitude": 6.003083,
+      "longitude": 102.15094,
+      "damage_category": "repair",
+      "needs": [],
+      "description": "Bumbung zink rosak dan dinding pecah.",
+      "note": "similar name, next lot"
+    },
+    {
+      "id": "R202",
+      "family": "F67",
+      "household": "H145",
+      "village_code": "KLT-KB-02",
+      "language": "zh",
+      "submitter_name": "Ooi Bee Lian",
+      "phone": "016-555 0611",
+      "address": "No. 6, Jalan Kubang Kerian 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "food",
+        "hygiene"
+      ],
+      "description": "床和被子都湿透了，米和食物也泡水了，需要睡具和食物，还有卫生用品。",
+      "note": "Chinese report"
+    },
+    {
+      "id": "R203",
+      "family": "F67",
+      "household": "H145",
+      "village_code": "KLT-KB-02",
+      "language": "ms",
+      "submitter_name": "Ooi Bee Lian",
+      "phone": "0165550611",
+      "address": "6 Jln Kubang Kerian 1",
+      "latitude": null,
+      "longitude": null,
+      "damage_category": "essential_items",
+      "needs": [
+        "bedding",
+        "food"
+      ],
+      "description": "Tilam dan selimut basah, beras dan makanan rosak.",
+      "note": "Malay report"
+    },
+    {
+      "id": "R204",
+      "family": "F68",
+      "household": "H146",
+      "village_code": "TRG-KM-01",
+      "language": "en",
+      "submitter_name": "Rosmawati binti Latif",
+      "phone": "014-555 3099",
+      "address": "Lot 300, Kg Geliga, Kemaman",
+      "latitude": 4.234794,
+      "longitude": 103.422432,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies",
+        "water"
+      ],
+      "description": "Kitchen and living room covered in mud, well water dirty. Need cleaning help and water.",
+      "note": "English report"
+    },
+    {
+      "id": "R205",
+      "family": "F68",
+      "household": "H146",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Rosmawati Latif",
+      "phone": "",
+      "address": "Lot 300 Kg Geliga",
+      "latitude": 4.234884,
+      "longitude": 103.42254,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Dapur dan ruang tamu penuh lumpur. Air perigi kotor.",
+      "note": "Malay report, no phone"
+    },
+    {
+      "id": "R206",
+      "family": "F68",
+      "household": "H147",
+      "village_code": "TRG-KM-01",
+      "language": "ms",
+      "submitter_name": "Rosnah binti Latif",
+      "phone": "013-555 3909",
+      "address": "Lot 302, Kg Geliga, Kemaman",
+      "latitude": 4.235019,
+      "longitude": 103.422837,
+      "damage_category": "cleanup",
+      "needs": [
+        "cleaning_supplies"
+      ],
+      "description": "Lumpur dalam dapur, air perigi kotor.",
+      "note": "similar name next lot"
+    }
+  ]
+}
