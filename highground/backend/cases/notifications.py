@@ -53,6 +53,7 @@ TO_HOUSEHOLD = {
     CaseEventLog.EventType.RELEASED,
     CaseEventLog.EventType.COMPLETION_REQUESTED,
     CaseEventLog.EventType.CLOSED,
+    CaseEventLog.EventType.DUPLICATE_CLOSED,
 }
 
 TO_OFFICERS = {
@@ -115,6 +116,7 @@ HEADLINES = {
     CaseEventLog.EventType.RELEASED: "Your case is available to response organisations again",
     CaseEventLog.EventType.COMPLETION_REQUESTED: "Please confirm whether the recovery work is complete",
     CaseEventLog.EventType.CLOSED: "Your case has been closed",
+    CaseEventLog.EventType.DUPLICATE_CLOSED: "Your request was closed as a duplicate",
     CaseEventLog.EventType.REOPENED: "A resident reported that work is incomplete",
     CaseEventLog.EventType.ESCALATED: "A case has been escalated",
 }

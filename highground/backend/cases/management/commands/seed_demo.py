@@ -325,6 +325,17 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(f"  #FRC-1042 scored {frc.score_total} by the engine ({frc.priority_band})")
         )
+        # Seeded cases skip the submission view, so run the village scan here;
+        # otherwise every demo case would stay "duplicate check pending" and
+        # no officer could verify one.
+        from cases.duplicate_services import scan_duplicate_area
+
+        flagged = 0
+        for area_id in sorted(
+            set(CaseRecord.objects.exclude(location_area=None).values_list("location_area_id", flat=True))
+        ):
+            flagged += scan_duplicate_area(area_id).created
+        self.stdout.write(self.style.SUCCESS(f"  duplicate check — {flagged} possible duplicates flagged"))
         self.stdout.write(self.style.SUCCESS(f"  events — {CaseEventLog.objects.count()} audit rows"))
         self.stdout.write("")
         self.stdout.write(f"  Demo logins (password: {DEMO_PASSWORD})")

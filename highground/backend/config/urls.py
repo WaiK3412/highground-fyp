@@ -33,6 +33,10 @@ urlpatterns = [
     path("api/cases/<int:pk>/tasks/", cases_api.case_tasks),
     path("api/cases/<int:pk>/complete/", cases_api.complete_case),
     path("api/cases/<int:pk>/confirm/", cases_api.confirm_case),
+    # Duplicate review, screen 12 — district officers only.
+    path("api/duplicates/", cases_api.duplicate_list),
+    path("api/duplicates/<int:pk>/", cases_api.duplicate_detail),
+    path("api/duplicates/<int:pk>/decide/", cases_api.decide_duplicate),
     path("api/tasks/", cases_api.task_board),
     path("api/tasks/<int:pk>/", cases_api.update_task),
     # Notifications are the same event-log rows, filtered by recipient (ADR-004).

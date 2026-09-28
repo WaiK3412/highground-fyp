@@ -195,7 +195,9 @@ class SubmittedStateTests(SubmissionTestCase):
 
     def test_submission_is_written_to_the_event_log(self):
         self.post()
-        event = CaseEventLog.objects.get(case=CaseRecord.objects.get())
+        event = CaseEventLog.objects.get(
+            case=CaseRecord.objects.get(), event_type=CaseEventLog.EventType.SUBMITTED
+        )
 
         self.assertEqual(event.event_type, CaseEventLog.EventType.SUBMITTED)
         self.assertEqual(event.actor_user, self.resident)
@@ -293,7 +295,9 @@ class PhotoUploadTests(SubmissionTestCase):
 
     def test_the_event_log_records_how_many_photos_came_with_it(self):
         self.post_multipart([self.photo("a.jpg"), self.photo("b.jpg")])
-        event = CaseEventLog.objects.get(case=CaseRecord.objects.get())
+        event = CaseEventLog.objects.get(
+            case=CaseRecord.objects.get(), event_type=CaseEventLog.EventType.SUBMITTED
+        )
 
         self.assertIn("2 photo(s)", event.detail)
 

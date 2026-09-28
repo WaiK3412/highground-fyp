@@ -7,7 +7,7 @@ resident nothing.
 import json
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
@@ -47,6 +47,7 @@ class CaseListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     claimed_by = serializers.CharField(source="claimed_by_org.name", default=None, read_only=True)
     days_waiting = serializers.SerializerMethodField()
+    duplicate_check = serializers.SerializerMethodField()
 
     class Meta:
         model = CaseRecord
@@ -63,6 +64,7 @@ class CaseListSerializer(serializers.ModelSerializer):
             "household_size",
             "claimed_by",
             "days_waiting",
+            "duplicate_check",
             "created_at",
         ]
 
@@ -70,6 +72,45 @@ class CaseListSerializer(serializers.ModelSerializer):
         from django.utils import timezone
 
         return (timezone.now() - obj.created_at).days
+
+    def get_duplicate_check(self, obj):
+        """Pending or completed, for the household and district staff only.
+
+        Only the state: never which case it was compared with or why. Other
+        roles get null.
+        """
+        request = self.context.get("request")
+        if request is None or not _may_see_duplicate_state(request.user, obj):
+            return None
+        from .duplicate_services import duplicate_check_state
+
+        return duplicate_check_state(obj)
+
+
+def _is_district_staff(user):
+    return user.role in {UserAccount.Role.DISASTER_OFFICER, UserAccount.Role.SYSTEM_ADMIN}
+
+
+def _may_see_duplicate_state(user, case):
+    return _is_district_staff(user) or case.submitted_by_user_id == user.id
+
+
+def _visible_events(case, user):
+    """The timeline this user may read, however the case was loaded.
+
+    Applied in the serializer, not only in case_detail's prefetch, so the
+    lifecycle actions that return a case (claim, complete, confirm...) cannot
+    leak events the detail page would hide.
+    """
+    from .duplicate_services import INTERNAL_DUPLICATE_EVENTS
+
+    events = [event for event in case.events.all() if event.notification_copy_of_id is None]
+    if not _is_district_staff(user):
+        # Duplicate review names another household's case.
+        events = [e for e in events if e.event_type not in INTERNAL_DUPLICATE_EVENTS]
+    if user.role == UserAccount.Role.COMMUNITY_MEMBER:
+        events = [e for e in events if e.event_type != CaseEventLog.EventType.SAFETY_ACKNOWLEDGED]
+    return sorted(events, key=lambda e: (e.created_at, e.pk))
 
 
 class CaseEventSerializer(serializers.Serializer):
@@ -101,6 +142,7 @@ class CaseEventSerializer(serializers.Serializer):
         CaseEventLog.EventType.COMPLETION_REQUESTED,
         CaseEventLog.EventType.CLOSED,
         CaseEventLog.EventType.REOPENED,
+        CaseEventLog.EventType.DUPLICATE_CLOSED,
     }
 
     def get_detail(self, obj):
@@ -166,10 +208,11 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 class CaseDetailSerializer(CaseListSerializer):
     score_components = ScoreComponentSerializer(many=True, read_only=True)
     photos = CasePhotoSerializer(many=True, read_only=True)
-    events = CaseEventSerializer(many=True, read_only=True)
+    events = serializers.SerializerMethodField()
     tasks = CaseTaskSummarySerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
     detail_access = serializers.SerializerMethodField()
+    duplicate_review = serializers.SerializerMethodField()
     rubric_label = serializers.CharField(source="rubric_version.label", default=None, read_only=True)
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
@@ -205,10 +248,33 @@ class CaseDetailSerializer(CaseListSerializer):
             "tasks",
             "detail_access",
             "rubric_label",
+            "duplicate_review",
         ]
 
     def get_detail_access(self, obj):
         return "full"
+
+    def get_events(self, obj):
+        user = self.context["request"].user
+        return CaseEventSerializer(_visible_events(obj, user), many=True, context=self.context).data
+
+    def get_duplicate_review(self, obj):
+        """What the verification workspace needs; officers and admins only."""
+        if not _is_district_staff(self.context["request"].user):
+            return None
+        from .duplicate_services import duplicate_check_state, duplicate_verification_block
+        from .models import DuplicateCaseMatch
+
+        block = duplicate_verification_block(obj)
+        open_ids = DuplicateCaseMatch.objects.filter(
+            Q(case_a=obj) | Q(case_b=obj), status=DuplicateCaseMatch.Status.OPEN
+        ).values_list("pk", flat=True)
+        return {
+            "check": duplicate_check_state(obj),
+            "open_match_ids": sorted(open_ids),
+            "verification_block": block[0] if block else None,
+            "duplicate_of": obj.duplicate_of_case.reference if obj.duplicate_of_case_id else None,
+        }
 
     def get_location(self, obj):
         """Coordinates go to the district office and the claiming org; everyone
@@ -396,7 +462,12 @@ class CaseListView(ListCreateAPIView):
         return CaseCreateSerializer if self.request.method == "POST" else CaseListSerializer
 
     def get_queryset(self):
-        return _queue_queryset(self.request)
+        from .duplicate_services import latest_check_event_subquery
+
+        # One subquery instead of a check-state query per row.
+        return _queue_queryset(self.request).annotate(
+            latest_duplicate_check=latest_check_event_subquery()
+        )
 
     def create(self, request, *args, **kwargs):
         """Create a case from a household's submission (FR3).
@@ -442,6 +513,14 @@ class CaseListView(ListCreateAPIView):
                 created_at=timezone.now(),
             )
 
+        # After the commit, in its own transaction: a detection failure rolls
+        # back only its own writes and leaves the case "check pending", which
+        # blocks verification until scan_duplicates succeeds. The household's
+        # request itself is never lost to it.
+        from .duplicate_services import run_detection_after_submission
+
+        run_detection_after_submission(case)
+
         # Outside the transaction: sending mail is slow and can fail, and a
         # failed nudge must not roll back a submitted case.
         from .notifications import notify
@@ -454,7 +533,7 @@ class CaseListView(ListCreateAPIView):
             f"household of {case.household_size}.",
         )
 
-        return Response(CaseListSerializer(case).data, status=201)
+        return Response(CaseListSerializer(case, context={"request": request}).data, status=201)
 
 
 
@@ -1295,6 +1374,16 @@ def verify_case(request, pk):
                 {"detail": "A claimed case cannot be re-verified."}, status=409
             )
 
+        # Duplicate review comes before verification (report §3.7.8): a
+        # possible duplicate is resolved by an officer before it is scored and
+        # released to NGOs. Asking for information or rejecting stays open.
+        from .duplicate_services import duplicate_verification_block
+
+        block = duplicate_verification_block(case)
+        if block and (decision == "verified" or block[0] == "case_linked_duplicate"):
+            code, detail = block
+            return Response({"code": code, "detail": detail}, status=409)
+
         new_status, event_type = DECISIONS[decision]
         case.status = new_status
         case.verified_by_user = request.user
@@ -1460,5 +1549,197 @@ def rubric(request):
                 "medium": version.medium_threshold,
             },
             "criteria": criteria,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Duplicate review — screen 12 (report §3.7.8). District officers only: the
+# comparison shows two households' details side by side, so none of it goes
+# through the shared case serializers.
+# ---------------------------------------------------------------------------
+
+
+def _error(code, detail, status):
+    return Response({"code": code, "detail": detail}, status=status)
+
+
+class DuplicateCaseRefSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+
+
+class DuplicateSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    status = serializers.CharField()
+    similarity_score = serializers.DecimalField(max_digits=5, decimal_places=2)
+    classification = serializers.SerializerMethodField()
+    case_a = DuplicateCaseRefSerializer()
+    case_b = DuplicateCaseRefSerializer()
+
+    def get_classification(self, obj):
+        # Derived from the stored score with the engine's frozen thresholds,
+        # exactly as it was classified when flagged.
+        from .duplicates import classify_score
+
+        return classify_score(float(obj.similarity_score))
+
+
+class DuplicateCaseSerializer(serializers.Serializer):
+    """One side of the comparison. Officers are district staff, who may see
+    exact locations (B6), so coordinates are included when a pin exists."""
+
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    status = serializers.CharField()
+    status_display = serializers.CharField(source="get_status_display")
+    submitter_name = serializers.CharField(source="submitted_by_user.full_name")
+    submitter_phone = serializers.CharField(source="submitted_by_user.phone")
+    description = serializers.CharField()
+    address = serializers.CharField()
+    village = serializers.CharField(source="location_area.name", default=None)
+    household_size = serializers.IntegerField()
+    damage_category = serializers.CharField()
+    damage_category_display = serializers.CharField(source="get_damage_category_display")
+    needs_flags = serializers.ListField(child=serializers.CharField())
+    photo_count = serializers.SerializerMethodField()
+    latitude = serializers.SerializerMethodField()
+    longitude = serializers.SerializerMethodField()
+
+    def get_photo_count(self, obj):
+        return obj.photos.count()
+
+    def get_latitude(self, obj):
+        return str(obj.latitude) if obj.latitude is not None else None
+
+    def get_longitude(self, obj):
+        return str(obj.longitude) if obj.longitude is not None else None
+
+
+class DuplicateDecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=["confirm", "dismiss"])
+
+
+def _decided_by(match):
+    return match.decided_by_user.full_name if match.decided_by_user_id else None
+
+
+@api_view(["GET"])
+@permission_classes([IsDisasterOfficer])
+def duplicate_list(request):
+    """Flags for review, highest evidence first; ?status= defaults to open."""
+    from rest_framework.pagination import PageNumberPagination
+
+    from .models import DuplicateCaseMatch
+
+    status_filter = request.query_params.get("status", DuplicateCaseMatch.Status.OPEN)
+    if status_filter not in DuplicateCaseMatch.Status.values:
+        return _error(
+            "invalid_status",
+            f"status must be one of {', '.join(DuplicateCaseMatch.Status.values)}.",
+            400,
+        )
+    queryset = (
+        DuplicateCaseMatch.objects.filter(status=status_filter)
+        .select_related("case_a", "case_b")
+        .order_by("-similarity_score", "pk")
+    )
+    paginator = PageNumberPagination()
+    page = paginator.paginate_queryset(queryset, request)
+    return paginator.get_paginated_response(DuplicateSummarySerializer(page, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsDisasterOfficer])
+def duplicate_detail(request, pk):
+    """Side-by-side comparison, stored evidence and current evidence kept apart."""
+    import logging
+
+    from .duplicate_services import (
+        confirm_block_reason,
+        current_duplicate_comparison,
+        duplicate_verification_block,
+    )
+    from .models import DuplicateCaseMatch
+
+    match = (
+        DuplicateCaseMatch.objects.select_related(
+            "case_a__submitted_by_user", "case_a__location_area",
+            "case_b__submitted_by_user", "case_b__location_area",
+            "decided_by_user",
+        )
+        .filter(pk=pk)
+        .first()
+    )
+    if match is None:
+        return _error("not_found", "Not found.", 404)
+
+    try:
+        comparison = current_duplicate_comparison(match)
+    except Exception as exc:  # noqa: BLE001 — never leak household text in an error
+        logging.getLogger(__name__).warning(
+            "Current duplicate comparison failed for match id=%s (%s).", match.pk, type(exc).__name__
+        )
+        return _error("comparison_unavailable", "The comparison could not be computed right now.", 503)
+
+    block = confirm_block_reason(match)
+    data = DuplicateSummarySerializer(match).data
+    data.update(
+        {
+            "case_a": DuplicateCaseSerializer(match.case_a).data,
+            "case_b": DuplicateCaseSerializer(match.case_b).data,
+            "current_comparison": comparison,
+            "can_confirm": block is None,
+            "confirm_block_reason": block[0] if block else None,
+            "verification_blocked": duplicate_verification_block(match.case_b) is not None,
+            "decided_by": _decided_by(match),
+            "decided_at": match.decided_at,
+        }
+    )
+    return Response(data)
+
+
+@api_view(["POST"])
+@permission_classes([IsDisasterOfficer])
+def decide_duplicate(request, pk):
+    """Confirm (close the newer case as a duplicate) or dismiss a flag."""
+    from .duplicate_services import DuplicateConflict, decide_duplicate_match
+
+    serializer = DuplicateDecisionSerializer(data=request.data)
+    if not serializer.is_valid():
+        return _error("invalid_decision", "decision must be confirm or dismiss.", 400)
+    decision = serializer.validated_data["decision"]
+
+    try:
+        outcome = decide_duplicate_match(pk, request.user, decision)
+    except DuplicateConflict as conflict:
+        return _error(conflict.code, conflict.detail, 409)
+    if outcome is None:
+        return _error("not_found", "Not found.", 404)
+
+    match = outcome.match
+    newer = match.case_b
+    if outcome.changed and decision == "confirm":
+        from .notifications import notify
+
+        # After the commit, once. actor=None so the household is told even in
+        # the odd case where the deciding officer filed the request themselves.
+        from .duplicate_services import DUPLICATE_CLOSED_DETAIL
+
+        notify(
+            newer, CaseEventLog.EventType.DUPLICATE_CLOSED, None,
+            DUPLICATE_CLOSED_DETAIL.format(reference=newer.reference),
+        )
+
+    return Response(
+        {
+            "id": match.pk,
+            "status": match.status,
+            "changed": outcome.changed,
+            "decided_by": _decided_by(match),
+            "decided_at": match.decided_at,
+            "newer_case": {"id": newer.pk, "reference": newer.reference, "status": newer.status},
+            "superseded_match_ids": outcome.superseded_ids,
         }
     )

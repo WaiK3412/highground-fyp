@@ -125,7 +125,16 @@ class VerifyTests(LifecycleTestCase):
     def setUp(self):
         super().setUp()
         self.case.status = CaseRecord.Status.SUBMITTED
+        # Verification now waits for a finished duplicate check, which needs a
+        # controlled village; give the case both, as a real submission would.
+        from cases.duplicate_services import detect_duplicates_for_case
+        from cases.models import LocationArea
+
+        self.case.location_area = LocationArea.objects.filter(
+            level=LocationArea.Level.VILLAGE
+        ).first()
         self.case.save()
+        detect_duplicates_for_case(self.case.pk)
 
         # Verifying now scores the case, and scoring refuses to run without a
         # published rubric — weights are read from the database, never

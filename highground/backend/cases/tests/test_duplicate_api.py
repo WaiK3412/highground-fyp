@@ -1,0 +1,335 @@
+"""Duplicate review API, verification gate and privacy (screen 12, §3.7.8).
+
+Traceability — requirements covered by this file:
+  FR14 Officers review flagged duplicates; nothing is merged automatically
+  FR20 Every endpoint has an explicit role policy, tested per role
+  NFR3 Residents see only their own case; NGOs never see comparison data
+"""
+
+from unittest import mock
+
+from django.core import mail
+from django.test import Client, TestCase
+
+from cases import duplicate_services as svc
+from cases.models import CaseEventLog, CaseRecord, DuplicateCaseMatch
+
+from .duplicate_helpers import DuplicateWorld, make_case
+
+Event = CaseEventLog.EventType
+
+
+class ApiWorld(DuplicateWorld):
+    def setUp(self):
+        self.build_world()
+        self.older, self.newer = self.older_and_newer()
+        svc.scan_duplicate_area(self.area.pk)
+        self.match = DuplicateCaseMatch.objects.get()
+        mail.outbox = []
+
+    def as_user(self, user):
+        self.client.force_login(user)
+
+    def decide(self, decision, match=None):
+        return self.client.post(
+            f"/api/duplicates/{(match or self.match).pk}/decide/",
+            {"decision": decision}, content_type="application/json",
+        )
+
+
+class PermissionTests(ApiWorld, TestCase):
+    def endpoints(self):
+        return [
+            ("get", "/api/duplicates/"),
+            ("get", f"/api/duplicates/{self.match.pk}/"),
+            ("post", f"/api/duplicates/{self.match.pk}/decide/"),
+        ]
+
+    def test_only_disaster_officers_reach_duplicate_endpoints(self):
+        # The claiming NGO is included: claiming a case gives no right to
+        # compare it with another household's.
+        self.older.claimed_by_org = self.org
+        self.older.save()
+        for user in (self.resident, self.relative, self.ngo, self.other_ngo, self.admin_user):
+            self.as_user(user)
+            for method, url in self.endpoints():
+                response = getattr(self.client, method)(url, {"decision": "dismiss"}, content_type="application/json") \
+                    if method == "post" else self.client.get(url)
+                self.assertEqual(response.status_code, 403, (user.email, url))
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.status, DuplicateCaseMatch.Status.OPEN)
+
+    def test_anonymous_callers_are_refused(self):
+        self.client.logout()
+        for method, url in self.endpoints():
+            response = getattr(self.client, method)(url)
+            self.assertIn(response.status_code, (401, 403))
+
+    def test_decision_without_csrf_token_is_refused(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.officer)
+        response = client.post(
+            f"/api/duplicates/{self.match.pk}/decide/", {"decision": "confirm"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.status, DuplicateCaseMatch.Status.OPEN)
+
+
+class ListAndDetailTests(ApiWorld, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.as_user(self.officer)
+
+    def test_list_defaults_to_open_flags_with_compact_rows(self):
+        data = self.client.get("/api/duplicates/").json()
+        self.assertEqual(data["count"], 1)
+        row = data["results"][0]
+        self.assertEqual(set(row), {"id", "status", "similarity_score", "classification", "case_a", "case_b"})
+        self.assertEqual(row["case_a"], {"id": self.older.pk, "reference": "FRC-5001"})
+        self.assertEqual(row["case_b"]["reference"], "FRC-5002")
+
+    def test_list_filters_by_status_and_rejects_unknown_ones(self):
+        self.assertEqual(self.client.get("/api/duplicates/?status=rejected").json()["count"], 0)
+        response = self.client.get("/api/duplicates/?status=bogus")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_status")
+
+    def test_detail_shows_both_cases_and_keeps_stored_and_current_evidence_apart(self):
+        data = self.client.get(f"/api/duplicates/{self.match.pk}/").json()
+        self.assertEqual(data["similarity_score"], str(self.match.similarity_score))
+        self.assertEqual(data["case_b"]["submitter_name"], "Ahmad Ismail")
+        self.assertEqual(data["case_a"]["village"], "Kampung Sireh")
+        current = data["current_comparison"]
+        self.assertEqual(current["basis"], "current_inputs_and_village_corpus")
+        self.assertEqual(current["engine_version"], "dup-1.1")
+        self.assertIn(
+            {"signal", "effect", "weight", "text"}, [set(r) for r in current["reasons"]]
+        )
+        self.assertTrue(data["can_confirm"])
+        self.assertTrue(data["verification_blocked"])
+        self.assertIsNone(data["decided_by"])
+
+    def test_viewing_never_changes_the_stored_score(self):
+        self.newer.description = "Something else entirely."
+        self.newer.save()
+        before = self.match.similarity_score
+        self.client.get(f"/api/duplicates/{self.match.pk}/")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.similarity_score, before)
+
+    def test_unknown_match_is_404(self):
+        self.assertEqual(self.client.get("/api/duplicates/999999/").status_code, 404)
+        self.assertEqual(self.decide("confirm", DuplicateCaseMatch(pk=999999)).status_code, 404)
+
+    def test_comparison_failure_is_a_sanitised_503(self):
+        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError("Lot 88 secret")):
+            with self.assertLogs("cases.api", level="WARNING") as logs:
+                response = self.client.get(f"/api/duplicates/{self.match.pk}/")
+        self.assertNotIn("Lot 88", logs.output[0])
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["code"], "comparison_unavailable")
+        self.assertNotIn("Lot 88", response.content.decode())
+
+
+class DecisionApiTests(ApiWorld, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.as_user(self.officer)
+
+    def test_confirm_returns_compact_result_and_notifies_the_newer_household_once(self):
+        response = self.decide("confirm")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "confirmed")
+        self.assertEqual(data["newer_case"], {"id": self.newer.pk, "reference": "FRC-5002", "status": "closed"})
+        self.assertEqual(data["decided_by"], "Encik Zulkifli")
+
+        notes = CaseEventLog.objects.filter(recipient_user__isnull=False, event_type=Event.DUPLICATE_CLOSED)
+        self.assertEqual(list(notes.values_list("recipient_user", flat=True)), [self.relative.pk])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("FRC-5002", mail.outbox[0].body)
+        self.assertNotIn("FRC-5001", mail.outbox[0].body)
+
+        # A retry is harmless: same answer, no second notification.
+        again = self.decide("confirm")
+        self.assertEqual(again.status_code, 200)
+        self.assertFalse(again.json()["changed"])
+        self.assertEqual(notes.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_household_is_told_even_when_the_deciding_officer_filed_the_case(self):
+        self.newer.submitted_by_user = self.officer
+        self.newer.save()
+        self.decide("confirm")
+        self.assertTrue(
+            CaseEventLog.objects.filter(recipient_user=self.officer, event_type=Event.DUPLICATE_CLOSED).exists()
+        )
+
+    def test_email_failure_keeps_the_closure_and_in_app_notification(self):
+        with mock.patch("cases.notifications.send_mail", side_effect=OSError):
+            response = self.decide("confirm")
+        self.assertEqual(response.status_code, 200)
+        self.newer.refresh_from_db()
+        self.assertEqual(self.newer.status, CaseRecord.Status.CLOSED)
+        note = CaseEventLog.objects.get(recipient_user=self.relative)
+        self.assertTrue(note.delivery_status.startswith("failed"))
+
+    def test_invalid_decision_is_400_and_conflicts_are_409(self):
+        response = self.decide("merge")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "invalid_decision")
+        self.decide("dismiss")
+        response = self.decide("confirm")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "conflicting_decision")
+
+
+class VerificationGateTests(ApiWorld, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.as_user(self.officer)
+        from cases.management.commands.seed_demo import RUBRIC_V3
+        from django.utils import timezone
+        from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
+
+        version = PriorityRubricVersion.objects.create(
+            label="v3.0", status=PriorityRubricVersion.Status.PUBLISHED, published_at=timezone.now(),
+        )
+        for key, name, weight, max_points, rule in RUBRIC_V3:
+            PriorityRubricCriterion.objects.create(
+                version=version, key=key, name=name, weight=weight, max_points=max_points, rule_text=rule,
+            )
+
+    def verify(self, case, decision="verified", note=""):
+        return self.client.post(
+            f"/api/cases/{case.pk}/verify/", {"decision": decision, "note": note},
+            content_type="application/json",
+        )
+
+    def test_open_flag_blocks_verifying_the_newer_case(self):
+        response = self.verify(self.newer)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "duplicate_review_required")
+        self.newer.refresh_from_db()
+        self.assertEqual(self.newer.status, CaseRecord.Status.SUBMITTED)
+        self.assertIsNone(self.newer.score_total)
+
+    def test_needs_info_and_reject_stay_available(self):
+        self.assertEqual(self.verify(self.newer, "needs_info", "Which lot?").status_code, 200)
+
+    def test_dismissal_unblocks_verification(self):
+        self.decide("dismiss")
+        self.assertEqual(self.verify(self.newer).status_code, 200)
+
+    def test_pending_check_blocks_verification(self):
+        fresh = make_case(self.neighbour, self.area, reference="FRC-5009", address="Lot 3")
+        response = self.verify(fresh)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "duplicate_check_pending")
+
+    def test_a_linked_duplicate_cannot_be_reopened_by_any_verification_decision(self):
+        self.decide("confirm")
+        for decision, note in (("verified", ""), ("needs_info", "x"), ("rejected", "x")):
+            response = self.verify(self.newer, decision, note)
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.json()["code"], "case_linked_duplicate")
+
+
+class SubmissionHookTests(DuplicateWorld, TestCase):
+    def setUp(self):
+        self.build_world()
+        make_case(self.resident, self.area, reference="FRC-5001", minutes_ago=120)
+        self.client.force_login(self.relative)
+
+    def submit(self):
+        return self.client.post("/api/cases/", {
+            "location_code": self.area.code,
+            "address": "Lot 88 Jln Masjid Kg Sireh",
+            "household_size": 4,
+            "damage_category": "repair",
+            "description": "Air masuk rumah paras pinggang, dapur rosak dan tilam basah.",
+            "needs_flags": ["food", "water"],
+        }, content_type="application/json")
+
+    def test_submission_runs_detection_and_reports_only_the_check_state(self):
+        response = self.submit()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["duplicate_check"], "completed")
+        self.assertNotIn("FRC-5001", response.content.decode())
+        self.assertEqual(DuplicateCaseMatch.objects.count(), 1)
+
+    def test_detection_failure_never_loses_the_submission(self):
+        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError):
+            with self.assertLogs("cases.duplicate_services", level="WARNING"):
+                response = self.submit()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["duplicate_check"], "pending")
+        case = CaseRecord.objects.get(pk=response.json()["id"])
+        self.assertTrue(CaseEventLog.objects.filter(case=case, event_type=Event.SUBMITTED).exists())
+        self.assertFalse(DuplicateCaseMatch.objects.exists())
+
+        # A later successful scan clears the pending state.
+        svc.scan_duplicate_area(self.area.pk)
+        self.assertEqual(svc.duplicate_check_state(case), "completed")
+
+
+class PrivacyTests(ApiWorld, TestCase):
+    """Comparison data must not leak through any shared channel."""
+
+    INTERNAL = {e.value for e in svc.INTERNAL_DUPLICATE_EVENTS}
+
+    def setUp(self):
+        super().setUp()
+        self.as_user(self.officer)
+        self.decide("confirm")
+
+    def timeline(self, user, case):
+        self.as_user(user)
+        return self.client.get(f"/api/cases/{case.pk}/").json()
+
+    def test_resident_sees_only_the_safe_closure_event(self):
+        data = self.timeline(self.relative, self.newer)
+        types = {event["event_type"] for event in data["events"]}
+        self.assertFalse(types & self.INTERNAL)
+        self.assertIn("duplicate_closed", types)
+        self.assertNotIn("FRC-5001", str(data))
+        self.assertIsNone(data["duplicate_review"])
+        self.assertEqual(data["duplicate_check"], "completed")
+
+    def test_other_household_cannot_see_the_closed_case_at_all(self):
+        self.as_user(self.neighbour)
+        self.assertEqual(self.client.get(f"/api/cases/{self.newer.pk}/").status_code, 404)
+
+    def test_claiming_ngo_timeline_hides_internal_duplicate_events(self):
+        self.older.status = CaseRecord.Status.CLAIMED
+        self.older.claimed_by_org = self.org
+        self.older.save()
+        data = self.timeline(self.ngo, self.older)
+        self.assertFalse({e["event_type"] for e in data["events"]} & self.INTERNAL)
+        self.assertNotIn("FRC-5002", str(data))
+        self.assertIsNone(data["duplicate_check"])
+        self.assertIsNone(data["duplicate_review"])
+
+    def test_lifecycle_responses_filter_events_too(self):
+        # claim_case returns CaseDetailSerializer without case_detail's
+        # prefetch; the serializer itself must filter.
+        self.older.status = CaseRecord.Status.VERIFIED
+        self.older.save()
+        self.as_user(self.ngo)
+        data = self.client.post(f"/api/cases/{self.older.pk}/claim/").json()
+        self.assertFalse({e["event_type"] for e in data["events"]} & self.INTERNAL)
+
+    def test_officer_sees_the_audit_trail_and_review_summary(self):
+        data = self.timeline(self.officer, self.newer)
+        self.assertIn("duplicate_confirmed", {e["event_type"] for e in data["events"]})
+        self.assertEqual(data["duplicate_review"]["duplicate_of"], "FRC-5001")
+        self.assertEqual(data["duplicate_review"]["verification_block"], "case_linked_duplicate")
+
+    def test_resident_notifications_carry_no_counterpart_details(self):
+        self.as_user(self.relative)
+        body = self.client.get("/api/notifications/").content.decode()
+        self.assertIn("FRC-5002", body)
+        self.assertNotIn("FRC-5001", body)
+        self.assertNotIn("Ahmad bin Ismail", body)

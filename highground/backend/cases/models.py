@@ -6,6 +6,7 @@ own, so the diagram and the schema can be read against each other.
 
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Greatest, Least
 
 from accounts.models import Organization
 
@@ -302,7 +303,12 @@ class DuplicateCaseMatch(models.Model):
         OPEN = "open", "Open"
         CONFIRMED = "confirmed", "Confirmed"
         REJECTED = "rejected", "Rejected"
+        # Closed by the system, not judged by an officer: another confirmation
+        # closed one of this pair's cases, so the question no longer arises.
+        SUPERSEDED = "superseded", "Superseded"
 
+    # case_a is always the older request (created_at, then pk) and case_b the
+    # newer one; only case_b can be closed as a duplicate of case_a.
     case_a = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="matches_as_a")
     case_b = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="matches_as_b")
     decided_by_user = models.ForeignKey(
@@ -318,6 +324,19 @@ class DuplicateCaseMatch(models.Model):
 
     class Meta:
         db_table = "duplicate_case_match"
+        constraints = [
+            # One record per unordered pair, whichever way round a future
+            # writer stores it, so a rescan can never re-open a decided pair.
+            models.UniqueConstraint(
+                Least("case_a", "case_b"),
+                Greatest("case_a", "case_b"),
+                name="duplicate_pair_unique",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(case_a=models.F("case_b")),
+                name="duplicate_pair_distinct_cases",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.case_a.reference} ~ {self.case_b.reference} ({self.similarity_score}%)"
@@ -350,6 +369,15 @@ class CaseEventLog(models.Model):
         PLEDGE_UPDATED = "pledge_updated", "Pledge updated"
         SCORE_OVERRIDDEN = "score_overridden", "Score overridden"
         RUBRIC_PUBLISHED = "rubric_published", "Rubric published"
+        # Duplicate detection (report §3.7.8). All but DUPLICATE_CLOSED are
+        # internal: they name the other household's case and stay with officers.
+        DUPLICATE_CHECK_PENDING = "duplicate_check_pending", "Duplicate check pending"
+        DUPLICATE_CHECK_COMPLETED = "duplicate_check_completed", "Duplicate check completed"
+        DUPLICATE_FLAGGED = "duplicate_flagged", "Possible duplicate flagged"
+        DUPLICATE_CONFIRMED = "duplicate_confirmed", "Duplicate confirmed"
+        DUPLICATE_DISMISSED = "duplicate_dismissed", "Duplicate dismissed"
+        DUPLICATE_SUPERSEDED = "duplicate_superseded", "Duplicate review superseded"
+        DUPLICATE_CLOSED = "duplicate_closed", "Closed as a duplicate"
 
     case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="events")
     task = models.ForeignKey(

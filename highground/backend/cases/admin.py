@@ -93,6 +93,15 @@ class CaseRecordAdmin(admin.ModelAdmin):
     def priority_band(self, obj):
         return obj.priority_band
 
+    def get_readonly_fields(self, request, obj=None):
+        # Duplicate links are made only by the officer review workflow, which
+        # locks, audits and notifies. A linked case cannot be reopened here
+        # either, or it would be both closed-as-duplicate and live.
+        fields = self.readonly_fields + ("duplicate_of_case",)
+        if obj is not None and obj.duplicate_of_case_id:
+            fields += ("status", "closed_at")
+        return fields
+
 
 @admin.register(CaseEventLog)
 class CaseEventLogAdmin(admin.ModelAdmin):
@@ -131,8 +140,21 @@ class CaseTaskAdmin(admin.ModelAdmin):
 
 @admin.register(DuplicateCaseMatch)
 class DuplicateCaseMatchAdmin(admin.ModelAdmin):
-    list_display = ("case_a", "case_b", "similarity_score", "status", "decided_by_user")
+    """Read-only audit view. Flags are created by detection and decided through
+    /api/duplicates/, which enforces the pair rules; editing here would skip them."""
+
+    list_display = ("case_a", "case_b", "similarity_score", "status", "decided_by_user", "decided_at")
     list_filter = ("status",)
+    search_fields = ("case_a__reference", "case_b__reference")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CommunityPledge)
