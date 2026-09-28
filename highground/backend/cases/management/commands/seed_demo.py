@@ -308,6 +308,39 @@ class Command(BaseCommand):
                     created_at=now - timedelta(days=1),
                 )
 
+        # ---------------- a duplicate for the review screen ----------------
+        # A relative re-reports the FRC-1042 household from her own account, in
+        # Malay, with the address abbreviated. The descriptions share almost no
+        # words, so the scan has to recognise it from the address, lot number
+        # and a pin ~25 m away — the case duplicate detection exists for.
+        relative = UserAccount.objects.create_user(
+            email="relative@hg.my", full_name="Nurul binti Rahman",
+            password=DEMO_PASSWORD, phone="013-778 2140",
+            role=UserAccount.Role.COMMUNITY_MEMBER,
+        )
+        lat, lng = near(kubang_kerian, 0.0042, 0.0021)
+        cases.append(self._make_case(
+            reference="FRC-1056",
+            submitted_by=relative,
+            area=kubang_kerian,
+            address="Lot 4231, Jln Hospital, Kg. Kubang Kerian",
+            lat=lat, lng=lng,
+            description=(
+                "Rumah ibu bapa saya dinaiki air paras pinggang dan belum surut. "
+                "Ubat-ubatan mereka rosak dan jalan masuk terputus."
+            ),
+            damage_category=CaseRecord.DamageCategory.ESSENTIAL_ITEMS,
+            urgency=CaseRecord.Urgency.MEDICAL_DISRUPTED,
+            liveability=CaseRecord.Liveability.PARTIAL,
+            flood_depth=CaseRecord.FloodDepth.WAIST,
+            access_level=CaseRecord.AccessLevel.CUT_OFF,
+            needs=["water", "food", "bedding", "medicine"],
+            vulns=["elderly"],
+            household_size=5,
+            status=CaseRecord.Status.SUBMITTED,
+            created_at=now - timedelta(days=3),
+        ))
+
         if options["empty_log"]:
             removed = CaseEventLog.objects.all().delete()[0]
             self.stdout.write(

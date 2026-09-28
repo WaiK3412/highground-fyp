@@ -43,3 +43,21 @@ class SeedDemoTests(TestCase):
         self.assertEqual(
             CaseRecord.objects.get(reference="FRC-1042").location_area.code, "MY0304-V001"
         )
+
+    def test_demo_includes_a_cross_language_duplicate_for_review(self):
+        """The relative's Malay report of the FRC-1042 household is flagged by
+        address, lot number and pin distance, and cannot be verified until an
+        officer decides."""
+        from cases import duplicate_services as svc
+        from cases.models import DuplicateCaseMatch
+
+        call_command("seed_demo", stdout=StringIO())
+
+        match = DuplicateCaseMatch.objects.get(
+            case_a__reference="FRC-1042", case_b__reference="FRC-1056"
+        )
+        self.assertEqual(match.status, DuplicateCaseMatch.Status.OPEN)
+        newer = CaseRecord.objects.get(reference="FRC-1056")
+        self.assertEqual(svc.duplicate_verification_block(newer)[0], "duplicate_review_required")
+        others = DuplicateCaseMatch.objects.exclude(pk=match.pk).count()
+        self.assertEqual(others, 0, "only the deliberate pair should be flagged in the demo")

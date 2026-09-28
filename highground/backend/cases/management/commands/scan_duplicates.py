@@ -9,6 +9,11 @@ independent: one failing leaves the others' results in place, and the command
 exits non-zero. Output is counts only, never household details.
 
 --dry-run writes nothing: no flags, no events, no pending or completed state.
+
+Cases with no controlled village (legacy free-text records) are never
+compared, so they stay "duplicate check pending" and cannot be verified. To
+release one, an officer sets its village in the admin case form, then runs
+`scan_duplicates --location-code <village code>`.
 """
 
 from django.core.management.base import BaseCommand, CommandError

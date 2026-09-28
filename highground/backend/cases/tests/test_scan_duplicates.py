@@ -20,7 +20,7 @@ class ScanCommandTests(DuplicateWorld, TestCase):
     def setUp(self):
         self.build_world()
         self.older, self.newer = self.older_and_newer()
-        make_case(self.resident, None, reference="FRC-LEGACY")
+        self.legacy = make_case(self.resident, None, reference="FRC-LEGACY")
 
     def run_command(self, *args):
         out, err = StringIO(), StringIO()
@@ -77,3 +77,24 @@ class ScanCommandTests(DuplicateWorld, TestCase):
                     self.assertIn("failed (RuntimeError)", err.getvalue())
                     self.assertNotIn("private detail", err.getvalue())
         self.assertEqual(svc.duplicate_check_state(self.older), "pending")
+
+    def test_a_case_without_a_village_is_released_once_an_officer_sets_one(self):
+        """Legacy cases have no controlled village, so no scan can check them.
+
+        The way out is administrative: an officer sets the village (the field is
+        on the case admin form), then the rescan completes the check. Until then
+        the case is never silently treated as checked.
+        """
+        self.assertEqual(svc.duplicate_check_state(self.legacy), "pending")
+        self.assertEqual(svc.duplicate_verification_block(self.legacy)[0], "duplicate_check_pending")
+
+        self.run_command()
+        self.assertEqual(svc.duplicate_check_state(self.legacy), "pending")
+
+        self.legacy.location_area = self.other_area
+        self.legacy.village = self.other_area.name
+        self.legacy.save(update_fields=["location_area", "village"])
+        self.run_command("--location-code", self.other_area.code)
+
+        self.assertEqual(svc.duplicate_check_state(self.legacy), "completed")
+        self.assertIsNone(svc.duplicate_verification_block(self.legacy))
