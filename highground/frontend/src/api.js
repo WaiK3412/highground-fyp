@@ -50,6 +50,8 @@ async function request(path, { method = 'GET', body, files, fileField = 'documen
   if (!response.ok) {
     const error = new Error(data?.detail || 'Something went wrong. Please try again.')
     error.status = response.status
+    error.code = data?.code
+    error.data = data
     // DRF sends {field: [messages]}; keep them so each shows under its field.
     if (data && typeof data === 'object' && !data.detail) error.fields = data
     throw error
@@ -79,6 +81,15 @@ export const api = {
     ).toString()
     return request('/api/cases/map/' + (query ? `?${query}` : ''))
   },
+  duplicates: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined),
+    ).toString()
+    return request('/api/duplicates/' + (query ? `?${query}` : ''))
+  },
+  duplicate: (id) => request(`/api/duplicates/${id}/`),
+  decideDuplicate: (id, decision, note = '') =>
+    request(`/api/duplicates/${id}/decide/`, { method: 'POST', body: { decision, note } }),
   createCase: (payload, files) =>
     request('/api/cases/', { method: 'POST', body: payload, files, fileField: 'photos' }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
@@ -97,7 +108,12 @@ export const api = {
   completeCase: (id) => request(`/api/cases/${id}/complete/`, { method: 'POST' }),
   confirmCase: (id, decision, note = '') =>
     request(`/api/cases/${id}/confirm/`, { method: 'POST', body: { decision, note } }),
-  stats: () => request('/api/cases/stats/'),
+  stats: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v),
+    ).toString()
+    return request('/api/cases/stats/' + (query ? `?${query}` : ''))
+  },
   // Notifications are event-log rows addressed to this user (ADR-004).
   // Screen 18 — the published rubric, read-only.
   rubric: () => request('/api/rubric/'),

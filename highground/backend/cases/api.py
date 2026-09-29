@@ -7,10 +7,11 @@ resident nothing.
 import json
 
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import F, Prefetch, Q, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -27,6 +28,7 @@ from accounts.permissions import (
     visible_cases,
 )
 from accounts.models import UserAccount
+from scoring.engine import HIGH_THRESHOLD, MEDIUM_THRESHOLD
 
 from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
 
@@ -48,6 +50,7 @@ class CaseListSerializer(serializers.ModelSerializer):
     claimed_by = serializers.CharField(source="claimed_by_org.name", default=None, read_only=True)
     days_waiting = serializers.SerializerMethodField()
     duplicate_check = serializers.SerializerMethodField()
+    has_open_duplicate = serializers.SerializerMethodField()
 
     class Meta:
         model = CaseRecord
@@ -65,8 +68,29 @@ class CaseListSerializer(serializers.ModelSerializer):
             "claimed_by",
             "days_waiting",
             "duplicate_check",
+            "has_open_duplicate",
             "created_at",
         ]
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        request = self.context.get("request")
+        if request is None or request.user.role != UserAccount.Role.DISASTER_OFFICER:
+            data.pop("has_open_duplicate", None)
+        return data
+
+    def get_has_open_duplicate(self, obj):
+        request = self.context.get("request")
+        if request is None or request.user.role != UserAccount.Role.DISASTER_OFFICER:
+            return None
+        annotated = getattr(obj, "has_open_duplicate", None)
+        if annotated is not None:
+            return annotated
+        from .models import DuplicateCaseMatch
+
+        return DuplicateCaseMatch.objects.filter(
+            Q(case_a=obj) | Q(case_b=obj), status=DuplicateCaseMatch.Status.OPEN
+        ).exists()
 
     def get_days_waiting(self, obj):
         from django.utils import timezone
@@ -269,9 +293,17 @@ class CaseDetailSerializer(CaseListSerializer):
         open_ids = DuplicateCaseMatch.objects.filter(
             Q(case_a=obj) | Q(case_b=obj), status=DuplicateCaseMatch.Status.OPEN
         ).values_list("pk", flat=True)
+        blocking_ids = DuplicateCaseMatch.objects.filter(
+            case_b=obj, status=DuplicateCaseMatch.Status.OPEN
+        ).order_by("pk").values_list("pk", flat=True)
+        confirmed_id = DuplicateCaseMatch.objects.filter(
+            case_b=obj, status=DuplicateCaseMatch.Status.CONFIRMED
+        ).order_by("-pk").values_list("pk", flat=True).first()
         return {
             "check": duplicate_check_state(obj),
             "open_match_ids": sorted(open_ids),
+            "blocking_match_ids": list(blocking_ids),
+            "confirmed_match_id": confirmed_id,
             "verification_block": block[0] if block else None,
             "duplicate_of": obj.duplicate_of_case.reference if obj.duplicate_of_case_id else None,
         }
@@ -409,14 +441,33 @@ def _next_reference():
         return "FRC-1042"
 
 
+def _filter_priority_band(queryset, band):
+    """Match CaseRecord.priority_band using the rubric that scored each case."""
+    if band not in ("", "high", "medium", "low"):
+        raise ValidationError({"band": ["Choose high, medium, or low."]})
+    if not band:
+        return queryset
+    queryset = queryset.alias(
+        _band_high=Coalesce("rubric_version__high_threshold", Value(HIGH_THRESHOLD)),
+        _band_medium=Coalesce("rubric_version__medium_threshold", Value(MEDIUM_THRESHOLD)),
+    ).filter(score_total__isnull=False)
+    if band == "high":
+        return queryset.filter(score_total__gte=F("_band_high"))
+    if band == "medium":
+        return queryset.filter(
+            score_total__gte=F("_band_medium"), score_total__lt=F("_band_high")
+        )
+    return queryset.filter(score_total__lt=F("_band_medium"))
+
+
 def _queue_queryset(request):
     """The queue as this user may see it, with the list's filters applied.
 
-    Shared by the list and the map so the two can never disagree about which
+    Shared by the list, map, and stats so they agree about which
     cases exist for a user.
     """
     queryset = CaseRecord.objects.select_related(
-        "claimed_by_org", "submitted_by_user"
+        "claimed_by_org", "submitted_by_user", "rubric_version"
     ).all()
     queryset = visible_cases(request.user, queryset)
 
@@ -447,7 +498,7 @@ def _queue_queryset(request):
         else:
             search_query |= Q(description__icontains=search)
         queryset = queryset.filter(search_query)
-    return queryset
+    return _filter_priority_band(queryset, request.query_params.get("band", ""))
 
 
 class CaseListView(ListCreateAPIView):
@@ -462,12 +513,15 @@ class CaseListView(ListCreateAPIView):
         return CaseCreateSerializer if self.request.method == "POST" else CaseListSerializer
 
     def get_queryset(self):
-        from .duplicate_services import latest_check_event_subquery
+        from .duplicate_services import latest_check_event_subquery, open_match_annotation
 
         # One subquery instead of a check-state query per row.
-        return _queue_queryset(self.request).annotate(
+        queryset = _queue_queryset(self.request).annotate(
             latest_duplicate_check=latest_check_event_subquery()
         )
+        if self.request.user.role == UserAccount.Role.DISASTER_OFFICER:
+            queryset = queryset.annotate(has_open_duplicate=open_match_annotation())
+        return queryset
 
     def create(self, request, *args, **kwargs):
         """Create a case from a household's submission (FR3).
@@ -572,11 +626,11 @@ def case_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def queue_stats(request):
     """Header strip counts. Plain COUNTs — no chart library (ADR C10.8)."""
-    queryset = visible_cases(request.user, CaseRecord.objects.all())
+    queryset = _queue_queryset(request)
     return Response(
         {
             "total": queryset.count(),
-            "high": queryset.filter(score_total__gte=70).count(),
+            "high": _filter_priority_band(queryset, "high").count(),
             "unclaimed": queryset.filter(claimed_by_org__isnull=True).count(),
             "in_progress": queryset.filter(status="in_progress").count(),
         }
@@ -599,6 +653,10 @@ def case_map(request):
     nothing an NGO could not already read.
     """
     cases = _queue_queryset(request).select_related("location_area", "rubric_version")
+    if request.user.role == UserAccount.Role.DISASTER_OFFICER:
+        from .duplicate_services import open_match_annotation
+
+        cases = cases.annotate(has_open_duplicate=open_match_annotation())
     points, areas, unmapped = [], {}, 0
     for case in cases:
         area = case.location_area
@@ -612,8 +670,7 @@ def case_map(request):
             else:
                 unmapped += 1
                 continue
-            points.append(
-                {
+            point = {
                     "id": case.id,
                     "reference": case.reference,
                     "village": case.village,
@@ -630,7 +687,9 @@ def case_map(request):
                         and case.claimed_by_org_id == request.user.organization_id
                     ),
                 }
-            )
+            if request.user.role == UserAccount.Role.DISASTER_OFFICER:
+                point["has_open_duplicate"] = case.has_open_duplicate
+            points.append(point)
         elif area_placed:
             entry = areas.setdefault(
                 area.code,
@@ -1382,7 +1441,18 @@ def verify_case(request, pk):
         block = duplicate_verification_block(case)
         if block and (decision == "verified" or block[0] == "case_linked_duplicate"):
             code, detail = block
-            return Response({"code": code, "detail": detail}, status=409)
+            from .models import DuplicateCaseMatch
+
+            match_ids = []
+            if code == "duplicate_review_required":
+                match_ids = list(DuplicateCaseMatch.objects.filter(
+                    case_b=case, status=DuplicateCaseMatch.Status.OPEN
+                ).order_by("pk").values_list("pk", flat=True))
+            elif code == "case_linked_duplicate":
+                match_ids = list(DuplicateCaseMatch.objects.filter(
+                    case_b=case, status=DuplicateCaseMatch.Status.CONFIRMED
+                ).order_by("-pk").values_list("pk", flat=True)[:1])
+            return Response({"code": code, "detail": detail, "duplicate_match_ids": match_ids}, status=409)
 
         new_status, event_type = DECISIONS[decision]
         case.status = new_status
@@ -1619,6 +1689,7 @@ class DuplicateCaseSerializer(serializers.Serializer):
 
 class DuplicateDecisionSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=["confirm", "dismiss"])
+    note = serializers.CharField(required=False, allow_blank=True, trim_whitespace=True, max_length=1000)
 
 
 def _decided_by(match):
@@ -1708,11 +1779,14 @@ def decide_duplicate(request, pk):
 
     serializer = DuplicateDecisionSerializer(data=request.data)
     if not serializer.is_valid():
+        if "note" in serializer.errors and "decision" not in serializer.errors:
+            return _error("invalid_note", "The officer note must be at most 1000 characters.", 400)
         return _error("invalid_decision", "decision must be confirm or dismiss.", 400)
     decision = serializer.validated_data["decision"]
+    note = serializer.validated_data.get("note", "")
 
     try:
-        outcome = decide_duplicate_match(pk, request.user, decision)
+        outcome = decide_duplicate_match(pk, request.user, decision, note)
     except DuplicateConflict as conflict:
         return _error(conflict.code, conflict.detail, 409)
     if outcome is None:

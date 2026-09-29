@@ -41,13 +41,15 @@ function tooltip(lines) {
   return node
 }
 
-function pinIcon(point, selected) {
+function pinIcon(point, selected, isOfficer) {
   const tone = TONE[point.priority_band] || 'neutral'
   const ring = point.claimed_by_you ? ' ops-pin--ring' : ''
   const chosen = selected ? ' ops-pin--selected' : ''
+  const hasDuplicate = isOfficer && point.has_open_duplicate
+  const duplicate = hasDuplicate ? ' ops-pin--duplicate' : ''
   return L.divIcon({
     className: 'case-map__icon',
-    html: `<span class="ops-pin ops-pin--${tone}${ring}${chosen}"></span>`,
+    html: `<span class="ops-pin ops-pin--${tone}${ring}${chosen}${duplicate}">${hasDuplicate ? '<span class="ops-pin__duplicate" aria-hidden="true">!</span>' : ''}</span>`,
     iconSize: [26, 26],
     // The teardrop is a rotated square; its tip sits below the centre.
     iconAnchor: [13, 31],
@@ -72,6 +74,7 @@ function areaIcon(area) {
 export default function CaseMap({
   points,
   areas,
+  isOfficer = false,
   selectedId,
   onOpenCase,
   onOpenArea,
@@ -83,6 +86,7 @@ export default function CaseMap({
   const layer = useRef(null)
   const handlers = useRef({ onOpenCase, onOpenArea, onMapClick })
   const [tilesFailed, setTilesFailed] = useState(false)
+  const [legendOpen, setLegendOpen] = useState(false)
 
   // Markers call the newest handlers without being rebuilt when they change.
   useEffect(() => {
@@ -133,9 +137,11 @@ export default function CaseMap({
         `${point.status_display}${point.score_total != null ? ` · score ${point.score_total}` : ''}`,
       ]
       if (point.precision === 'village') lines.push('Placed at the village centre — no household pin yet.')
+      const hasDuplicate = isOfficer && point.has_open_duplicate
+      if (hasDuplicate) lines.push('Possible duplicate — officer review needed.')
       L.marker(at, {
-        icon: pinIcon(point, point.id === selectedId),
-        title: `#${point.reference}`,
+        icon: pinIcon(point, point.id === selectedId, isOfficer),
+        title: `#${point.reference}${hasDuplicate ? ' · Possible duplicate' : ''}`,
         keyboard: true,
         // The selected pin rises above everything else.
         zIndexOffset: point.id === selectedId ? 5000 : LAYER[point.priority_band] || 0,
@@ -145,7 +151,7 @@ export default function CaseMap({
         .addTo(group)
     })
 
-  }, [points, areas, selectedId])
+  }, [points, areas, selectedId, isOfficer])
 
   // Fit to the markers when the data changes, not when a pin is selected, so
   // choosing a case never throws away the user's zoom.
@@ -166,6 +172,50 @@ export default function CaseMap({
       )}
       <div className="case-map__stage">
         <div ref={container} className="case-map__canvas" aria-label="Map of visible cases" />
+        <div className="case-map__legend">
+          <button
+            type="button"
+            className="case-map__legend-toggle"
+            aria-expanded={legendOpen}
+            aria-controls="case-map-legend-content"
+            onClick={() => setLegendOpen((open) => !open)}
+          >
+            Map legend <span aria-hidden="true">{legendOpen ? '−' : '+'}</span>
+          </button>
+          <div id="case-map-legend-content" className="case-map__legend-body" hidden={!legendOpen}>
+            <p className="case-map__legend-title">Priority band</p>
+            {[
+              ['danger', 'High'],
+              ['warning', 'Medium'],
+              ['success', 'Low'],
+              ['neutral', 'Unscored'],
+            ].map(([tone, label]) => (
+              <div className="case-map__legend-row" key={tone}>
+                <span className={`case-map__legend-pin case-map__legend-pin--${tone}`} aria-hidden="true" />
+                <span>{label}</span>
+              </div>
+            ))}
+            <p className="case-map__legend-title">Map symbols</p>
+            <div className="case-map__legend-row">
+              <span className="case-map__legend-pin case-map__legend-pin--neutral" aria-hidden="true" />
+              <span>One case. A pin may sit at the village centre when no household pin is available.</span>
+            </div>
+            <div className="case-map__legend-row">
+              <span className="case-map__legend-bubble" aria-hidden="true">3</span>
+              <span>Village count. Colour shows the highest priority band in that group.</span>
+            </div>
+            <div className="case-map__legend-row">
+              <span className="case-map__legend-ring" aria-hidden="true" />
+              <span>Your organisation has claimed this case.</span>
+            </div>
+            {isOfficer && (
+              <div className="case-map__legend-row">
+                <span className="case-map__legend-duplicate" aria-hidden="true">!</span>
+                <span>Possible duplicate. An officer must review the flag.</span>
+              </div>
+            )}
+          </div>
+        </div>
         {children}
       </div>
     </div>

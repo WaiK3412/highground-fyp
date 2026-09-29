@@ -61,7 +61,7 @@ function ago(iso) {
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
-export default function Notifications({ user, onLogout, onNavigate, onOpenCase }) {
+export default function Notifications({ user, onLogout, onNavigate, onOpenCase, duplicateCount }) {
   useDocumentTitle('Notifications')
   const [rows, setRows] = useState([])
   const [unread, setUnread] = useState(0)
@@ -109,6 +109,7 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase }
       user={user}
       active="notifications"
       unread={unread}
+      duplicateCount={duplicateCount}
       onNavigate={onNavigate}
       onLogout={onLogout}
     >

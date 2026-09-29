@@ -25,7 +25,7 @@ from decimal import Decimal
 from itertools import combinations
 
 from django.db import transaction
-from django.db.models import OuterRef, Q, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
 from accounts.models import UserAccount
@@ -156,6 +156,16 @@ def open_review_matches(case: CaseRecord):
     """Open flags where this case is the newer one, i.e. the one that would
     be closed; these block its verification."""
     return DuplicateCaseMatch.objects.filter(case_b=case, status=MatchStatus.OPEN)
+
+
+def open_match_annotation():
+    """One SQL existence check per queryset, without exposing pair details."""
+    return Exists(
+        DuplicateCaseMatch.objects.filter(
+            Q(case_a_id=OuterRef("pk")) | Q(case_b_id=OuterRef("pk")),
+            status=MatchStatus.OPEN,
+        )
+    )
 
 
 def duplicate_verification_block(case: CaseRecord) -> tuple[str, str] | None:
@@ -394,7 +404,7 @@ class DecisionOutcome:
 DECISION_STATUS = {"confirm": MatchStatus.CONFIRMED, "dismiss": MatchStatus.REJECTED}
 
 
-def decide_duplicate_match(match_id, actor, decision) -> DecisionOutcome | None:
+def decide_duplicate_match(match_id, actor, decision, note="") -> DecisionOutcome | None:
     """Confirm or dismiss one flag. Returns None if the match does not exist.
 
     Retrying the same decision returns the stored result without writing
@@ -443,11 +453,12 @@ def decide_duplicate_match(match_id, actor, decision) -> DecisionOutcome | None:
         now = timezone.now()
         older, newer = match.case_a, match.case_b
         superseded = []
+        note_detail = f" Officer note: {note}" if note else ""
         if decision == "dismiss":
             # Allowed even for a stale pair, so it can leave the queue.
             detail = (
                 f"{actor.full_name} dismissed the possible duplicate {older.reference} / "
-                f"{newer.reference} (match #{match.pk}): different households."
+                f"{newer.reference} (match #{match.pk}): different households.{note_detail}"
             )
             _log_event(older, Event.DUPLICATE_DISMISSED, detail, actor)
             _log_event(newer, Event.DUPLICATE_DISMISSED, detail, actor)
@@ -462,7 +473,7 @@ def decide_duplicate_match(match_id, actor, decision) -> DecisionOutcome | None:
             detail = (
                 f"{actor.full_name} confirmed {newer.reference} duplicates {older.reference} "
                 f"(match #{match.pk}); {newer.reference} closed. Photos, history and "
-                "scores of both cases are kept."
+                f"scores of both cases are kept.{note_detail}"
             )
             _log_event(older, Event.DUPLICATE_CONFIRMED, detail, actor)
             _log_event(newer, Event.DUPLICATE_CONFIRMED, detail, actor)

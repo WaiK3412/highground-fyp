@@ -77,6 +77,21 @@ class PermissionTests(ApiWorld, TestCase):
         self.assertEqual(self.match.status, DuplicateCaseMatch.Status.OPEN)
 
 
+    def test_vite_fallback_origin_accepts_a_valid_csrf_token(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.officer)
+        client.get("/api/auth/csrf/")
+        token = client.cookies["csrftoken"].value
+        response = client.post(
+            f"/api/duplicates/{self.match.pk}/decide/", {"decision": "dismiss"},
+            content_type="application/json",
+            HTTP_ORIGIN="http://127.0.0.1:5174",
+            HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "rejected")
+
+
 class ListAndDetailTests(ApiWorld, TestCase):
     def setUp(self):
         super().setUp()
@@ -89,6 +104,31 @@ class ListAndDetailTests(ApiWorld, TestCase):
         self.assertEqual(set(row), {"id", "status", "similarity_score", "classification", "case_a", "case_b"})
         self.assertEqual(row["case_a"], {"id": self.older.pk, "reference": "FRC-5001"})
         self.assertEqual(row["case_b"]["reference"], "FRC-5002")
+
+    def test_queue_badge_and_case_review_ids_are_officer_only(self):
+        queue = self.client.get("/api/cases/").json()["results"]
+        by_ref = {row["reference"]: row for row in queue}
+        self.assertTrue(by_ref["FRC-5001"]["has_open_duplicate"])
+        self.assertTrue(by_ref["FRC-5002"]["has_open_duplicate"])
+        older = self.client.get(f"/api/cases/{self.older.pk}/").json()
+        newer = self.client.get(f"/api/cases/{self.newer.pk}/").json()
+        self.assertEqual(older["duplicate_review"]["blocking_match_ids"], [])
+        self.assertEqual(newer["duplicate_review"]["blocking_match_ids"], [self.match.pk])
+        self.assertIsNone(newer["duplicate_review"]["confirmed_match_id"])
+
+        self.as_user(self.relative)
+        resident = self.client.get("/api/cases/").json()["results"][0]
+        self.assertNotIn("has_open_duplicate", resident)
+        self.assertIsNone(self.client.get(f"/api/cases/{self.newer.pk}/").json()["duplicate_review"])
+
+        self.older.status = CaseRecord.Status.VERIFIED
+        self.older.claimed_by_org = self.org
+        self.older.save(update_fields=["status", "claimed_by_org"])
+        self.as_user(self.ngo)
+        ngo = self.client.get("/api/cases/").json()["results"]
+        self.assertTrue(ngo)
+        self.assertTrue(all("has_open_duplicate" not in row for row in ngo))
+        self.assertIsNone(self.client.get(f"/api/cases/{self.older.pk}/").json()["duplicate_review"])
 
     def test_list_filters_by_status_and_rejects_unknown_ones(self):
         self.assertEqual(self.client.get("/api/duplicates/?status=rejected").json()["count"], 0)
@@ -185,6 +225,35 @@ class DecisionApiTests(ApiWorld, TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["code"], "conflicting_decision")
 
+    def test_optional_note_is_internal_bounded_and_not_duplicated_on_retry(self):
+        url = f"/api/duplicates/{self.match.pk}/decide/"
+        too_long = self.client.post(url, {"decision": "dismiss", "note": "x" * 1001}, content_type="application/json")
+        self.assertEqual(too_long.status_code, 400)
+        self.assertEqual(too_long.json()["code"], "invalid_note")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.status, DuplicateCaseMatch.Status.OPEN)
+
+        payload = {"decision": "dismiss", "note": "  Two separate households.  "}
+        self.assertEqual(self.client.post(url, payload, content_type="application/json").status_code, 200)
+        events = CaseEventLog.objects.filter(event_type=Event.DUPLICATE_DISMISSED)
+        self.assertEqual(events.count(), 2)
+        self.assertTrue(all("Officer note: Two separate households." in event.detail for event in events))
+        self.assertEqual(self.client.post(url, payload, content_type="application/json").json()["changed"], False)
+        self.assertEqual(events.count(), 2)
+        self.as_user(self.resident)
+        self.assertNotIn("Two separate households", str(self.client.get(f"/api/cases/{self.older.pk}/").json()))
+
+    def test_confirmation_note_stays_out_of_household_notice(self):
+        url = f"/api/duplicates/{self.match.pk}/decide/"
+        response = self.client.post(url, {"decision": "confirm", "note": "Private comparison note"}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Private comparison note", CaseEventLog.objects.filter(
+            case=self.newer, event_type=Event.DUPLICATE_CONFIRMED
+        ).get().detail)
+        self.assertNotIn("Private comparison note", mail.outbox[0].body)
+        self.as_user(self.relative)
+        self.assertNotIn("Private comparison note", str(self.client.get(f"/api/cases/{self.newer.pk}/").json()))
+
 
 class VerificationGateTests(ApiWorld, TestCase):
     def setUp(self):
@@ -212,6 +281,7 @@ class VerificationGateTests(ApiWorld, TestCase):
         response = self.verify(self.newer)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["code"], "duplicate_review_required")
+        self.assertEqual(response.json()["duplicate_match_ids"], [self.match.pk])
         self.newer.refresh_from_db()
         self.assertEqual(self.newer.status, CaseRecord.Status.SUBMITTED)
         self.assertIsNone(self.newer.score_total)
@@ -228,6 +298,7 @@ class VerificationGateTests(ApiWorld, TestCase):
         response = self.verify(fresh)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["code"], "duplicate_check_pending")
+        self.assertEqual(response.json()["duplicate_match_ids"], [])
 
     def test_a_linked_duplicate_cannot_be_reopened_by_any_verification_decision(self):
         self.decide("confirm")
@@ -235,6 +306,7 @@ class VerificationGateTests(ApiWorld, TestCase):
             response = self.verify(self.newer, decision, note)
             self.assertEqual(response.status_code, 409)
             self.assertEqual(response.json()["code"], "case_linked_duplicate")
+            self.assertEqual(response.json()["duplicate_match_ids"], [self.match.pk])
 
 
 class SubmissionHookTests(DuplicateWorld, TestCase):

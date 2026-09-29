@@ -157,13 +157,16 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 50,
 }
 
-# The SPA runs on its own dev-server origin (Vite :5173) and proxies /api to
+# The SPA runs on its own dev-server origin (Vite :5173, or :5174 when that
+# port is occupied) and proxies /api to
 # Django, so browser requests arrive with an Origin header Django must trust
 # before it will accept any unsafe method. Dev only — production serves the
 # built SPA from the same origin and needs no entry here.
 CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    "http://127.0.0.1:5174",
+    "http://localhost:5174",
 ]
 
 # Uploaded evidence for role applications (ADR-012). Kept outside the static

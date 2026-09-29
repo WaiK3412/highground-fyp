@@ -9,6 +9,7 @@ import SubmitRequest from './pages/SubmitRequest'
 import Notifications from './pages/Notifications'
 import ScoringRules from './pages/ScoringRules'
 import ResponderShell from './pages/ResponderShell'
+import DuplicateReview from './pages/DuplicateReview'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
@@ -23,6 +24,29 @@ export default function App() {
   const [residentScreen, setResidentScreen] = useState('recovery')
   // Officers and NGOs have their own small set of screens.
   const [responderScreen, setResponderScreen] = useState('queue')
+  const [duplicateId, setDuplicateId] = useState(null)
+  const [duplicateCount, setDuplicateCount] = useState(null)
+
+  useEffect(() => {
+    if (user?.role !== 'disaster_officer') return undefined
+    let cancelled = false
+    api.duplicates().then((data) => {
+      if (!cancelled) setDuplicateCount(data.count)
+    }).catch(() => {
+      if (!cancelled) setDuplicateCount(null)
+    })
+    return () => { cancelled = true }
+  }, [user, responderScreen])
+
+  function navigateResponder(next) {
+    if (next === 'duplicates') setDuplicateId(null)
+    setResponderScreen(next)
+  }
+
+  function openDuplicate(id) {
+    setDuplicateId(id)
+    setResponderScreen('duplicates')
+  }
 
   useEffect(() => {
     api
@@ -43,6 +67,9 @@ export default function App() {
     setUser(null)
     setJustLoggedIn(false)
     setScreen('login')
+    setResponderScreen('queue')
+    setDuplicateId(null)
+    setDuplicateCount(null)
   }
 
   function handleLoggedIn(u) {
@@ -111,7 +138,7 @@ export default function App() {
         <TaskBoard
           user={user}
           onLogout={handleLogout}
-          onNavigate={setResponderScreen}
+          onNavigate={navigateResponder}
         />
       )
     if (responderScreen === 'notifications')
@@ -119,18 +146,30 @@ export default function App() {
         <Notifications
           user={user}
           onLogout={handleLogout}
-          onNavigate={setResponderScreen}
+          onNavigate={navigateResponder}
           onOpenCase={() => setResponderScreen('queue')}
+          duplicateCount={duplicateCount}
         />
       )
     // The rules page has no chrome of its own; it sits in the responder frame.
     if (responderScreen === 'rules')
       return (
-        <ResponderShell user={user} active="rules" onNavigate={setResponderScreen} onLogout={handleLogout}>
+        <ResponderShell user={user} active="rules" onNavigate={navigateResponder} onLogout={handleLogout} duplicateCount={duplicateCount}>
           <ScoringRules />
         </ResponderShell>
       )
-    return <CaseQueue user={user} onLogout={handleLogout} onNavigate={setResponderScreen} />
+    if (responderScreen === 'duplicates' && user.role === 'disaster_officer')
+      return (
+        <DuplicateReview
+          user={user}
+          initialId={duplicateId}
+          duplicateCount={duplicateCount}
+          onCountChange={setDuplicateCount}
+          onNavigate={navigateResponder}
+          onLogout={handleLogout}
+        />
+      )
+    return <CaseQueue user={user} onLogout={handleLogout} onNavigate={navigateResponder} onOpenDuplicate={openDuplicate} duplicateCount={duplicateCount} />
   }
   if (screen === 'register')
     return <Register onRegistered={handleLoggedIn} onShowLogin={() => setScreen('login')} />

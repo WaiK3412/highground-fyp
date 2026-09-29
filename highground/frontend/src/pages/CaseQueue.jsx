@@ -3,7 +3,7 @@
  * Cases arrive from /api/cases/ already narrowed by role on the server.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 import CaseMap from './CaseMap'
@@ -14,6 +14,12 @@ const STATUS_FILTERS = [
   { value: 'claimed', label: 'Claimed' },
   { value: 'in_progress', label: 'In progress' },
   { value: 'submitted', label: 'Submitted' },
+]
+const BAND_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
 ]
 
 // Slim, warm-toned scrollbars on the panels that scroll, plus a gutter so the
@@ -29,7 +35,8 @@ const SCROLL_PANE = {
 function scoreClass(band) {
   if (band === 'High') return 'score score--high score--sm'
   if (band === 'Medium') return 'score score--medium score--sm'
-  return 'score score--low score--sm'
+  if (band === 'Low') return 'score score--low score--sm'
+  return 'score score--neutral score--sm'
 }
 
 function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
@@ -42,7 +49,9 @@ function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
     <div className={`ops-card${selected ? ' ops-card--selected' : ''}`}>
       <div className="row--between">
         <span className="title">#{item.reference}</span>
-        <span className={scoreClass(item.priority_band)}>{item.score_total}</span>
+        <span className={scoreClass(item.priority_band)} aria-label={item.score_total == null ? 'Not scored yet' : `${item.priority_band} priority, score ${item.score_total}`}>
+          {item.score_total ?? '—'}
+        </span>
       </div>
       <span className="meta">
         {item.damage_category_display} · {item.village} · household of {item.household_size} ·
@@ -50,6 +59,9 @@ function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
       </span>
       <div className="row" style={{ flexWrap: 'wrap', gap: '0.8rem' }}>
         <span className="badge badge--verified">{item.status_display}</span>
+        {user.role === 'disaster_officer' && item.has_open_duplicate && (
+          <span className="badge badge--duplicate">Possible duplicate</span>
+        )}
         {item.claimed_by && <span className="filter-chip">Claimed by {item.claimed_by}</span>}
       </div>
       <div className="row" style={{ gap: '0.8rem' }}>
@@ -73,7 +85,7 @@ function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
   )
 }
 
-function CaseActions({ detail, user, onDone }) {
+function CaseActions({ detail, user, onDone, onOpenDuplicate }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [note, setNote] = useState('')
@@ -91,7 +103,7 @@ function CaseActions({ detail, user, onDone }) {
       await action()
       await onDone()
     } catch (err) {
-      setError(err.message)
+      setError({ message: err.message, code: err.code, matchIds: err.data?.duplicate_match_ids || [] })
     } finally {
       setBusy(false)
     }
@@ -112,7 +124,24 @@ function CaseActions({ detail, user, onDone }) {
             marginBottom: 'var(--sp-12)',
           }}
         >
-          {error}
+          {error.code === 'duplicate_check_pending'
+            ? 'The duplicate check has not finished. Refresh this case before trying to verify it.'
+            : error.code === 'duplicate_review_required'
+              ? 'A possible duplicate needs officer review before this case can be verified.'
+              : error.code === 'case_linked_duplicate'
+                ? 'This case was closed as a confirmed duplicate and cannot be verified again.'
+                : error.message}
+          {error.code === 'duplicate_check_pending' && (
+            <button className="btn btn--ghost btn--sm" onClick={async () => {
+              setError(null)
+              try { await onDone() } catch (err) { setError({ message: err.message, matchIds: [] }) }
+            }}>Refresh case</button>
+          )}
+          {error.matchIds.map((id) => (
+            <button key={id} className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(id, detail.id)}>
+              Open duplicate review #{id}
+            </button>
+          ))}
         </div>
       )}
 
@@ -242,7 +271,7 @@ function ScoreBreakdown({ detail }) {
  * popover), so the map stays in view. It reads the same detail response as
  * the side panel, so it shows nothing the viewer's role may not see.
  */
-function MapCaseCard({ detail, user, onOpen, onClose }) {
+function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
   const components = detail.score_components || []
   const outOf = scoreOutOf(components)
   const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
@@ -261,6 +290,9 @@ function MapCaseCard({ detail, user, onOpen, onClose }) {
       </div>
       <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
         <span className="badge badge--verified">{detail.status_display}</span>
+        {user.role === 'disaster_officer' && detail.has_open_duplicate && (
+          <span className="badge badge--duplicate">Possible duplicate</span>
+        )}
         <span className="text-xs text-muted">
           {detail.claimed_by ? `Claimed by ${detail.claimed_by}` : 'Unclaimed'} · waiting{' '}
           {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
@@ -302,11 +334,21 @@ function MapCaseCard({ detail, user, onOpen, onClose }) {
           Close
         </button>
       </div>
+      {user.role === 'disaster_officer' && detail.duplicate_review?.open_match_ids?.length > 0 && (
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.open_match_ids[0], detail.id)}>
+          Open duplicate review
+        </button>
+      )}
+      {user.role === 'disaster_officer' && detail.duplicate_review?.confirmed_match_id && (
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.confirmed_match_id, detail.id)}>
+          Open confirmed duplicate review
+        </button>
+      )}
     </div>
   )
 }
 
-function ScorePanel({ detail, onClose, user, onDone }) {
+function ScorePanel({ detail, onClose, user, onDone, onOpenDuplicate }) {
   if (!detail) return null
   const summaryOnly = detail.detail_access === 'summary'
   return (
@@ -335,6 +377,22 @@ function ScorePanel({ detail, onClose, user, onDone }) {
 
       <ScoreBreakdown detail={detail} />
 
+      {user.role === 'disaster_officer' && detail.duplicate_review?.open_match_ids?.length > 0 && (
+        <div className="row" style={{ flexWrap: 'wrap', marginTop: 'var(--sp-12)' }}>
+          <span className="badge badge--duplicate">Possible duplicate</span>
+          {detail.duplicate_review.open_match_ids.map((id) => (
+            <button key={id} className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(id, detail.id)}>
+              Review pair #{id}
+            </button>
+          ))}
+        </div>
+      )}
+      {user.role === 'disaster_officer' && detail.duplicate_review?.confirmed_match_id && (
+        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.confirmed_match_id, detail.id)}>
+          Open confirmed duplicate review
+        </button>
+      )}
+
       <div style={{ marginTop: 'var(--sp-16)' }}>
         <span className="text-xs text-muted">
           {detail.location.precision === 'exact' ? 'Exact location' : 'Approximate location'}
@@ -347,18 +405,20 @@ function ScorePanel({ detail, onClose, user, onDone }) {
         )}
       </div>
 
-      <CaseActions detail={detail} user={user} onDone={onDone} />
+      <CaseActions detail={detail} user={user} onDone={onDone} onOpenDuplicate={onOpenDuplicate} />
     </aside>
   )
 }
 
-export default function CaseQueue({ user, onLogout, onNavigate }) {
+export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate, duplicateCount }) {
   const [unread, setUnread] = useState(0)
   useDocumentTitle('Case queue')
   const [cases, setCases] = useState([])
   const [stats, setStats] = useState(null)
   const [status, setStatus] = useState('')
+  const [band, setBand] = useState('')
   const [search, setSearch] = useState('')
+  const [listError, setListError] = useState(null)
   const [detail, setDetail] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -370,6 +430,20 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
   const [mapLoading, setMapLoading] = useState(false)
   // The case whose card is open over the map (a full detail response).
   const [mapCase, setMapCase] = useState(null)
+  const selectionVersion = useRef(0)
+
+  function invalidateQueue({ keepDetail = false } = {}) {
+    selectionVersion.current += 1
+    setMapCase(null)
+    if (!keepDetail) setDetail(null)
+    setLoading(true)
+    setListError(null)
+    setStats(null)
+    setCases([])
+    setMapLoading(view === 'map')
+    setMapData(null)
+    setMapError(null)
+  }
 
   useEffect(() => {
     api
@@ -380,27 +454,26 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([api.cases({ status, q: search }), api.stats()])
+    const params = { status, band, q: search }
+    Promise.all([api.cases(params), api.stats(params)])
       .then(([list, s]) => {
         if (cancelled) return
         setCases(list.results)
         setStats(s)
       })
+      .catch((err) => !cancelled && setListError(err.message))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [status, search, reloadKey])
+  }, [status, band, search, reloadKey])
 
   // The map is fetched only when shown, with the same filters as the list.
   useEffect(() => {
     if (view !== 'map') return undefined
     let cancelled = false
-    setMapLoading(true)
-    setMapData(null)
-    setMapError(null)
     api
-      .caseMap({ status, q: search })
+      .caseMap({ status, band, q: search })
       .then((data) => {
         if (cancelled) return
         setMapData(data)
@@ -411,21 +484,32 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
     return () => {
       cancelled = true
     }
-  }, [view, status, search, reloadKey])
+  }, [view, status, band, search, reloadKey])
 
-  const openCase = (id) => api.caseDetail(id).then(setDetail)
+  const openCase = (id) => {
+    const version = selectionVersion.current
+    return api.caseDetail(id).then((result) => {
+      if (selectionVersion.current === version) setDetail(result)
+    })
+  }
   // On the map, a pin opens a card over the map; the side panel is one click on.
-  const openMapCase = (id) =>
-    api
+  const openMapCase = (id) => {
+    const version = selectionVersion.current
+    return api
       .caseDetail(id)
-      .then(setMapCase)
-      .catch((err) => setMapError(err.message))
+      .then((result) => {
+        if (selectionVersion.current === version) setMapCase(result)
+      })
+      .catch((err) => {
+        if (selectionVersion.current === version) setMapError(err.message)
+      })
+  }
   const closeMapCase = () => setMapCase(null)
   // A village marker stands for cases the list can show; go there.
   const showVillage = (name) => {
-    setMapCase(null)
-    setDetail(null)
+    invalidateQueue()
     setSearch(name)
+    setReloadKey((n) => n + 1)
     setView('list')
   }
 
@@ -440,8 +524,13 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
   // Re-fetch after an action so the screen shows what the server recorded,
   // not what we assumed it would record.
   async function refresh() {
+    invalidateQueue({ keepDetail: true })
+    const version = selectionVersion.current
     setReloadKey((n) => n + 1)
-    if (detail) setDetail(await api.caseDetail(detail.id))
+    if (detail) {
+      const current = await api.caseDetail(detail.id)
+      if (selectionVersion.current === version) setDetail(current)
+    }
   }
 
   const [claimingId, setClaimingId] = useState(null)
@@ -508,6 +597,16 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             Case queue
             {stats && <span className="side-nav__count">{stats.total}</span>}
           </a>
+
+          {user.role === 'disaster_officer' && (
+            <a href="#duplicates" onClick={(e) => { e.preventDefault(); onNavigate('duplicates') }}>
+              <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 8.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v8.25A2.25 2.25 0 006 16.5h2.25m8.25-8.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-7.5A2.25 2.25 0 018.25 18v-7.5a2.25 2.25 0 012.25-2.25h6z" />
+              </svg>
+              Duplicate review
+              {duplicateCount !== null && <span className="side-nav__count">{duplicateCount}</span>}
+            </a>
+          )}
 
           {user.role === 'ngo_volunteer' && <a
             href="#tasks"
@@ -596,7 +695,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
             <p>
               Recovery cases visible to you as{' '}
               {user.role === 'ngo_volunteer' ? 'an NGO responder' : `a ${user.role_display.toLowerCase()}`}. Priority is computed
-              from the published rubric v3.0.
+              from the rubric version that scored each case.
             </p>
           </div>
           <div className="view-toggle" role="group" aria-label="Queue view">
@@ -608,7 +707,14 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
                 aria-pressed={view === key}
                 onClick={(e) => {
                   e.preventDefault()
+                  if (view === key) return
+                  selectionVersion.current += 1
                   setMapCase(null)
+                  if (key === 'map') {
+                    setMapLoading(true)
+                    setMapData(null)
+                    setMapError(null)
+                  }
                   setView(key)
                 }}
               >
@@ -641,33 +747,56 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
           </div>
         )}
 
-        <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap', margin: 'var(--sp-16) 0' }}>
-          {STATUS_FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              className={`filter-chip${status === filter.value ? ' filter-chip--active' : ''}`}
-              onClick={() => {
-                setMapCase(null)
-                if (view === 'map') setDetail(null)
-                setStatus(filter.value)
-              }}
-              style={{ cursor: 'pointer', border: 0 }}
-            >
-              {filter.label}
-            </button>
-          ))}
+        <div className="case-queue__filters">
+          <div className="case-queue__filter-group" role="group" aria-label="Case status">
+            <span className="case-queue__filter-label" aria-hidden="true">Status</span>
+            {STATUS_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`filter-chip${status === filter.value ? ' filter-chip--active' : ''}`}
+                aria-pressed={status === filter.value}
+                onClick={() => {
+                  if (status === filter.value) return
+                  invalidateQueue()
+                  setStatus(filter.value)
+                }}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="case-queue__filter-group" role="group" aria-label="Priority band">
+            <span className="case-queue__filter-label" aria-hidden="true">Priority</span>
+            {BAND_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`filter-chip${band === filter.value ? ' filter-chip--active' : ''}`}
+                aria-pressed={band === filter.value}
+                onClick={() => {
+                  if (band === filter.value) return
+                  invalidateQueue()
+                  setBand(filter.value)
+                }}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
           <input
             className="input"
             style={{ maxWidth: '24rem' }}
+            aria-label="Search cases by reference or village"
             placeholder="Search reference, village…"
             value={search}
             onChange={(e) => {
-              setMapCase(null)
-              if (view === 'map') setDetail(null)
+              invalidateQueue()
               setSearch(e.target.value)
             }}
           />
         </div>
+        {band && <p className="case-queue__filter-note">Cases awaiting scoring appear under Priority: All.</p>}
 
         {/* vp-fill claims the rest of the viewport and each column scrolls on
             its own, so the filter bar and stat strip stay pinned while a long
@@ -705,6 +834,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               <CaseMap
                 points={mapData?.points || []}
                 areas={mapData?.areas || []}
+                isOfficer={user.role === 'disaster_officer'}
                 selectedId={mapCase?.id}
                 onOpenCase={openMapCase}
                 onOpenArea={showVillage}
@@ -714,6 +844,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
                   <MapCaseCard
                     detail={mapCase}
                     user={user}
+                    onOpenDuplicate={onOpenDuplicate}
                     onClose={closeMapCase}
                     onOpen={() => {
                       setDetail(mapCase)
@@ -764,7 +895,8 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               </div>
             )}
             {loading && <p className="text-muted">Loading cases…</p>}
-            {!loading && cases.length === 0 && (
+            {listError && <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>{listError}</p>}
+            {!loading && !listError && cases.length === 0 && (
               <p className="text-muted">No cases match this filter.</p>
             )}
             {cases.map((item) => (
@@ -786,6 +918,7 @@ export default function CaseQueue({ user, onLogout, onNavigate }) {
               <ScorePanel
                 detail={detail}
                 user={user}
+                onOpenDuplicate={onOpenDuplicate}
                 onDone={refresh}
                 onClose={() => setDetail(null)}
               />
