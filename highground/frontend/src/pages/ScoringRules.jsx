@@ -55,6 +55,12 @@ export default function ScoringRules() {
   if (!rubric) return <p className="text-sm text-muted">Loading scoring rules…</p>
 
   const total = rubric.criteria.reduce((sum, c) => sum + c.weight, 0)
+  const { high, medium } = rubric.thresholds
+  const bands = [
+    { key: 'high', chip: high, name: 'High priority', range: `Score ${high} and above` },
+    { key: 'medium', chip: medium, name: 'Medium priority', range: `Score ${medium} to ${high - 1}` },
+    { key: 'low', chip: medium - 1, name: 'Low priority', range: `Score ${medium - 1} and below` },
+  ]
 
   return (
     <>
@@ -68,14 +74,18 @@ export default function ScoringRules() {
         </div>
       </div>
 
-      <div className="filter-bar" style={{ gap: '1.2rem' }}>
-        <span className="score score--sm score--high">High · {rubric.thresholds.high} and above</span>
-        <span className="score score--sm score--medium">
-          Medium · {rubric.thresholds.medium} to {rubric.thresholds.high - 1}
-        </span>
-        <span className="score score--sm score--low">
-          Low · {rubric.thresholds.medium - 1} and below
-        </span>
+      {/* The score chip is a fixed-size circle, so it carries only the number;
+          the band's name and range sit beside it, as on the design contract. */}
+      <div className="row" style={{ gap: '3.2rem', flexWrap: 'wrap', marginBottom: '2.4rem' }}>
+        {bands.map((band) => (
+          <div className="row" key={band.key}>
+            <span className={`score score--sm score--${band.key}`}>{band.chip}</span>
+            <div>
+              <div className="text-sm text-strong">{band.name}</div>
+              <div className="text-xs text-muted">{band.range}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {rubric.criteria.map((criterion) => (
