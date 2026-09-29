@@ -1193,3 +1193,14 @@ a.map-kpi:hover { border-color: var(--teal-600); }
   .duplicate-review__cases { grid-template-columns: 1fr; }
   .duplicate-review__header .row { flex-wrap: wrap; }
 }
+
+/* Screen 05a pin picker. The home pin is teal (location identity), never a
+   priority-band colour. */
+.pin-picker { position: relative; height: 30rem; margin-bottom: var(--sp-8); }
+.pin-picker__canvas {
+  position: absolute; inset: 0; z-index: 0;
+  border: 1px solid var(--grey-200); border-radius: var(--radius-md); overflow: hidden;
+}
+.pin-picker__locate { position: absolute; top: 1.2rem; right: 1.2rem; z-index: 10; box-shadow: var(--shadow-md); }
+.ops-pin--home { background-color: var(--teal-700); }
+@media (max-width: 600px) { .pin-picker { height: 24rem; } }

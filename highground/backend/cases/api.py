@@ -5,6 +5,8 @@ resident nothing.
 """
 
 import json
+import math
+from decimal import Decimal
 
 from django.db import transaction
 from django.urls import reverse
@@ -31,6 +33,7 @@ from accounts.permissions import (
 from accounts.models import UserAccount
 from scoring.engine import HIGH_THRESHOLD, MEDIUM_THRESHOLD
 
+from .duplicates import haversine_metres
 from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
 from .privacy import safe_case_text
 from .upload_validation import has_expected_signature
@@ -400,11 +403,21 @@ class CaseCreateSerializer(serializers.ModelSerializer):
             "does_not_exist": "Choose a village from the list.",
         },
     )
+    # The household's own pin (screen 05a). Optional: the village is the
+    # required location, so a map that fails to load never blocks a request.
+    latitude = serializers.FloatField(
+        required=False, allow_null=True, min_value=-90, max_value=90
+    )
+    longitude = serializers.FloatField(
+        required=False, allow_null=True, min_value=-180, max_value=180
+    )
 
     class Meta:
         model = CaseRecord
         fields = [
             "location_code",
+            "latitude",
+            "longitude",
             "address",
             "household_size",
             "damage_category",
@@ -437,7 +450,51 @@ class CaseCreateSerializer(serializers.ModelSerializer):
         # The name as filed stays on the case, so it still reads the same if
         # the area is later renamed or retired.
         attrs["village"] = attrs["location_area"].name
+        attrs.update(self._pin(attrs))
         return attrs
+
+    def _pin(self, attrs):
+        """Both coordinates or neither, and near the village chosen.
+
+        The distance check catches a pin dropped on the wrong village or a
+        mis-tap far away; it cannot prove the pin is on the right house, which
+        is still the officer's check at verification.
+        """
+        latitude, longitude = attrs.pop("latitude", None), attrs.pop("longitude", None)
+        if latitude is None and longitude is None:
+            return {}
+        if latitude is None or longitude is None:
+            raise serializers.ValidationError(
+                {"latitude": ["Send both latitude and longitude, or neither."]}
+            )
+        # DRF's range check lets NaN through (every comparison with NaN is
+        # false), and a NaN distance would pass the limit below too.
+        if not (math.isfinite(latitude) and math.isfinite(longitude)):
+            raise serializers.ValidationError({"latitude": ["The pin is not a valid position."]})
+        village = attrs["location_area"]
+        distance = haversine_metres(
+            latitude, longitude, float(village.latitude), float(village.longitude)
+        )
+        if distance > MAX_PIN_DISTANCE_METRES:
+            raise serializers.ValidationError(
+                {"latitude": [
+                    f"Your pin is {distance / 1000:.1f} km from the centre of {village.name}. "
+                    "Check the village you chose, or move the pin to your home."
+                ]}
+            )
+        # The columns hold six decimal places (about 0.1 m), finer than any
+        # phone fix, so rounding loses nothing real.
+        return {
+            "latitude": Decimal(f"{latitude:.6f}"),
+            "longitude": Decimal(f"{longitude:.6f}"),
+        }
+
+
+# How far a household pin may sit from its village's centre point. Village
+# centres are approximate (many from OpenStreetMap) and rural kampung spread
+# along roads and rivers for kilometres, so the limit is generous: it rejects
+# a pin in the wrong district, not a pin at the edge of the right village.
+MAX_PIN_DISTANCE_METRES = 5_000
 
 
 def _next_reference():
@@ -743,8 +800,9 @@ def case_map(request):
 def locations(request):
     """The villages a household can file a case under, grouped by district.
 
-    Public geography, but still behind login like the rest of the API. Centre
-    points stay out: the form needs names and codes, not coordinates.
+    Public geography, but still behind login like the rest of the API. Each
+    village's centre point is included so the submit form can centre its pin
+    map; it is the published place, never a household's location.
     """
     villages = (
         LocationArea.objects.filter(
@@ -760,6 +818,8 @@ def locations(request):
                 "name": village.name,
                 "district": village.parent.name,
                 "district_code": village.parent.code,
+                "latitude": str(village.latitude),
+                "longitude": str(village.longitude),
             }
             for village in villages
         ]

@@ -13,6 +13,7 @@ priority score, which is the one thing the whole rubric exists to prevent.
 import json
 import shutil
 import tempfile
+from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -312,3 +313,103 @@ class PhotoUploadTests(SubmissionTestCase):
         response = self.post_multipart([self.photo()], description="   ")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(CasePhoto.objects.count(), 0)
+
+
+class PinTests(SubmissionTestCase):
+    """The household's optional pin (screen 05a): stored when sensible,
+    refused when it cannot be the home, and never required."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.resident)
+        self.village = LocationArea.objects.get(code=VALID["location_code"])
+        # About 300 m north-east of the village's published centre.
+        self.lat = float(self.village.latitude) + 0.002
+        self.lng = float(self.village.longitude) + 0.002
+
+    def test_a_pin_near_the_village_is_stored_to_six_places(self):
+        response = self.post(latitude=self.lat + 0.0000004, longitude=self.lng)
+
+        self.assertEqual(response.status_code, 201, response.content)
+        case = CaseRecord.objects.get()
+        self.assertEqual(case.latitude, Decimal(f"{self.lat:.6f}"))
+        self.assertEqual(case.longitude, Decimal(f"{self.lng:.6f}"))
+
+    def test_no_pin_still_submits(self):
+        for payload in ({}, {"latitude": None, "longitude": None}):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.post(**payload).status_code, 201)
+        self.assertFalse(CaseRecord.objects.filter(latitude__isnull=False).exists())
+
+    def test_half_a_pin_is_refused(self):
+        for payload in ({"latitude": self.lat}, {"longitude": self.lng},
+                        {"latitude": self.lat, "longitude": None}):
+            with self.subTest(payload=payload):
+                response = self.post(**payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("latitude", response.json())
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_impossible_coordinates_are_refused(self):
+        for payload in ({"latitude": 91, "longitude": self.lng},
+                        {"latitude": self.lat, "longitude": -181},
+                        {"latitude": "north", "longitude": self.lng}):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.post(**payload).status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_nan_is_refused(self):
+        # JSON parsers accept NaN, and it slips past a plain range check.
+        body = json.dumps({**VALID, "latitude": float("nan"), "longitude": self.lng})
+        response = self.client.post(URL, body, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_a_pin_far_from_the_chosen_village_is_refused(self):
+        # About 11 km south: the right district, perhaps, but not this village.
+        response = self.post(latitude=float(self.village.latitude) - 0.1, longitude=self.lng)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("km from the centre of Kampung Tendong", response.json()["latitude"][0])
+        self.assertEqual(CaseRecord.objects.count(), 0)
+
+    def test_a_pin_survives_a_multipart_submission(self):
+        # With photos the form switches to multipart, where numbers arrive as text.
+        payload = {**VALID, "latitude": str(self.lat), "longitude": str(self.lng)}
+        payload["vulnerability_flags"] = json.dumps(payload["vulnerability_flags"])
+        payload["needs_flags"] = json.dumps(payload["needs_flags"])
+        response = self.client.post(URL, payload)
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(CaseRecord.objects.get().latitude, Decimal(f"{self.lat:.6f}"))
+
+    def test_the_pin_is_exact_for_district_staff_and_hidden_from_an_unclaimed_ngo(self):
+        from accounts.models import Organization
+
+        self.post(latitude=self.lat, longitude=self.lng)
+        case = CaseRecord.objects.get()
+        officer = UserAccount.objects.create_user(
+            email="pin-officer@example.my", full_name="Pin Officer", password="Recovery2026",
+            role=UserAccount.Role.DISASTER_OFFICER,
+        )
+        self.client.force_login(officer)
+        point = self.client.get("/api/cases/map/").json()["points"][0]
+        self.assertEqual(point["precision"], "exact")
+        self.assertEqual(point["latitude"], f"{self.lat:.6f}")
+
+        # Once verified, NGOs can see the case exists, but only as a village count.
+        case.status = CaseRecord.Status.VERIFIED
+        case.save(update_fields=["status"])
+        org = Organization.objects.create(
+            name="Pin Relief", type=Organization.Type.NGO, contact_no="03-9", service_area="Kelantan",
+        )
+        ngo = UserAccount.objects.create_user(
+            email="pin-ngo@example.my", full_name="Pin NGO", password="Recovery2026",
+            role=UserAccount.Role.NGO_VOLUNTEER, organization=org,
+        )
+        self.client.force_login(ngo)
+        response = self.client.get("/api/cases/map/")
+        payload = response.json()
+        self.assertEqual(payload["points"], [])
+        self.assertEqual(payload["areas"][0]["case_count"], 1)
+        self.assertNotIn(f"{self.lat:.6f}", response.content.decode())

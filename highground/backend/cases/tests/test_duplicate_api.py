@@ -6,6 +6,7 @@ Traceability — requirements covered by this file:
   NFR3 Residents see only their own case; NGOs never see comparison data
 """
 
+from decimal import Decimal
 from unittest import mock
 
 from django.core import mail
@@ -331,6 +332,31 @@ class SubmissionHookTests(DuplicateWorld, TestCase):
         self.assertEqual(response.json()["duplicate_check"], "completed")
         self.assertNotIn("FRC-5001", response.content.decode())
         self.assertEqual(DuplicateCaseMatch.objects.count(), 1)
+
+    def test_a_submitted_pin_counts_as_distance_evidence(self):
+        """The resident pin is what lets real submissions use the engine's
+        distance signal; without it only seeded cases had pins."""
+        CaseRecord.objects.filter(reference="FRC-5001").update(
+            latitude=Decimal("6.100300"), longitude=Decimal("102.200200")
+        )
+        payload = {
+            "location_code": self.area.code,
+            "address": "Lot 88 Jln Masjid Kg Sireh",
+            "household_size": 4,
+            "damage_category": "repair",
+            "description": "Air masuk rumah paras pinggang, dapur rosak dan tilam basah.",
+            "needs_flags": ["food", "water"],
+            # About 25 m from FRC-5001's pin.
+            "latitude": 6.1005, "longitude": 102.2003,
+        }
+        response = self.client.post("/api/cases/", payload, content_type="application/json")
+        self.assertEqual(response.status_code, 201, response.content)
+
+        match = DuplicateCaseMatch.objects.get()
+        distance = [r for r in svc.current_duplicate_comparison(match)["reasons"]
+                    if r["signal"] == "distance"]
+        self.assertEqual(len(distance), 1)
+        self.assertEqual(distance[0]["effect"], "supports")
 
     def test_detection_failure_never_loses_the_submission(self):
         with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError):

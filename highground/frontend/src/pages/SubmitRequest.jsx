@@ -4,13 +4,11 @@
  * Ported from the frozen design contract. Two deliberate departures, both
  * agreed before building:
  *
- *   1. Step 1's map pin-drop is deferred. The design asks for a Leaflet
- *      pin, but a tile fetch that fails live is a grey box in front of an
- *      examiner, so location is captured as a controlled village (a coded
- *      area from /api/locations/) plus address text, and latitude/longitude
- *      are left null. The case is mapped at its village's centre point.
- *      The pin's privacy banner went with it — it promises something about
- *      "your exact pin" that this build does not yet collect.
+ *   1. Step 1's map pin is optional, where the design marks it required.
+ *      A tile fetch can fail live, so the controlled village (a coded area
+ *      from /api/locations/) plus address text stays the required location
+ *      and PinPicker adds the household's own pin when the map works. With
+ *      no pin, the case is mapped at its village's centre point.
  *
  *   2. Step 4 holds the chosen photos in state and previews them. On submit,
  *      api.createCase switches the request to multipart and Django stores up
@@ -23,7 +21,9 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import { api } from '../api'
+import { pinProblem } from '../geo'
 import { useDocumentTitle } from '../useDocumentTitle'
+import PinPicker from './PinPicker'
 
 const STEPS = ['Household', 'Home & damage', 'Safety & needs', 'Photos', 'Review & submit']
 
@@ -113,6 +113,7 @@ const PATHS = {
   arrow: 'M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3',
   camera: 'M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z',
   info: 'M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z',
+  lock: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
   warning: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z',
 }
 
@@ -152,6 +153,16 @@ function Stepper({ current }) {
 /* ---------------------------------------------------------------- step 1 */
 
 function StepHousehold({ data, set, villages, onRetryVillages }) {
+  const village = villages.rows.find((row) => row.code === data.location_code)
+
+  // A pin placed for one village cannot stay if the household switches to a
+  // village far away; the server would refuse the pair.
+  function chooseVillage(code) {
+    const next = villages.rows.find((row) => row.code === code)
+    const keepPin = data.pin && next && !pinProblem(next, data.pin.latitude, data.pin.longitude)
+    set({ location_code: code, pin: keepPin ? data.pin : null })
+  }
+
   return (
     <>
       <div className="card" style={{ marginBottom: '2.4rem' }}>
@@ -224,58 +235,80 @@ function StepHousehold({ data, set, villages, onRetryVillages }) {
       <div className="card" style={{ marginBottom: '2.4rem' }}>
         <h3 style={{ marginBottom: '0.4rem' }}>Where is your home?</h3>
         <p className="text-sm text-muted" style={{ marginBottom: '2.4rem' }}>
-          Kampung addresses can be hard to find — a nearby landmark helps teams reach you faster.
+          Pick your village, then drop a pin on your house — kampung addresses can be hard to find, and
+          an accurate pin helps teams reach you faster.
         </p>
 
-        <div className="input-group">
-          <div className="field">
-            <label>
-              Village / area <Required />
-            </label>
-            <select
-              className="input"
-              value={data.location_code}
-              onChange={(e) => set({ location_code: e.target.value })}
-              disabled={villages.loading || Boolean(villages.error)}
-            >
-              <option value="">{villages.loading ? 'Loading villages…' : 'Choose your village…'}</option>
-              {byDistrict(villages.rows).map(([district, rows]) => (
-                <optgroup key={district} label={district}>
-                  {rows.map((v) => (
-                    <option key={v.code} value={v.code}>
-                      {v.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {villages.error || (!villages.loading && villages.rows.length === 0) ? (
-              <p className="help" role="alert" style={{ color: 'var(--danger-600)' }}>
-                {villages.error ? 'Could not load villages.' : 'No villages are available yet.'}{' '}
-                <button
-                  type="button"
-                  onClick={onRetryVillages}
-                  style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
-                >
-                  Try again
-                </button>
-              </p>
-            ) : (
-              <p className="help">Not listed? Choose the nearest village and describe the place below.</p>
-            )}
+        <div className="stack" style={{ gap: '2.4rem' }}>
+          <div className="input-group">
+            <div className="field">
+              <label>
+                Village / area <Required />
+              </label>
+              <select
+                className="input"
+                value={data.location_code}
+                onChange={(e) => chooseVillage(e.target.value)}
+                disabled={villages.loading || Boolean(villages.error)}
+              >
+                <option value="">{villages.loading ? 'Loading villages…' : 'Choose your village…'}</option>
+                {byDistrict(villages.rows).map(([district, rows]) => (
+                  <optgroup key={district} label={district}>
+                    {rows.map((v) => (
+                      <option key={v.code} value={v.code}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {villages.error || (!villages.loading && villages.rows.length === 0) ? (
+                <p className="help" role="alert" style={{ color: 'var(--danger-600)' }}>
+                  {villages.error ? 'Could not load villages.' : 'No villages are available yet.'}{' '}
+                  <button
+                    type="button"
+                    onClick={onRetryVillages}
+                    style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}
+                  >
+                    Try again
+                  </button>
+                </p>
+              ) : (
+                <p className="help">
+                  Choosing a village centres the map below. Not listed? Choose the nearest village and
+                  describe the place.
+                </p>
+              )}
+            </div>
+            <div className="field">
+              <label>
+                Address or landmark <Required />
+              </label>
+              <input
+                className="input"
+                type="text"
+                value={data.address}
+                onChange={(e) => set({ address: e.target.value })}
+                placeholder="No. 14, Jalan Masjid, near the surau"
+              />
+              <span className="help">Road, house number, or a nearby landmark (masjid, balai raya, school).</span>
+            </div>
           </div>
-          <div className="field">
-            <label>
-              Address or landmark <Required />
-            </label>
-            <input
-              className="input"
-              type="text"
-              value={data.address}
-              onChange={(e) => set({ address: e.target.value })}
-              placeholder="No. 14, Jalan Masjid, near the surau"
-            />
-            <span className="help">Road, house number, or a nearby landmark (masjid, balai raya, school).</span>
+
+          {village ? (
+            <PinPicker village={village} value={data.pin} onChange={(pin) => set({ pin })} />
+          ) : (
+            <p className="help">Choose your village to place a pin on your home.</p>
+          )}
+
+          {/* Must match accounts.permissions.may_see_exact_location. */}
+          <div className="banner banner--info">
+            <Icon path={PATHS.lock} />
+            <span className="body text-sm">
+              <span className="title">Your location stays private.</span> Your exact pin is visible only to
+              the district office and the organisation that takes on your case — never publicly. Other
+              organisations see only your village, not your pin or address.
+            </span>
           </div>
         </div>
       </div>
@@ -665,6 +698,12 @@ function StepReview({ data, goTo, villages }) {
         ['Alternative contact', data.alt_contact],
         ['Village / area', villageLabel(villages.rows, data.location_code)],
         ['Address or landmark', data.address],
+        [
+          'Map pin',
+          data.pin
+            ? `Placed (${data.pin.latitude.toFixed(5)}, ${data.pin.longitude.toFixed(5)})`
+            : 'Not placed — your village will be used',
+        ],
       ])}
 
       {section('Home & damage', 1, [
@@ -719,6 +758,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
     alt_contact: '',
     household_size: 1,
     location_code: '',
+    pin: null,
     address: '',
     damage_category: '',
     description: '',
@@ -768,6 +808,8 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
       // client switches the whole request to multipart when any are attached.
       const created = await api.createCase({
         location_code: data.location_code,
+        latitude: data.pin ? data.pin.latitude : null,
+        longitude: data.pin ? data.pin.longitude : null,
         address: data.address,
         household_size: data.household_size,
         damage_category: data.damage_category,

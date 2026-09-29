@@ -136,7 +136,7 @@ class LocationListApiTests(TestCase):
     def test_anonymous_users_are_refused(self):
         self.assertIn(self.client.get(self.URL).status_code, {401, 403})
 
-    def test_a_resident_gets_active_villages_with_their_district_and_no_coordinates(self):
+    def test_a_resident_gets_active_villages_with_their_district_and_centre_point(self):
         LocationArea.objects.filter(code="MY0304-V005").update(active=False)
         self.client.force_login(self.resident)
 
@@ -149,11 +149,15 @@ class LocationListApiTests(TestCase):
         self.assertNotIn("MY0304-V005", codes)
         self.assertNotIn("MY0307", codes)
         tendong = next(row for row in rows if row["code"] == "MY0307-V001")
+        centre = LocationArea.objects.get(code="MY0307-V001")
+        # The village's published centre, for the submit form's pin map.
         self.assertEqual(tendong, {
             "code": "MY0307-V001",
             "name": "Kampung Tendong",
             "district": "Pasir Mas",
             "district_code": "MY0307",
+            "latitude": str(centre.latitude),
+            "longitude": str(centre.longitude),
         })
 
     def test_every_role_can_read_the_list(self):
