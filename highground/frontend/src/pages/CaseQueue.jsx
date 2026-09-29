@@ -420,6 +420,8 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   const [search, setSearch] = useState('')
   const [listError, setListError] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [detailError, setDetailError] = useState(null)
+  const [detailLoadingId, setDetailLoadingId] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const [reloadKey, setReloadKey] = useState(0)
@@ -436,6 +438,8 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     selectionVersion.current += 1
     setMapCase(null)
     if (!keepDetail) setDetail(null)
+    setDetailError(null)
+    setDetailLoadingId(null)
     setLoading(true)
     setListError(null)
     setStats(null)
@@ -486,11 +490,18 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     }
   }, [view, status, band, search, reloadKey])
 
-  const openCase = (id) => {
-    const version = selectionVersion.current
-    return api.caseDetail(id).then((result) => {
+  const openCase = async (id) => {
+    const version = ++selectionVersion.current
+    setDetailError(null)
+    setDetailLoadingId(id)
+    try {
+      const result = await api.caseDetail(id)
       if (selectionVersion.current === version) setDetail(result)
-    })
+    } catch (err) {
+      if (selectionVersion.current === version) setDetailError({ message: err.message, id })
+    } finally {
+      if (selectionVersion.current === version) setDetailLoadingId(null)
+    }
   }
   // On the map, a pin opens a card over the map; the side panel is one click on.
   const openMapCase = (id) => {
@@ -895,7 +906,9 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
               </div>
             )}
             {loading && <p className="text-muted">Loading cases…</p>}
-            {listError && <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>{listError}</p>}
+            {listError && <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>Could not load the queue: {listError} <button className="btn btn--ghost btn--sm" onClick={() => { invalidateQueue(); setReloadKey((n) => n + 1) }}>Retry</button></p>}
+            {detailLoadingId && <p role="status" className="text-sm text-muted">Loading case detail…</p>}
+            {detailError && <p role="alert" className="text-sm">Could not open case: {detailError.message} <button className="btn btn--ghost btn--sm" onClick={() => openCase(detailError.id)}>Retry</button></p>}
             {!loading && !listError && cases.length === 0 && (
               <p className="text-muted">No cases match this filter.</p>
             )}

@@ -14,10 +14,6 @@ export default defineConfig({
       // origin and inherits the session. /static carries its CSS.
       '/admin': { target: 'http://127.0.0.1:8000', changeOrigin: true },
       '/static': { target: 'http://127.0.0.1:8000', changeOrigin: true },
-      // Uploaded files (registration documents). Without this the admin's
-      // PDF links fall through to the SPA's index.html and render the app
-      // instead of the file — a 200, so nothing looks broken.
-      '/media': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },
 })

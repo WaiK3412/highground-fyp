@@ -240,7 +240,13 @@ class PhotoUploadTests(SubmissionTestCase):
         self.client.force_login(self.resident)
 
     def photo(self, name="damage.jpg", content_type="image/jpeg", size=32):
-        return SimpleUploadedFile(name, b"x" * size, content_type=content_type)
+        signatures = {
+            "image/jpeg": b"\xff\xd8\xff",
+            "image/png": b"\x89PNG\r\n\x1a\n",
+            "image/webp": b"RIFF\x04\x00\x00\x00WEBP",
+        }
+        header = signatures.get(content_type, b"x")
+        return SimpleUploadedFile(name, header + b"x" * max(size - len(header), 0), content_type=content_type)
 
     def post_multipart(self, photos, **overrides):
         payload = {**VALID, **overrides}

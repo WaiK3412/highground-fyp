@@ -10,7 +10,7 @@
  * rather than being locked out or left guessing.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 import CaseTimeline from './CaseTimeline'
@@ -492,22 +492,32 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
   useDocumentTitle('My Recovery')
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [detail, setDetail] = useState(null)
   const [detailError, setDetailError] = useState(null)
+  const [detailLoadingId, setDetailLoadingId] = useState(null)
+  const detailVersion = useRef(0)
   const [unread, setUnread] = useState(0)
 
   // The list carries only summary fields; the breakdown, needs and location
   // come from the detail endpoint, which applies its own visibility rules.
   async function openCase(id) {
+    const version = ++detailVersion.current
     setDetailError(null)
     if (detail?.id === id) {
       setDetail(null)
       return
     }
+    setDetail(null)
+    setDetailLoadingId(id)
     try {
-      setDetail(await api.caseDetail(id))
+      const result = await api.caseDetail(id)
+      if (version === detailVersion.current) setDetail(result)
     } catch (err) {
-      setDetailError(err.message)
+      if (version === detailVersion.current) setDetailError({ message: err.message, id })
+    } finally {
+      if (version === detailVersion.current) setDetailLoadingId(null)
     }
   }
 
@@ -533,12 +543,12 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
     api
       .cases()
       .then((list) => !cancelled && setCases(list.results))
-      .catch(() => !cancelled && setCases([]))
+      .catch((err) => !cancelled && setLoadError(err.message))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [loadAttempt])
 
   const firstName = user.full_name.split(' ')[0]
   const initials = user.full_name
@@ -667,12 +677,15 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
                 className="text-sm"
                 style={{ color: 'var(--danger-600)', fontWeight: 600, marginBottom: '1.2rem' }}
               >
-                {detailError}
+                {detailError.message} <button className="btn btn--ghost btn--sm" onClick={() => openCase(detailError.id)}>Retry</button>
               </div>
             )}
+            {detailLoadingId && <p role="status" className="text-sm text-muted">Loading case detail…</p>}
 
             {loading ? (
               <p className="text-sm text-muted">Loading your cases…</p>
+            ) : loadError ? (
+              <p role="alert" className="text-sm">Could not load your cases. <button className="btn btn--ghost btn--sm" onClick={() => { setLoadError(null); setLoading(true); setLoadAttempt((n) => n + 1) }}>Retry</button></p>
             ) : cases.length === 0 ? (
               <p className="text-sm text-muted">
                 You have not submitted a request yet. When you do, it will appear here with its

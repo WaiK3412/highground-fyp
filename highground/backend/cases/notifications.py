@@ -186,10 +186,9 @@ def _send_email(user, case, event_type, detail):
 
     subject = f"[HighGround] {headline(case, event_type)} — {case.reference}"
     body = (
-        f"Hello {user.full_name},\n\n"
+        "Hello,\n\n"
         f"{headline(case, event_type)}.\n\n"
-        f"Case {case.reference} — {case.get_damage_category_display()}, {case.village}\n"
-        f"{detail}\n\n"
+        f"Case {case.reference}\n\n"
         f"Sign in to HighGround to see the details and reply.\n\n"
         f"This message is for information only. If someone is in immediate danger, "
         f"call 999.\n"

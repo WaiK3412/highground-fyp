@@ -18,6 +18,7 @@ const ADMIN_CONSOLE = '/admin/'
 export default function App() {
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [bootError, setBootError] = useState(null)
   const [screen, setScreen] = useState('login')
   const [justLoggedIn, setJustLoggedIn] = useState(false)
   // Residents have two screens now; anything more and this wants a router.
@@ -48,11 +49,26 @@ export default function App() {
     setResponderScreen('duplicates')
   }
 
+  async function refreshSession() {
+    setChecking(true)
+    setBootError(null)
+    try {
+      setUser(await api.me())
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) setUser(null)
+      else setBootError('Could not connect to HighGround. Check your connection and try again.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
   useEffect(() => {
-    api
-      .me()
+    api.me()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch((err) => {
+        if (err.status === 401 || err.status === 403) setUser(null)
+        else setBootError('Could not connect to HighGround. Check your connection and try again.')
+      })
       .finally(() => setChecking(false))
   }, [])
 
@@ -63,7 +79,12 @@ export default function App() {
   }, [justLoggedIn, user])
 
   async function handleLogout() {
-    await api.logout().catch(() => {})
+    try {
+      await api.logout()
+    } catch {
+      setBootError('Could not sign out. Please try again.')
+      return
+    }
     setUser(null)
     setJustLoggedIn(false)
     setScreen('login')
@@ -77,7 +98,13 @@ export default function App() {
     setJustLoggedIn(true)
   }
 
-  if (checking) return null
+  if (checking) return <main className="auth-shell"><p role="status">Checking your session…</p></main>
+  if (bootError) return (
+    <main className="auth-shell">
+      <p role="alert">{bootError}</p>
+      <button className="btn btn--primary" onClick={refreshSession}>Retry</button>
+    </main>
+  )
 
   if (user?.role === 'system_admin') {
     return (

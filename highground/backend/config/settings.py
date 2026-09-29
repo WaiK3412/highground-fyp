@@ -20,17 +20,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
+# Set DJANGO_DEBUG=0 and deployment host/origin values in the production environment.
 SECRET_KEY = os.environ["SECRET_KEY"]
-
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 3600 if not DEBUG else 0
 
 
 # Application definition
@@ -130,6 +127,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -162,15 +160,20 @@ REST_FRAMEWORK = {
 # Django, so browser requests arrive with an Origin header Django must trust
 # before it will accept any unsafe method. Dev only — production serves the
 # built SPA from the same origin and needs no entry here.
-CSRF_TRUSTED_ORIGINS = [
+DEV_CSRF_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://127.0.0.1:5174",
     "http://localhost:5174",
 ]
+CSRF_TRUSTED_ORIGINS = (
+    DEV_CSRF_ORIGINS if DEBUG else [
+        origin.strip() for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
+)
 
-# Uploaded evidence for role applications (ADR-012). Kept outside the static
-# tree and never served by the app server in production.
+# All media is private and is only served through permission-checked endpoints.
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 

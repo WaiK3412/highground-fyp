@@ -7,6 +7,7 @@ resident nothing.
 import json
 
 from django.db import transaction
+from django.urls import reverse
 from django.db.models import F, Prefetch, Q, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -31,6 +32,8 @@ from accounts.models import UserAccount
 from scoring.engine import HIGH_THRESHOLD, MEDIUM_THRESHOLD
 
 from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
+from .privacy import safe_case_text
+from .upload_validation import has_expected_signature
 
 
 class ScoreComponentSerializer(serializers.Serializer):
@@ -177,16 +180,24 @@ class CaseEventSerializer(serializers.Serializer):
             and obj.event_type not in self.RESIDENT_DETAIL_TYPES
         ):
             return ""
-        return obj.detail
+        return safe_case_text(obj.case, request.user if request else None, obj.detail)
 
 
 class CasePhotoSerializer(serializers.Serializer):
-    url = serializers.CharField(source="file_path.url", read_only=True)
-    caption = serializers.CharField(read_only=True)
+    url = serializers.SerializerMethodField()
+    caption = serializers.SerializerMethodField()
     uploaded_at = serializers.DateTimeField(read_only=True)
+
+    def get_url(self, obj):
+        return reverse("case-photo", kwargs={"pk": obj.pk})
+
+    def get_caption(self, obj):
+        request = self.context.get("request")
+        return safe_case_text(obj.case, request.user if request else None, obj.caption or "")
 
 
 class CaseTaskSummarySerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     lead_name = serializers.CharField(source="lead_user.full_name", default=None, read_only=True)
@@ -204,6 +215,10 @@ class CaseTaskSummarySerializer(serializers.ModelSerializer):
             "assigned_at",
             "completed_at",
         ]
+
+    def get_title(self, obj):
+        request = self.context.get("request")
+        return safe_case_text(obj.case, request.user if request else None, obj.title)
 
 
 class CaseSummaryDetailSerializer(CaseListSerializer):
@@ -230,6 +245,7 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 
 
 class CaseDetailSerializer(CaseListSerializer):
+    description = serializers.SerializerMethodField()
     score_components = ScoreComponentSerializer(many=True, read_only=True)
     photos = CasePhotoSerializer(many=True, read_only=True)
     events = serializers.SerializerMethodField()
@@ -277,6 +293,9 @@ class CaseDetailSerializer(CaseListSerializer):
 
     def get_detail_access(self, obj):
         return "full"
+
+    def get_description(self, obj):
+        return safe_case_text(obj, self.context["request"].user, obj.description)
 
     def get_events(self, obj):
         user = self.context["request"].user
@@ -531,6 +550,8 @@ class CaseListView(ListCreateAPIView):
         to the NGO queue", so a new case carries score_total=None until it is
         verified.
         """
+        if request.user.role != UserAccount.Role.COMMUNITY_MEMBER:
+            return Response({"detail": "Only residents may submit a request."}, status=403)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -542,7 +563,7 @@ class CaseListView(ListCreateAPIView):
         for upload in photos:
             if upload.size > MAX_PHOTO_BYTES:
                 return Response({"photos": [f"{upload.name} is larger than 5 MB."]}, status=400)
-            if upload.content_type not in ALLOWED_PHOTO_TYPES:
+            if upload.content_type not in ALLOWED_PHOTO_TYPES or not has_expected_signature(upload):
                 return Response(
                     {"photos": [f"{upload.name} must be a JPEG, PNG or WebP image."]},
                     status=400,
@@ -746,6 +767,7 @@ def locations(request):
 
 
 class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
+    safety_note = serializers.SerializerMethodField()
     case_id = serializers.IntegerField(source="case.id", read_only=True)
     case_reference = serializers.CharField(source="case.reference", read_only=True)
     case_village = serializers.CharField(source="case.village", read_only=True)
@@ -779,6 +801,10 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
             return None
         return {"id": obj.lead_user_id, "full_name": obj.lead_user.full_name}
 
+    def get_safety_note(self, obj):
+        request = self.context.get("request")
+        return safe_case_text(obj.case, request.user if request else None, obj.safety_note)
+
     def get_safety_acknowledgement(self, obj):
         if not obj.safety_note or not obj.lead_user_id or not obj.assigned_at:
             return None
@@ -804,7 +830,11 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
         rows.sort(key=lambda event: event.created_at)
         return [
             {
-                "detail": event.detail,
+                "detail": safe_case_text(
+                    obj.case,
+                    self.context["request"].user if self.context.get("request") else None,
+                    event.detail,
+                ),
                 "actor": event.actor_user.full_name if event.actor_user else None,
                 "created_at": event.created_at,
             }
@@ -853,6 +883,7 @@ def _may_read_tasks(user, case):
         return case.submitted_by_user_id == user.id
     return (
         user.role == UserAccount.Role.NGO_VOLUNTEER
+        and user.organization_id is not None
         and case.claimed_by_org_id == user.organization_id
     )
 
@@ -901,7 +932,7 @@ def task_board(request):
     ).order_by("full_name")
     return Response(
         {
-            "tasks": CaseTaskBoardSerializer(tasks, many=True).data,
+            "tasks": CaseTaskBoardSerializer(tasks, many=True, context={"request": request}).data,
             "cases": CaseListSerializer(cases, many=True).data,
             "responders": [
                 {"id": responder.id, "full_name": responder.full_name}
@@ -928,7 +959,7 @@ def case_tasks(request, pk):
             if request.user.role == UserAccount.Role.COMMUNITY_MEMBER
             else CaseTaskBoardSerializer
         )
-        return Response(serializer_class(tasks, many=True).data)
+        return Response(serializer_class(tasks, many=True, context={"request": request}).data)
 
     if (
         request.user.role != UserAccount.Role.NGO_VOLUNTEER
@@ -993,7 +1024,7 @@ def case_tasks(request, pk):
             created_at=timezone.now(),
         )
 
-    return Response(CaseTaskBoardSerializer(task).data, status=201)
+    return Response(CaseTaskBoardSerializer(task, context={"request": request}).data, status=201)
 
 
 TASK_TRANSITIONS = {
@@ -1161,7 +1192,7 @@ def update_task(request, pk):
             created_at=timezone.now(),
         )
 
-    return Response(CaseTaskBoardSerializer(task).data)
+    return Response(CaseTaskBoardSerializer(task, context={"request": request}).data)
 
 
 @api_view(["POST"])
@@ -1493,9 +1524,20 @@ class NotificationSerializer(serializers.Serializer):
     case_id = serializers.IntegerField(source="case.id", read_only=True)
     event_type = serializers.CharField(read_only=True)
     event_display = serializers.CharField(source="get_event_type_display", read_only=True)
-    detail = serializers.CharField(read_only=True)
+    detail = serializers.SerializerMethodField()
     read_at = serializers.DateTimeField(read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
+
+    def get_detail(self, obj):
+        user = self.context.get("request").user if self.context.get("request") else None
+        if user is None or obj.recipient_user_id != user.pk:
+            return "Case updated. Sign in to view it."
+        # A recipient can lose access after a claim is released or a role is revoked.
+        if not visible_cases(user, CaseRecord.objects.filter(pk=obj.case_id)).exists():
+            return "Case updated. Sign in to view it."
+        if user.role == UserAccount.Role.NGO_VOLUNTEER and not may_see_private_case_details(user, obj.case):
+            return "Case updated. Sign in to view it."
+        return safe_case_text(obj.case, user, obj.detail)
 
 
 @api_view(["GET"])
@@ -1516,7 +1558,7 @@ def notifications(request):
             "unread": CaseEventLog.objects.filter(
                 recipient_user=request.user, read_at__isnull=True
             ).count(),
-            "results": NotificationSerializer(rows, many=True).data,
+            "results": NotificationSerializer(rows, many=True, context={"request": request}).data,
         }
     )
 
@@ -1538,7 +1580,7 @@ def mark_notification_read(request, pk):
         row.read_at = timezone.now()
         row.save(update_fields=["read_at"])
 
-    return Response(NotificationSerializer(row).data)
+    return Response(NotificationSerializer(row, context={"request": request}).data)
 
 
 @api_view(["POST"])

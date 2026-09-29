@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm
 from django.utils.html import format_html, format_html_join
+from django.urls import reverse
 
 from django.utils import timezone
 
@@ -19,11 +20,16 @@ class RegistrationDocumentInline(admin.TabularInline):
 
     model = RegistrationDocument
     extra = 0
-    readonly_fields = ("file", "label", "uploaded_at")
+    readonly_fields = ("download", "label", "uploaded_at")
+    fields = ("label", "download", "uploaded_at")
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
         return False
+
+    @admin.display(description="Document")
+    def download(self, obj):
+        return format_html('<a href="{}">Download</a>', reverse("registration-document", kwargs={"pk": obj.pk}))
 
 
 @admin.action(description="Approve selected role applications")
@@ -85,6 +91,9 @@ class UserAccountAdmin(UserAdmin):
         "verification_status", "organization", "is_active",
     )
     list_filter = ("verification_status", "role", "organization", "is_active", "is_staff")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
     search_fields = ("email", "full_name")
     actions = [approve_applications]
     inlines = [RegistrationDocumentInline]
@@ -184,6 +193,21 @@ class OrganizationAdmin(admin.ModelAdmin):
 class RegistrationDocumentAdmin(admin.ModelAdmin):
     list_display = ("label", "user", "uploaded_at")
     search_fields = ("user__email", "label")
+    fields = ("label", "user", "uploaded_at", "download")
+    readonly_fields = fields
+
+    @admin.display(description="Document")
+    def download(self, obj):
+        return format_html('<a href="{}">Download</a>', reverse("registration-document", kwargs={"pk": obj.pk}))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(RoleApplication)
@@ -241,7 +265,7 @@ class RoleApplicationAdmin(UserAccountAdmin):
             return format_html('<span style="color:#B45309;">none uploaded</span>')
         return format_html_join(
             " · ", '<a href="{}" target="_blank" rel="noopener">{}</a>',
-            ((d.file.url, d.label or d.file.name.rsplit("/", 1)[-1]) for d in docs),
+            ((reverse("registration-document", kwargs={"pk": d.pk}), d.label or d.file.name.rsplit("/", 1)[-1]) for d in docs),
         )
 
     def has_add_permission(self, request):

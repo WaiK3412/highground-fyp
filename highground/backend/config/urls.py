@@ -4,13 +4,12 @@ The SPA talks to /api/; Django admin remains at /admin/ (ADR-002: admin is
 screens 14/19 of the design, not a temporary stand-in).
 """
 
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
 from accounts import api as accounts_api
 from cases import api as cases_api
+from cases import private_files
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -18,6 +17,7 @@ urlpatterns = [
     path("api/auth/csrf/", accounts_api.csrf),
     path("api/auth/register/", accounts_api.register),
     path("api/organizations/", accounts_api.organizations),
+    path("api/registration-documents/<int:pk>/file/", private_files.registration_document, name="registration-document"),
     path("api/auth/login/", accounts_api.login_view),
     path("api/auth/logout/", accounts_api.logout_view),
     path("api/auth/me/", accounts_api.me),
@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/cases/map/", cases_api.case_map),
     path("api/locations/", cases_api.locations),
     path("api/cases/<int:pk>/", cases_api.case_detail),
+    path("api/case-photos/<int:pk>/file/", private_files.case_photo, name="case-photo"),
     path("api/cases/<int:pk>/claim/", cases_api.claim_case),
     path("api/cases/<int:pk>/release/", cases_api.release_case),
     path("api/cases/<int:pk>/verify/", cases_api.verify_case),
@@ -46,9 +47,3 @@ urlpatterns = [
     path("api/notifications/read-all/", cases_api.mark_all_notifications_read),
     path("api/notifications/<int:pk>/read/", cases_api.mark_notification_read),
 ]
-
-# runserver serves STATIC by itself but never MEDIA, so uploaded registration
-# documents 404 without this line. DEBUG-only on purpose: in production the
-# web server serves MEDIA_ROOT, and this helper refuses to run anyway.
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

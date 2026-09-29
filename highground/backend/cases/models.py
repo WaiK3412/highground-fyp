@@ -4,11 +4,16 @@ case_record is the hub; everything else hangs off it. Table names are the ERD's
 own, so the diagram and the schema can be read against each other.
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from django.conf import settings
 from django.db import models
 from django.db.models.functions import Greatest, Least
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
-from accounts.models import Organization
+from accounts.models import Organization, UserAccount
 
 
 class DropOffPoint(models.Model):
@@ -342,6 +347,33 @@ class DuplicateCaseMatch(models.Model):
         return f"{self.case_a.reference} ~ {self.case_b.reference} ({self.similarity_score}%)"
 
 
+_audit_reset = ContextVar("audit_reset", default=False)
+
+
+@contextmanager
+def demo_audit_reset():
+    """Permit the explicitly destructive development seed reset only."""
+    if not settings.DEBUG:
+        raise ValueError("The demo audit reset is disabled outside development.")
+    token = _audit_reset.set(True)
+    try:
+        yield
+    finally:
+        _audit_reset.reset(token)
+
+
+class CaseEventQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        if not set(kwargs) <= {"read_at", "delivery_status", "recipient_user"}:
+            raise ValueError("Audit fields cannot be updated.")
+        return super().update(**kwargs)
+
+    def delete(self):
+        if not _audit_reset.get():
+            raise ValueError("Audit rows cannot be deleted.")
+        return super().delete()
+
+
 class CaseEventLog(models.Model):
     """Timeline, notifications and audit in one table (ADR-004).
 
@@ -410,6 +442,7 @@ class CaseEventLog(models.Model):
     delivery_status = models.CharField(max_length=30, null=True, blank=True)
     read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField()
+    objects = CaseEventQuerySet.as_manager()
 
     class Meta:
         db_table = "case_event_log"
@@ -417,6 +450,39 @@ class CaseEventLog(models.Model):
 
     def __str__(self):
         return f"{self.case.reference}: {self.get_event_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            allowed = {"read_at", "delivery_status", "recipient_user"}
+            changed = set(kwargs.get("update_fields") or ())
+            if not changed or not changed <= allowed:
+                raise ValueError("Audit fields cannot be updated.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if not _audit_reset.get():
+            raise ValueError("Audit rows cannot be deleted.")
+        return super().delete(*args, **kwargs)
+
+
+@receiver(pre_delete, sender=CaseEventLog)
+def protect_audit_row(sender, instance, **kwargs):
+    # Django's deletion collector bypasses Model.delete for cascades.
+    if not _audit_reset.get():
+        raise ValueError("Audit rows cannot be deleted.")
+
+
+@receiver(pre_delete, sender=UserAccount)
+def protect_audit_actor(sender, instance, **kwargs):
+    # SET_NULL on actor_user would erase attribution without deleting the row.
+    if not _audit_reset.get() and CaseEventLog.objects.filter(actor_user=instance).exists():
+        raise ValueError("Accounts with audit actions cannot be deleted.")
+
+
+@receiver(pre_delete, sender=CaseTask)
+def protect_audit_task(sender, instance, **kwargs):
+    if not _audit_reset.get() and CaseEventLog.objects.filter(task=instance).exists():
+        raise ValueError("Tasks with audit actions cannot be deleted.")
 
 
 class CommunityPledge(models.Model):

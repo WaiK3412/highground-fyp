@@ -78,12 +78,16 @@ def visible_cases(user, queryset):
     if user.role == Role.NGO_VOLUNTEER:
         from django.db.models import Q
 
+        if user.organization_id is None:
+            return queryset.none()
         return queryset.filter(
             Q(claimed_by_org=user.organization)
             | Q(status__in=["verified", "claimed", "in_progress", "pending_confirm"])
         )
 
-    return queryset
+    if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
+        return queryset
+    return queryset.none()
 
 
 def may_see_exact_location(user, case) -> bool:

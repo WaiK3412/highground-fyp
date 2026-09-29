@@ -249,9 +249,9 @@ function StepHousehold({ data, set, villages, onRetryVillages }) {
                 </optgroup>
               ))}
             </select>
-            {villages.error ? (
+            {villages.error || (!villages.loading && villages.rows.length === 0) ? (
               <p className="help" role="alert" style={{ color: 'var(--danger-600)' }}>
-                Couldn&apos;t load villages.{' '}
+                {villages.error ? 'Could not load villages.' : 'No villages are available yet.'}{' '}
                 <button
                   type="button"
                   onClick={onRetryVillages}

@@ -100,6 +100,7 @@ class CaseScoreComponent(models.Model):
 
 
 class AidPackage(models.Model):
+    """Reserved ERD table; FR12 package suggestions are withdrawn."""
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     items = models.TextField(blank=True)
@@ -112,6 +113,7 @@ class AidPackage(models.Model):
 
 
 class CaseAiSuggestion(models.Model):
+    """Reserved ERD table; no suggestion workflow is exposed."""
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
         ACCEPTED = "accepted", "Accepted"

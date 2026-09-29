@@ -381,7 +381,9 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
   useDocumentTitle('Task board')
   const [board, setBoard] = useState({ tasks: [], cases: [], responders: [] })
   const [loading, setLoading] = useState(true)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [error, setError] = useState(null)
+  const [boardLoadError, setBoardLoadError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -400,23 +402,23 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([api.taskBoard(), api.notifications()])
-      .then(([data, notifications]) => {
+    api.notifications().then((data) => { if (!cancelled) setUnread(data.unread) }).catch(() => {})
+    api.taskBoard()
+      .then((data) => {
         if (cancelled) return
         setBoard(data)
-        setUnread(notifications.unread)
         setForm((current) => ({
           ...current,
           caseId: current.caseId || String(data.cases.find((item) => item.status !== 'pending_confirm')?.id || ''),
           leadId: current.leadId || String(user.id),
         }))
       })
-      .catch((err) => !cancelled && setError(err.message))
+      .catch((err) => !cancelled && setBoardLoadError(err.message))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [user.id])
+  }, [user.id, loadAttempt])
 
   async function refresh(message) {
     try {
@@ -766,6 +768,8 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
 
         {loading ? (
           <p className="text-muted">Loading task board…</p>
+        ) : boardLoadError ? (
+          <p role="alert" className="text-sm">Could not load the task board: {boardLoadError} <button className="btn btn--ghost btn--sm" onClick={() => { setBoardLoadError(null); setLoading(true); setLoadAttempt((n) => n + 1) }}>Retry</button></p>
         ) : (
           <div className="board vp-fill">
             {boardColumns.map((column) => (

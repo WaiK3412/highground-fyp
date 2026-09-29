@@ -1,6 +1,8 @@
 """Django admin as the case-management interface (ADR-002: admin = screens 14/19)."""
 
 from django.contrib import admin
+from django.urls import reverse
+from django.utils.html import format_html
 
 from scoring.models import CaseScoreComponent
 
@@ -31,12 +33,23 @@ class CaseScoreComponentInline(admin.TabularInline):
 class CasePhotoInline(admin.TabularInline):
     model = CasePhoto
     extra = 0
+    fields = ("caption", "download", "uploaded_at")
+    readonly_fields = ("caption", "download", "uploaded_at")
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Photo")
+    def download(self, obj):
+        return format_html('<a href="{}">View</a>', reverse("case-photo", kwargs={"pk": obj.pk}))
 
 
 class CaseTaskInline(admin.TabularInline):
     model = CaseTask
     extra = 0
     fields = ("title", "task_type", "status", "lead_user")
+    can_delete = False
 
 
 @admin.register(CaseRecord)
@@ -102,14 +115,13 @@ class CaseRecordAdmin(admin.ModelAdmin):
             fields += ("status", "closed_at")
         return fields
 
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 @admin.register(CaseEventLog)
 class CaseEventLogAdmin(admin.ModelAdmin):
-    """Append-only audit trail.
-
-    There is no update or delete path in the codebase; the admin refuses both
-    so the demo can show that the constraint is structural, not cosmetic.
-    """
+    """Canonical actions appear once and cannot be edited through admin."""
 
     list_display = ("created_at", "case", "event_type", "actor_user", "detail")
     list_filter = ("event_type",)
@@ -136,6 +148,9 @@ class CaseTaskAdmin(admin.ModelAdmin):
     list_display = ("title", "case", "task_type", "status", "lead_user", "assigned_at")
     list_filter = ("status", "task_type")
     search_fields = ("title", "case__reference")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(DuplicateCaseMatch)
@@ -210,7 +225,24 @@ class LocationAreaAdmin(admin.ModelAdmin):
         return False
 
 
-admin.site.register(CasePhoto)
+@admin.register(CasePhoto)
+class CasePhotoAdmin(admin.ModelAdmin):
+    list_display = ("case", "caption", "uploaded_at", "download")
+    readonly_fields = ("case", "caption", "uploaded_at", "download")
+    fields = readonly_fields
+
+    @admin.display(description="Photo")
+    def download(self, obj):
+        return format_html('<a href="{}">View</a>', reverse("case-photo", kwargs={"pk": obj.pk}))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 admin.site.site_header = "HighGround — flood recovery coordination"
 admin.site.site_title = "HighGround admin"

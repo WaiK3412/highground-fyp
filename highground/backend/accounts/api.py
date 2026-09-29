@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.middleware.csrf import get_token
+from django.middleware.csrf import CsrfViewMiddleware, get_token
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -12,6 +12,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Organization, RegistrationDocument, UserAccount
+from cases.upload_validation import has_expected_signature
 
 
 class UserSerializer(serializers.Serializer):
@@ -42,8 +43,13 @@ def csrf(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
-    email = (request.data.get("email") or "").strip().lower()
-    password = request.data.get("password") or ""
+    rejection = _public_csrf_rejection(request)
+    if rejection is not None:
+        return rejection
+    credentials = LoginSerializer(data=request.data)
+    credentials.is_valid(raise_exception=True)
+    email = credentials.validated_data["email"].strip().lower()
+    password = credentials.validated_data["password"]
 
     user = authenticate(request, username=email, password=password)
     if user is None:
@@ -82,6 +88,18 @@ APPLICABLE_ROLES = [
     UserAccount.Role.DISASTER_OFFICER,
     UserAccount.Role.NGO_VOLUNTEER,
 ]
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(trim_whitespace=False)
+
+
+def _public_csrf_rejection(request):
+    """DRF exempts API views from middleware CSRF checks for anonymous users."""
+    return CsrfViewMiddleware(lambda raw_request: None).process_view(
+        request._request, lambda raw_request: None, (), {}
+    )
 
 
 class RegistrationSerializer(serializers.Serializer):
@@ -129,6 +147,7 @@ class RegistrationSerializer(serializers.Serializer):
 
 
 MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
+MAX_DOCUMENTS = 5
 ALLOWED_DOCUMENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 
 
@@ -142,12 +161,21 @@ def register(request):
     the request in `requested_role` and leaves the account least-privileged
     until an admin approves it (ADR-012).
     """
+    rejection = _public_csrf_rejection(request)
+    if rejection is not None:
+        return rejection
     serializer = RegistrationSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
 
     requested_role = data.get("requested_role") or None
     documents = request.FILES.getlist("documents")
+
+    if len(documents) > MAX_DOCUMENTS:
+        return Response(
+            {"documents": [f"Attach at most {MAX_DOCUMENTS} documents."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # Evidence is the point of the review; without it there is nothing to check.
     if requested_role and not documents:
@@ -162,7 +190,7 @@ def register(request):
                 {"documents": [f"{upload.name} is larger than 5 MB."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if upload.content_type not in ALLOWED_DOCUMENT_TYPES:
+        if upload.content_type not in ALLOWED_DOCUMENT_TYPES or not has_expected_signature(upload):
             return Response(
                 {"documents": [f"{upload.name} must be a PDF, JPEG or PNG."]},
                 status=status.HTTP_400_BAD_REQUEST,

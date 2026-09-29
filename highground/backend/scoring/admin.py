@@ -1,8 +1,6 @@
 from django.contrib import admin
 
 from .models import (
-    AidPackage,
-    CaseAiSuggestion,
     CaseScoreComponent,
     PriorityRubricCriterion,
     PriorityRubricVersion,
@@ -41,14 +39,3 @@ class CaseScoreComponentAdmin(admin.ModelAdmin):
     list_display = ("case", "criterion", "points", "reason")
     list_filter = ("criterion__name",)
     search_fields = ("case__reference",)
-
-
-@admin.register(AidPackage)
-class AidPackageAdmin(admin.ModelAdmin):
-    list_display = ("name", "description")
-
-
-@admin.register(CaseAiSuggestion)
-class CaseAiSuggestionAdmin(admin.ModelAdmin):
-    list_display = ("case", "package", "status", "reviewed_by_user", "created_at")
-    list_filter = ("status",)

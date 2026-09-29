@@ -13,15 +13,15 @@ from datetime import timedelta
 
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseRecord, CaseTask, DropOffPoint, LocationArea
+from cases.models import CaseEventLog, CaseRecord, CaseTask, DropOffPoint, LocationArea, demo_audit_reset
 from scoring.engine import CaseScoreInput, Criterion, Rubric, score_case
 from scoring.models import (
-    AidPackage,
     CaseScoreComponent,
     PriorityRubricCriterion,
     PriorityRubricVersion,
@@ -102,14 +102,6 @@ class Command(BaseCommand):
             action="store_true",
             help="Delete existing demo data first so the command is re-runnable.",
         )
-        parser.add_argument(
-            "--empty-log",
-            action="store_true",
-            help=(
-                "Clear the event log after seeding, so a live demo's own actions "
-                "are the only rows in the audit trail."
-            ),
-        )
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -117,17 +109,19 @@ class Command(BaseCommand):
         now = timezone.now()
 
         if options["flush"]:
+            if not settings.DEBUG:
+                raise CommandError("--flush is only available in development.")
             self.stdout.write("Flushing existing demo data...")
             CaseScoreComponent.objects.all().delete()
-            CaseEventLog.objects.all().delete()
-            CaseTask.objects.all().delete()
-            CaseRecord.objects.all().delete()
-            PriorityRubricCriterion.objects.all().delete()
-            PriorityRubricVersion.objects.all().delete()
-            AidPackage.objects.all().delete()
-            DropOffPoint.objects.all().delete()
-            UserAccount.objects.filter(is_superuser=False).delete()
-            Organization.objects.all().delete()
+            with demo_audit_reset():
+                CaseEventLog.objects.all().delete()
+                CaseTask.objects.all().delete()
+                CaseRecord.objects.all().delete()
+                PriorityRubricCriterion.objects.all().delete()
+                PriorityRubricVersion.objects.all().delete()
+                DropOffPoint.objects.all().delete()
+                UserAccount.objects.filter(is_superuser=False).delete()
+                Organization.objects.all().delete()
 
         # ---------------- rubric v3.0 ----------------
         version = PriorityRubricVersion.objects.create(
@@ -184,25 +178,15 @@ class Command(BaseCommand):
             )
             for i in range(2, 8)
         ]
-        self.stdout.write(self.style.SUCCESS(f"  users — {UserAccount.objects.count()} across 4 roles"))
+        self.stdout.write(self.style.SUCCESS(f"  users — {UserAccount.objects.count()} across 3 seeded roles"))
 
-        # ---------------- drop-off points & aid packages ----------------
+        # ---------------- drop-off points ----------------
         for name, addr, area in [
             ("Dewan Serbaguna Kubang Kerian", "Jalan Hospital, Kubang Kerian", "Kota Bharu"),
             ("Balai Raya Pasir Mas", "Jalan Che Latiff, Pasir Mas", "Pasir Mas"),
             ("Masjid Kampung Banggu", "Jalan Kuala Krai", "Kuala Krai"),
         ]:
             DropOffPoint.objects.create(name=name, address=addr, area=area, active=True)
-
-        for name, desc, items in [
-            ("Family cleanup kit", "For households returning to a mud-filled home.",
-             "Wheelbarrow, shovels, disinfectant, heavy-duty gloves, bin bags"),
-            ("Essential household restart", "Replaces the basics lost to submersion.",
-             "Mattresses, blankets, cooking set, water filter, torch"),
-            ("Agriculture recovery", "For smallholders who lost seed and inputs.",
-             "Paddy seed, fertiliser, hand tools"),
-        ]:
-            AidPackage.objects.create(name=name, description=desc, items=items)
 
         villages = list(
             LocationArea.objects.filter(
@@ -341,12 +325,6 @@ class Command(BaseCommand):
             created_at=now - timedelta(days=3),
         ))
 
-        if options["empty_log"]:
-            removed = CaseEventLog.objects.all().delete()[0]
-            self.stdout.write(
-                self.style.WARNING(f"  audit log cleared ({removed} rows) — demo starts empty")
-            )
-
         scored = [c for c in cases if c.score_total is not None]
         high = sum(1 for c in scored if c.score_total >= 70)
         self.stdout.write(
@@ -371,7 +349,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"  duplicate check — {flagged} possible duplicates flagged"))
         self.stdout.write(self.style.SUCCESS(f"  events — {CaseEventLog.objects.count()} audit rows"))
         self.stdout.write("")
-        self.stdout.write(f"  Demo logins (password: {DEMO_PASSWORD})")
+        self.stdout.write("  Demo logins (credentials are defined in seed_demo.py)")
         self.stdout.write(f"    officer   {officer.email}")
         self.stdout.write(f"    ngo lead  {volunteer.email}")
         self.stdout.write(f"    resident  {resident.email}")

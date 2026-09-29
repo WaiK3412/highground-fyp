@@ -142,6 +142,8 @@ export default function Register({ onRegistered, onShowLogin }) {
   useDocumentTitle('Create account')
   const [accountType, setAccountType] = useState('resident')
   const [organizations, setOrganizations] = useState([])
+  const [organizationsState, setOrganizationsState] = useState({ loading: true, error: null })
+  const [organizationsAttempt, setOrganizationsAttempt] = useState(0)
   const [requestedRole, setRequestedRole] = useState('')
   const [organizationId, setOrganizationId] = useState('')
   // e.target.files is a FileList, converted here to a real array so .map and
@@ -150,8 +152,12 @@ export default function Register({ onRegistered, onShowLogin }) {
 
   // Load the organisation list once, when this screen first appears.
   useEffect(() => {
-    api.organizations().then(setOrganizations).catch(() => setOrganizations([]))
-  }, [])
+    let cancelled = false
+    api.organizations()
+      .then((rows) => { if (!cancelled) { setOrganizations(rows); setOrganizationsState({ loading: false, error: null }) } })
+      .catch((err) => { if (!cancelled) setOrganizationsState({ loading: false, error: err.message }) })
+    return () => { cancelled = true }
+  }, [organizationsAttempt])
   const [form, setForm] = useState({
     full_name: '',
     phone: '',
@@ -331,13 +337,15 @@ export default function Register({ onRegistered, onShowLogin }) {
                     onChange={(e) => setOrganizationId(e.target.value)}
                     required
                   >
-                    <option value="">Select your organisation</option>
+                    <option value="">{organizationsState.loading ? 'Loading organisations…' : 'Select your organisation'}</option>
                     {organizations.map((org) => (
                       <option key={org.id} value={org.id}>
                         {org.name} — {org.type_display}
                       </option>
                     ))}
                   </select>
+                  {organizationsState.error && <p role="alert" className="help">Could not load organisations. <button type="button" onClick={() => { setOrganizationsState({ loading: true, error: null }); setOrganizationsAttempt((n) => n + 1) }}>Retry</button></p>}
+                  {!organizationsState.loading && !organizationsState.error && organizations.length === 0 && <p role="status" className="help">No organisations are available yet. Contact the administrator before applying.</p>}
                   {fieldError('organization')}
                 </div>
               </div>

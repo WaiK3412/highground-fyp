@@ -67,6 +67,10 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
   const [unread, setUnread] = useState(0)
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [actionError, setActionError] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const [attempt, setAttempt] = useState(0)
 
   async function load() {
     const data = await api.notifications()
@@ -83,21 +87,37 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
         setRows(data.results)
         setUnread(data.unread)
       })
-      .catch(() => !cancelled && setRows([]))
+      .catch((err) => !cancelled && setLoadError(err.message))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
 
   async function markRead(id) {
-    await api.markNotificationRead(id)
-    await load()
+    setActionError(null)
+    setBusyId(id)
+    try {
+      await api.markNotificationRead(id)
+      await load()
+    } catch (err) {
+      setActionError(err.message)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   async function markAllRead() {
-    await api.markAllNotificationsRead()
-    await load()
+    setActionError(null)
+    setBusyId('all')
+    try {
+      await api.markAllNotificationsRead()
+      await load()
+    } catch (err) {
+      setActionError(err.message)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const shown = filter === 'unread' ? rows.filter((r) => !r.read_at) : rows
@@ -119,8 +139,8 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
           {unread > 0 && <span className="badge badge--escalated">{unread} unread</span>}
         </div>
         {unread > 0 && (
-          <button className="btn btn--ghost btn--sm" onClick={markAllRead}>
-            Mark all as read
+          <button className="btn btn--ghost btn--sm" onClick={markAllRead} disabled={busyId !== null}>
+            {busyId === 'all' ? 'Updating…' : 'Mark all as read'}
           </button>
         )}
       </div>
@@ -139,7 +159,9 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
       </div>
 
       <div className="card" style={{ padding: 0 }}>
-        {loading ? null : shown.length === 0 ? (
+        {loading ? <p role="status" className="text-sm text-muted" style={{ padding: '2.4rem' }}>Loading notifications…</p> : loadError ? (
+          <p role="alert" className="text-sm" style={{ padding: '2.4rem' }}>Could not load notifications: {loadError} <button className="btn btn--ghost btn--sm" onClick={() => { setLoadError(null); setLoading(true); setAttempt((n) => n + 1) }}>Retry</button></p>
+        ) : shown.length === 0 ? (
           <p className="text-sm text-muted" style={{ padding: '2.4rem' }}>
             {filter === 'unread'
               ? 'Nothing unread.'
@@ -181,9 +203,10 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
                           <button
                             className="notif-mark-read"
                             onClick={() => markRead(row.id)}
+                            disabled={busyId !== null}
                             style={{ background: 'none', border: 0, cursor: 'pointer', font: 'inherit' }}
                           >
-                            Mark as read
+                            {busyId === row.id ? 'Updating…' : 'Mark as read'}
                           </button>
                         )}
                       </span>
@@ -194,6 +217,7 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
             })}
           </ul>
         )}
+        {actionError && <p role="alert" className="text-sm" style={{ padding: '1rem' }}>Could not update notification: {actionError}</p>}
       </div>
     </Shell>
   )
