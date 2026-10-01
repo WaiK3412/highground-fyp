@@ -81,27 +81,47 @@ def visible_cases(user, queryset):
         if user.organization_id is None:
             return queryset.none()
         return queryset.filter(
-            Q(claimed_by_org=user.organization)
+            Q(jobs__claimed_by_org=user.organization)
             | Q(status__in=["verified", "claimed", "in_progress", "pending_confirm"])
-        )
+        ).distinct()
 
     if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
         return queryset
     return queryset.none()
 
 
+def holds_active_job(user, case) -> bool:
+    """Is the user's organisation doing work on this case right now?
+
+    True while one of its jobs is claimed, in progress or awaiting the
+    resident's confirmation (ADR-020). Once its work is done, access ends,
+    even if other organisations' jobs on the case are still open. Reads
+    case.jobs.all(), so a prefetched list (the map, the queue) costs no query.
+    """
+    if user.role != UserAccount.Role.NGO_VOLUNTEER or user.organization_id is None:
+        return False
+    from cases.models import CaseJob
+
+    return any(
+        job.claimed_by_org_id == user.organization_id and job.status in CaseJob.ACTIVE
+        for job in case.jobs.all()
+    )
+
+
 def may_see_exact_location(user, case) -> bool:
     """Exact coordinates are restricted; everyone else gets village-level only.
 
-    Released to the district office (officers, admins) and to the organisation
-    that has actually claimed the case — not to every NGO browsing the queue.
+    Released to the district office (officers, admins) and to an organisation
+    holding an active job on the case — not to every NGO browsing the queue.
+    Known limit: officers are not yet tied to a district, so every officer
+    sees every district (stated in the report).
     """
     Role = UserAccount.Role
 
     if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
         return True
-    if user.role == Role.NGO_VOLUNTEER and case.claimed_by_org_id:
-        return case.claimed_by_org_id == user.organization_id
+    if user.role == Role.NGO_VOLUNTEER:
+        return holds_active_job(user, case)
     if user.role == Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
     return False
@@ -112,7 +132,7 @@ def may_see_private_case_details(user, case) -> bool:
 
     NGOs need a village-level queue summary to decide whether they can help,
     but descriptions, photos, vulnerability flags and the operational history
-    are released only after their organisation claims the case.
+    are released only while their organisation holds an active job on it.
     """
     Role = UserAccount.Role
 
@@ -120,6 +140,4 @@ def may_see_private_case_details(user, case) -> bool:
         return True
     if user.role == Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
-    if user.role == Role.NGO_VOLUNTEER and case.claimed_by_org_id:
-        return case.claimed_by_org_id == user.organization_id
-    return False
+    return holds_active_job(user, case)

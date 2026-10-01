@@ -18,7 +18,7 @@ from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
 from cases.models import CaseRecord, DuplicateCaseMatch, LocationArea
-from scoring.models import PriorityRubricVersion
+from cases.tests.job_helpers import give_job
 
 URL = "/api/cases/map/"
 
@@ -43,24 +43,26 @@ class CaseMapTests(TestCase):
         self.tendong = LocationArea.objects.get(code="MY0307-V001")
         self.salor = LocationArea.objects.get(code="MY0304-V002")
 
-        def case(ref, status, area, lat, lng, address, score, org=None):
-            return CaseRecord.objects.create(
-                reference=ref, submitted_by_user=self.resident, claimed_by_org=org,
+        def case(ref, status, area, lat, lng, address, priority_class, org=None):
+            case = CaseRecord.objects.create(
+                reference=ref, submitted_by_user=self.resident,
                 damage_category=CaseRecord.DamageCategory.CLEANUP,
                 description="Private household description.",
                 location_area=area, village=area.name if area else "Kg. Unknown",
                 address=address,
                 latitude=Decimal(lat) if lat else None,
                 longitude=Decimal(lng) if lng else None,
-                status=status, score_total=score, created_at=timezone.now(),
+                status=status, priority_class=priority_class, created_at=timezone.now(),
             )
+            give_job(case, org)
+            return case
 
         S = CaseRecord.Status
-        self.a_claimed = case("FRC-9101", S.IN_PROGRESS, self.tendong, "6.071111", "102.211111", "Lot 1 Secret Lane", 81, self.org_a)
-        self.open_exact = case("FRC-9102", S.VERIFIED, self.tendong, "6.072222", "102.212222", "Lot 2 Hidden Road", 55)
-        self.b_claimed = case("FRC-9103", S.CLAIMED, self.salor, "6.028888", "102.183333", "Lot 3 Quiet Path", 30, self.org_b)
-        self.open_no_pin = case("FRC-9104", S.VERIFIED, self.tendong, None, None, "Lot 4 No Pin", 75)
-        self.no_location = case("FRC-9105", S.VERIFIED, None, None, None, "Lot 5 Nowhere", 45)
+        self.a_claimed = case("FRC-9101", S.IN_PROGRESS, self.tendong, "6.071111", "102.211111", "Lot 1 Secret Lane", 1, self.org_a)
+        self.open_exact = case("FRC-9102", S.VERIFIED, self.tendong, "6.072222", "102.212222", "Lot 2 Hidden Road", 2)
+        self.b_claimed = case("FRC-9103", S.CLAIMED, self.salor, "6.028888", "102.183333", "Lot 3 Quiet Path", 3, self.org_b)
+        self.open_no_pin = case("FRC-9104", S.VERIFIED, self.tendong, None, None, "Lot 4 No Pin", 1)
+        self.no_location = case("FRC-9105", S.VERIFIED, None, None, None, "Lot 5 Nowhere", 2)
         self.submitted = case("FRC-9106", S.SUBMITTED, self.salor, "6.029999", "102.184444", "Lot 6 New Case", None)
 
     def get(self, user, **params):
@@ -111,13 +113,13 @@ class CaseMapTests(TestCase):
         self.assertTrue(payload["points"][0]["claimed_by_you"])
         areas = {area["code"]: area for area in payload["areas"]}
         self.assertEqual(areas["MY0307-V001"]["case_count"], 2)  # 9102 + 9104
-        self.assertEqual(areas["MY0307-V001"]["highest_band"], "High")  # 9104 scores 75
+        self.assertEqual(areas["MY0307-V001"]["highest_class"], 1)  # 9104 is class 1
         self.assertEqual(areas["MY0304-V002"]["case_count"], 1)  # 9103; 9106 is not yet verified
-        self.assertEqual(areas["MY0304-V002"]["highest_band"], "Low")
+        self.assertEqual(areas["MY0304-V002"]["highest_class"], 3)
         self.assertEqual(payload["unmapped"], 1)
         self.assertEqual(
             set(areas["MY0307-V001"]),
-            {"code", "name", "latitude", "longitude", "case_count", "highest_band"},
+            {"code", "name", "latitude", "longitude", "case_count", "highest_class"},
         )
         for private in ("6.072222", "102.212222", "Hidden Road", "6.028888", "Quiet Path",
                         "FRC-9102", "FRC-9103", "FRC-9104", "FRC-9106", "New Case"):
@@ -168,33 +170,21 @@ class CaseMapTests(TestCase):
                 )
                 self.assertEqual(mapped, listed, (user.email, params))
 
-    def test_band_filters_use_each_cases_rubric_and_keep_all_three_views_in_sync(self):
-        # A score below 70 can be High, and one above 70 can be Medium,
-        # because the rubric version that produced the score owns its cutoffs.
-        custom_high = PriorityRubricVersion.objects.create(
-            label="map-high", high_threshold=55, medium_threshold=20,
-        )
-        custom_medium = PriorityRubricVersion.objects.create(
-            label="map-medium", high_threshold=80, medium_threshold=75,
-        )
-        CaseRecord.objects.filter(pk=self.a_claimed.pk).update(score_total=70)
-        CaseRecord.objects.filter(pk=self.open_exact.pk).update(rubric_version=custom_high)
-        CaseRecord.objects.filter(pk=self.open_no_pin.pk).update(rubric_version=custom_medium)
-        CaseRecord.objects.filter(pk=self.no_location.pk).update(score_total=40)
+    def test_class_filters_keep_all_three_views_in_sync(self):
         CaseRecord.objects.create(
             reference="FRC-9107", submitted_by_user=self.resident,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="A separate household.", location_area=self.tendong,
             village=self.tendong.name, address="Lot 7", status=CaseRecord.Status.VERIFIED,
-            score_total=19, rubric_version=custom_high, created_at=timezone.now(),
+            priority_class=3, created_at=timezone.now(),
         )
 
         for user in (self.officer, self.admin, self.ngo_a, self.ngo_b):
             for params in (
-                {}, {"band": "high"}, {"band": "medium"}, {"band": "low"},
-                {"band": "high", "status": "verified"},
-                {"band": "medium", "q": "Tendong"},
-                {"band": "low", "q": "nothing-matches"},
+                {}, {"priority": "1"}, {"priority": "2"}, {"priority": "3"},
+                {"priority": "1", "status": "verified"},
+                {"priority": "2", "q": "Tendong"},
+                {"priority": "3", "q": "nothing-matches"},
             ):
                 with self.subTest(user=user.email, params=params):
                     self.client.force_login(user)
@@ -207,44 +197,45 @@ class CaseMapTests(TestCase):
                     ) + mapped["unmapped"]
                     self.assertEqual(listing["count"], count)
                     self.assertEqual(stats["total"], count)
-                    self.assertEqual(stats["high"], sum(
-                        row["priority_band"] == "High" for row in rows
+                    self.assertEqual(stats["health_critical"], sum(
+                        row["priority_class"] == 1 for row in rows
                     ))
+                    # "Unclaimed" = cases with a type of help nobody holds yet.
                     self.assertEqual(stats["unclaimed"], sum(
-                        row["claimed_by"] is None for row in rows
+                        any(job["status"] == "open" for job in row["jobs"]) for row in rows
                     ))
                     self.assertEqual(stats["in_progress"], sum(
                         row["status"] == "in_progress" for row in rows
                     ))
-                    if params.get("band"):
+                    if params.get("priority"):
                         self.assertTrue(all(
-                            row["priority_band"].lower() == params["band"] for row in rows
+                            row["priority_class"] == int(params["priority"]) for row in rows
                         ))
 
         self.client.force_login(self.officer)
-        high = self.client.get("/api/cases/", {"band": "high"}).json()["results"]
-        self.assertEqual({row["reference"] for row in high}, {"FRC-9101", "FRC-9102"})
-        medium = self.client.get("/api/cases/", {"band": "medium"}).json()["results"]
-        self.assertEqual({row["reference"] for row in medium}, {"FRC-9104", "FRC-9105"})
-        low = self.client.get("/api/cases/", {"band": "low"}).json()["results"]
-        self.assertEqual({row["reference"] for row in low}, {"FRC-9103", "FRC-9107"})
+        one = self.client.get("/api/cases/", {"priority": "1"}).json()["results"]
+        self.assertEqual({row["reference"] for row in one}, {"FRC-9101", "FRC-9104"})
+        two = self.client.get("/api/cases/", {"priority": "2"}).json()["results"]
+        self.assertEqual({row["reference"] for row in two}, {"FRC-9102", "FRC-9105"})
+        three = self.client.get("/api/cases/", {"priority": "3"}).json()["results"]
+        self.assertEqual({row["reference"] for row in three}, {"FRC-9103", "FRC-9107"})
         all_rows = self.client.get("/api/cases/").json()["results"]
         self.assertEqual(
-            {row["reference"] for row in all_rows if row["priority_band"] == "unscored"},
+            {row["reference"] for row in all_rows if row["priority_class"] is None},
             {"FRC-9106"},
         )
 
-    def test_unscored_needs_info_is_only_in_all_and_invalid_band_is_rejected(self):
+    def test_unclassified_needs_info_is_only_in_all_and_invalid_class_is_rejected(self):
         CaseRecord.objects.filter(pk=self.submitted.pk).update(status=CaseRecord.Status.NEEDS_INFO)
         self.client.force_login(self.officer)
         self.assertEqual(self.client.get("/api/cases/", {"status": "needs_info"}).json()["count"], 1)
-        for band in ("high", "medium", "low"):
-            params = {"status": "needs_info", "band": band}
+        for priority in ("1", "2", "3"):
+            params = {"status": "needs_info", "priority": priority}
             self.assertEqual(self.client.get("/api/cases/", params).json()["count"], 0)
             self.assertEqual(self.client.get("/api/cases/stats/", params).json()["total"], 0)
             self.assertEqual(self.client.get(URL, params).json()["points"], [])
         for path in ("/api/cases/", "/api/cases/stats/", URL):
-            self.assertEqual(self.client.get(path, {"band": "urgent"}).status_code, 400)
+            self.assertEqual(self.client.get(path, {"priority": "high"}).status_code, 400)
 
     def test_filtered_stats_keep_resident_ownership_and_anonymous_denial(self):
         other = UserAccount.objects.create_user(
@@ -254,6 +245,6 @@ class CaseMapTests(TestCase):
         CaseRecord.objects.filter(pk=self.open_exact.pk).update(submitted_by_user=other)
         self.client.force_login(self.resident)
         self.assertEqual(self.client.get("/api/cases/stats/").json()["total"], 5)
-        self.assertEqual(self.client.get("/api/cases/stats/", {"band": "high"}).json()["total"], 2)
+        self.assertEqual(self.client.get("/api/cases/stats/", {"priority": "1"}).json()["total"], 2)
         self.client.logout()
-        self.assertIn(self.client.get("/api/cases/stats/", {"band": "high"}).status_code, {401, 403})
+        self.assertIn(self.client.get("/api/cases/stats/", {"priority": "1"}).status_code, {401, 403})

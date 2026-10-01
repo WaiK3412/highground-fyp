@@ -362,6 +362,11 @@ function DepthHouse({ waterY }) {
 /* ---------------------------------------------------------------- step 2 */
 
 function StepDamage({ data, set }) {
+  const toggle = (key, value) => {
+    const current = data[key]
+    set({ [key]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value] })
+  }
+
   return (
     <>
       <div className="card" style={{ marginBottom: '2.4rem' }}>
@@ -391,6 +396,30 @@ function StepDamage({ data, set }) {
             </label>
           ))}
         </div>
+
+        {/* Each type of help becomes its own job, so different organisations
+            can take different parts of the work (ADR-020). */}
+        {data.damage_category && (
+          <div className="field" style={{ marginTop: '2.4rem' }}>
+            <label>
+              Do you also need help with anything else?{' '}
+              <span className="text-muted" style={{ fontWeight: 400 }}>(optional)</span>
+            </label>
+            <div className="stack" style={{ gap: '0.8rem' }}>
+              {DAMAGE_CATEGORIES.filter((option) => option.value !== data.damage_category).map((option) => (
+                <label key={option.value} className="check-row" style={{ cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={data.also_need.includes(option.value)}
+                    onChange={() => toggle('also_need', option.value)}
+                  />{' '}
+                  {option.label}
+                </label>
+              ))}
+            </div>
+            <p className="help">Different organisations may help with each one.</p>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: '2.4rem' }}>
@@ -708,6 +737,7 @@ function StepReview({ data, goTo, villages }) {
 
       {section('Home & damage', 1, [
         ['Type of help', labelFor(DAMAGE_CATEGORIES, data.damage_category)],
+        ['Also need help with', flagLabels(DAMAGE_CATEGORIES, data.also_need.filter((value) => value !== data.damage_category))],
         ['Description', data.description],
         ['Floodwater depth', labelFor(FLOOD_DEPTHS, data.flood_depth)],
         ['Liveable', labelFor(LIVEABILITY, data.liveability)],
@@ -761,6 +791,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
     pin: null,
     address: '',
     damage_category: '',
+    also_need: [],
     description: '',
     flood_depth: '',
     liveability: 'liveable',
@@ -813,6 +844,7 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel })
         address: data.address,
         household_size: data.household_size,
         damage_category: data.damage_category,
+        also_need: data.also_need.filter((value) => value !== data.damage_category),
         description: data.description,
         flood_depth: data.flood_depth,
         liveability: data.liveability,

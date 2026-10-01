@@ -18,7 +18,7 @@ const TITLES = {
   needs_info: 'More information requested',
   verified: 'Verified & prioritised by the district disaster office',
   rejected: 'Not accepted',
-  score_computed: 'Priority score computed',
+  score_computed: 'Priority class assigned',
   claimed: 'An organisation took on your case',
   task_assigned: 'A team was assigned',
   task_updated: 'Work updated',

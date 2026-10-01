@@ -2,6 +2,11 @@
 
     manage.py evaluate_duplicates --split dev --sweep --write
     manage.py evaluate_duplicates --split heldout --write
+    manage.py evaluate_duplicates --method rules --split heldout --write
+
+--method rules evaluates rules-1.0 (cases/duplicate_rules.py), the comparator
+the app uses, on the same pairs and blocking, and records it separately in
+cases/evaluation/rules_results.json. It has no threshold, so no sweep.
 
 Dev: sweeps thresholds under the pre-declared selection rule and records the
 chosen values. They are then copied into cases/duplicates.py by hand (the
@@ -27,9 +32,13 @@ class Command(BaseCommand):
         parser.add_argument("--sweep", action="store_true",
                             help="Dev only: select thresholds with the declared rule.")
         parser.add_argument("--write", action="store_true",
-                            help="Record this run in cases/evaluation/duplicate_results.json.")
+                            help="Record this run in the results file for the method.")
+        parser.add_argument("--method", choices=["dup", "rules"], default="dup",
+                            help="dup = retired dup-1.1 engine; rules = rules-1.0.")
 
-    def handle(self, *args, split, sweep, write, **options):
+    def handle(self, *args, split, sweep, write, method="dup", **options):
+        if method == "rules":
+            return self._handle_rules(split, sweep, write)
         if sweep and split != "dev":
             raise CommandError("Thresholds may only be swept on the dev split.")
 
@@ -104,6 +113,44 @@ class Command(BaseCommand):
                 json.dumps(results, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
             )
             self.stdout.write(f"Recorded in {ev.RESULTS_PATH.name}")
+
+
+    def _handle_rules(self, split, sweep, write):
+        if sweep:
+            raise CommandError("rules-1.0 has no threshold to sweep.")
+        from cases.duplicate_rules import RULES_VERSION
+
+        data = ev.load_fixture()
+        outcomes = ev.score_split_rules(data, split)
+        section = {
+            "method": RULES_VERSION,
+            "in_block": ev.confusion(outcomes, 50.0),
+            "end_to_end": ev.confusion(outcomes, 50.0, end_to_end=True),
+            "fixture_sha256": data["_sha256"],
+        }
+        for label in ("in_block", "end_to_end"):
+            stats = section[label]
+            self.stdout.write(
+                f"{label}: precision {stats['precision']}, recall {stats['recall']}, "
+                f"F1 {stats['f1']} (tp {stats['tp']}, fp {stats['fp']}, fn {stats['fn']})"
+            )
+        if write:
+            results = (
+                json.loads(RULES_RESULTS_PATH.read_text(encoding="utf-8"))
+                if RULES_RESULTS_PATH.exists() else {}
+            )
+            results["note"] = (
+                "Synthetic fixture results. Not field validation; the fixture was written "
+                "around dup-1.1 and the held-out split had already been seen."
+            )
+            results[split] = section
+            RULES_RESULTS_PATH.write_text(
+                json.dumps(results, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            self.stdout.write(f"Recorded in {RULES_RESULTS_PATH.name}")
+
+
+RULES_RESULTS_PATH = ev.RESULTS_PATH.with_name("rules_results.json")
 
 
 def _read_results() -> dict:

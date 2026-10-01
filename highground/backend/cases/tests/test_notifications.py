@@ -210,15 +210,15 @@ class EmailTests(NotificationTestCase):
         rows = notify(self.case, CaseEventLog.EventType.VERIFIED, self.officer)
         self.assertEqual(rows[0].delivery_status, "sent")
 
-    def test_a_verified_notification_carries_the_score(self):
-        """One message, not two: the score is folded into the verification."""
-        self.case.score_total = 87
-        self.case.save(update_fields=["score_total"])
+    def test_a_verified_notification_carries_the_priority_class(self):
+        """One message, not two: the class is folded into the verification."""
+        self.case.priority_class = 1
+        self.case.save(update_fields=["priority_class"])
         from cases.notifications import notify
 
         notify(self.case, CaseEventLog.EventType.VERIFIED, self.officer)
 
-        self.assertIn("87", mail.outbox[0].subject)
+        self.assertIn("priority class 1 (Health-critical)", mail.outbox[0].subject)
 
     def test_a_failed_email_does_not_lose_the_notification(self):
         """Email is the secondary channel. The in-app row must survive."""

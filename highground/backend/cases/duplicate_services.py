@@ -1,6 +1,8 @@
 """Duplicate detection and officer review — the database side (report §3.7.8).
 
-The comparison itself lives in cases/duplicates.py (pure, frozen at dup-1.1).
+The comparison itself lives in cases/duplicate_rules.py (pure, rules-1.0).
+The retired weighted engine, cases/duplicates.py (dup-1.1), still supplies the
+normalisers and DuplicateInput, and is kept for the report's comparison.
 This module decides which cases are compared, stores flags, tracks whether a
 case's check has finished, and applies an officer's decision.
 
@@ -21,7 +23,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from decimal import Decimal
 from itertools import combinations
 
 from django.db import transaction
@@ -30,13 +31,9 @@ from django.utils import timezone
 
 from accounts.models import UserAccount
 
-from .duplicates import (
-    ENGINE_VERSION,
-    DuplicateInput,
-    build_tfidf_corpus,
-    compare_cases,
-)
-from .models import CaseEventLog, CaseRecord, CaseTask, DuplicateCaseMatch, LocationArea
+from .duplicate_rules import RULES_VERSION, compare_by_rules, contradictions, pin_distance_metres
+from .duplicates import DuplicateInput
+from .models import CaseEventLog, CaseJob, CaseRecord, CaseTask, DuplicateCaseMatch, LocationArea
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +197,7 @@ def mark_duplicate_check_pending(case_ids, actor=None) -> None:
         cases = CaseRecord.objects.select_for_update().filter(pk__in=case_ids).order_by("pk")
         for case in cases:
             _log_event(case, Event.DUPLICATE_CHECK_PENDING,
-                       f"Duplicate check started ({ENGINE_VERSION}).", actor)
+                       f"Duplicate check started ({RULES_VERSION}).", actor)
 
 
 # --- Detection ----------------------------------------------------------------
@@ -238,14 +235,13 @@ def _locked_eligible(area_id) -> list[CaseRecord]:
 def _flag_pair(a, b, result, actor=None) -> DuplicateCaseMatch:
     older, newer = canonical_pair(a, b)
     match = DuplicateCaseMatch.objects.create(
-        case_a=older, case_b=newer,
-        similarity_score=Decimal(str(result.score)),
+        case_a=older, case_b=newer, similarity_score=None,
+        method=RULES_VERSION, matched_rules=[hit.rule for hit in result.hits],
         status=MatchStatus.OPEN,
     )
     detail = (
         f"Possible duplicate: {older.reference} (older) and {newer.reference} (newer), "
-        f"evidence index {result.score} ({result.classification}), {ENGINE_VERSION}, "
-        f"match #{match.pk}."
+        f"{RULES_VERSION}: {'; '.join(hit.text for hit in result.hits)}, match #{match.pk}."
     )
     _log_event(older, Event.DUPLICATE_FLAGGED, detail, actor)
     _log_event(newer, Event.DUPLICATE_FLAGGED, detail, actor)
@@ -253,9 +249,8 @@ def _flag_pair(a, b, result, actor=None) -> DuplicateCaseMatch:
 
 
 def _compare_pairs(pairs, cases, dry_run, actor=None) -> ScanResult:
-    """Compare each (a, b) once against the village corpus; flag if needed."""
+    """Compare each (a, b) once with the rules-1.0 comparator; flag if any rule fires."""
     result = ScanResult()
-    idf = build_tfidf_corpus([description_for_matching(case) for case in cases])
     inputs = {case.pk: duplicate_input_for_case(case, case._submitter) for case in cases}
     existing = _existing_pairs([case.pk for case in cases])
     for a, b in pairs:
@@ -264,7 +259,7 @@ def _compare_pairs(pairs, cases, dry_run, actor=None) -> ScanResult:
             # Never re-score or re-open a pair: an officer may have decided it.
             result.existing += 1
             continue
-        comparison = compare_cases(inputs[a.pk], inputs[b.pk], idf)
+        comparison = compare_by_rules(inputs[a.pk], inputs[b.pk])
         if comparison.needs_review:
             result.created += 1
             if not dry_run:
@@ -299,7 +294,7 @@ def detect_duplicates_for_case(case_id) -> ScanResult:
             pairs = [(target, other) for other in cases if other.pk != target.pk]
             result = _compare_pairs(pairs, cases, dry_run=False)
         _log_event(target, Event.DUPLICATE_CHECK_COMPLETED,
-                   f"Duplicate check completed ({ENGINE_VERSION}): "
+                   f"Duplicate check completed ({RULES_VERSION}): "
                    f"{result.examined} compared, {result.created} flagged.")
     return result
 
@@ -324,7 +319,7 @@ def scan_duplicate_area(location_area_id, dry_run=False) -> ScanResult:
 
     Pending markers are committed first, so a failure part-way leaves every
     case in the village pending, never falsely completed. Existing pairs keep
-    their stored score and status, including officer decisions.
+    their stored rules (or legacy score) and status, including officer decisions.
     """
     ids = list(eligible_duplicate_cases(location_area_id).values_list("pk", flat=True))
     if not dry_run and ids:
@@ -336,7 +331,7 @@ def scan_duplicate_area(location_area_id, dry_run=False) -> ScanResult:
         if not dry_run:
             for case in cases:
                 _log_event(case, Event.DUPLICATE_CHECK_COMPLETED,
-                           f"Duplicate check completed by village scan ({ENGINE_VERSION}).")
+                           f"Duplicate check completed by village scan ({RULES_VERSION}).")
     return result
 
 
@@ -344,29 +339,23 @@ def scan_duplicate_area(location_area_id, dry_run=False) -> ScanResult:
 
 
 def current_duplicate_comparison(match: DuplicateCaseMatch) -> dict:
-    """Re-run the engine on the pair as it stands now, for the review screen.
+    """Re-run the rules on the pair as it stands now, for the review screen.
 
-    The stored similarity_score is what the officer was flagged with and is
-    never changed here. These reasons are recomputed from current inputs and
-    the current village corpus (plus the pair itself, if either has since
-    closed), so they can differ from the original flag.
+    The stored matched_rules (or a legacy dup-1.1 score) are what the officer
+    was flagged with and are never changed here; case details edited since
+    can make these differ.
     """
-    a, b = match.case_a, match.case_b
-    area_id = b.location_area_id or a.location_area_id
-    corpus_cases = list(eligible_duplicate_cases(area_id)) if area_id else []
-    ids = {case.pk for case in corpus_cases}
-    corpus_cases += [case for case in (a, b) if case.pk not in ids]
-    idf = build_tfidf_corpus([description_for_matching(case) for case in corpus_cases])
-    result = compare_cases(duplicate_input_for_case(a), duplicate_input_for_case(b), idf)
+    a, b = duplicate_input_for_case(match.case_a), duplicate_input_for_case(match.case_b)
+    result = compare_by_rules(a, b)
     return {
-        "basis": "current_inputs_and_village_corpus",
-        "engine_version": ENGINE_VERSION,
-        "score": result.score,
-        "classification": result.classification,
-        "reasons": [
-            {"signal": r.signal, "effect": r.effect, "weight": r.weight, "text": r.text}
-            for r in result.reasons
-        ],
+        "basis": "current_inputs",
+        "method": RULES_VERSION,
+        "matched": result.needs_review,
+        "reasons": [{"rule": hit.rule, "text": hit.text} for hit in result.hits],
+        # What disagrees, and how far apart the pins are: shown so the officer
+        # weighs both sides. Neither changes whether the pair was flagged.
+        "contradictions": [{"rule": c.rule, "text": c.text} for c in contradictions(a, b)],
+        "pin_distance_metres": pin_distance_metres(a, b),
     }
 
 
@@ -383,7 +372,7 @@ def confirm_block_reason(match: DuplicateCaseMatch) -> tuple[str, str] | None:
         return ("stale_pair", "One of these cases has since closed, been rejected, linked, or moved village.")
     if canonical_pair(older, newer) != (older, newer):
         return ("stale_pair", "The stored order of this pair no longer matches submission times.")
-    if newer.claimed_by_org_id or newer.status in OPERATIONAL_STATUSES:
+    if newer.jobs.exclude(claimed_by_org=None).exists() or newer.status in OPERATIONAL_STATUSES:
         return ("active_case", "An organisation is working on the newer case; it cannot be closed as a duplicate.")
     if CaseTask.objects.filter(case=newer).exclude(status=CaseTask.Status.DONE).exists():
         return ("active_case", "The newer case has unfinished tasks.")
@@ -466,14 +455,27 @@ def decide_duplicate_match(match_id, actor, decision, note="") -> DecisionOutcom
             block = confirm_block_reason(match)
             if block:
                 raise DuplicateConflict(*block)
+            # One rule (ADR-020): any type of help the older request does not
+            # have yet is added to it as an open job, so closing the newer
+            # request never loses help only it asked for (the merge pattern of
+            # Dataverse/Salesforce; "complete" data fusion, Bleiholder &
+            # Naumann 2009). Help both asked for is already on the older one.
+            older_types = set(older.jobs.values_list("help_type", flat=True))
+            added = []
+            for job in newer.jobs.order_by("id"):
+                if job.help_type not in older_types:
+                    CaseJob.objects.create(case=older, help_type=job.help_type)
+                    older_types.add(job.help_type)
+                    added.append(job.get_help_type_display())
             newer.duplicate_of_case = older
             newer.status = Status.CLOSED
             newer.closed_at = now
             newer.save(update_fields=["duplicate_of_case", "status", "closed_at"])
+            moved = f" {', '.join(added)} added to {older.reference}." if added else ""
             detail = (
                 f"{actor.full_name} confirmed {newer.reference} duplicates {older.reference} "
-                f"(match #{match.pk}); {newer.reference} closed. Photos, history and "
-                f"scores of both cases are kept.{note_detail}"
+                f"(match #{match.pk}); {newer.reference} closed.{moved} Photos, history and "
+                f"priority of both cases are kept.{note_detail}"
             )
             _log_event(older, Event.DUPLICATE_CONFIRMED, detail, actor)
             _log_event(newer, Event.DUPLICATE_CONFIRMED, detail, actor)

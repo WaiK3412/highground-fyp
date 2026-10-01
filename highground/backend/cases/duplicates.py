@@ -1,4 +1,8 @@
-"""Pure, explainable duplicate-request comparison (report §2.4.2, §3.7.8).
+"""Pure, explainable duplicate-request comparison (report §2.4.2, §3.7.8) — RETIRED.
+
+The app now flags pairs with cases/duplicate_rules.py (rules-1.0, ADR-019),
+which reuses the normalisers below. The weighted comparator (dup-1.1) and its
+tests are kept, unused, as the evaluated alternative in the report.
 
 No Django imports on purpose: two cases and their village's description corpus
 arrive as plain values, so every rule here can be unit-tested and hand-checked.

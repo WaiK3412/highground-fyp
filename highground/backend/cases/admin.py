@@ -8,6 +8,7 @@ from scoring.models import CaseScoreComponent
 
 from .models import (
     CaseEventLog,
+    CaseJob,
     CasePhoto,
     CaseRecord,
     CaseTask,
@@ -45,10 +46,24 @@ class CasePhotoInline(admin.TabularInline):
         return format_html('<a href="{}">View</a>', reverse("case-photo", kwargs={"pk": obj.pk}))
 
 
+class CaseJobInline(admin.TabularInline):
+    """Read-only: jobs change through the claim/complete/confirm endpoints,
+    which lock, audit and notify (ADR-020)."""
+
+    model = CaseJob
+    extra = 0
+    fields = ("help_type", "status", "claimed_by_org", "claimed_at", "completed_at")
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 class CaseTaskInline(admin.TabularInline):
     model = CaseTask
     extra = 0
-    fields = ("title", "task_type", "status", "lead_user")
+    fields = ("title", "job", "task_type", "status", "lead_user")
     can_delete = False
 
 
@@ -59,24 +74,30 @@ class CaseRecordAdmin(admin.ModelAdmin):
         "village",
         "damage_category",
         "status",
-        "score_total",
-        "priority_band",
-        "claimed_by_org",
+        "priority_class",
         "created_at",
     )
-    list_filter = ("status", "damage_category", "urgency", "access_level", "liveability")
+    list_filter = (
+        "status", "priority_class", "damage_category", "urgency", "access_level", "liveability"
+    )
     search_fields = ("reference", "village", "address", "description")
     date_hierarchy = "created_at"
-    readonly_fields = ("score_total", "priority_band")
-    inlines = [CaseScoreComponentInline, CasePhotoInline, CaseTaskInline]
+    # Computed at verification (classes-1.0); editing them here would make
+    # a class that no rule produced.
+    readonly_fields = ("priority_class", "priority_reasons", "score_total")
+    inlines = [CaseScoreComponentInline, CaseJobInline, CasePhotoInline, CaseTaskInline]
     fieldsets = (
         (None, {"fields": ("reference", "status", "description")}),
         (
-            "Priority (computed by the scoring engine)",
-            {"fields": ("score_total", "priority_band", "rubric_version")},
+            "Priority (classes-1.0, set at verification)",
+            {"fields": ("priority_class", "priority_reasons")},
         ),
         (
-            "Assessment — the scoring inputs",
+            "Retired weighted score (kept for comparison)",
+            {"fields": ("score_total", "rubric_version"), "classes": ("collapse",)},
+        ),
+        (
+            "Assessment — the classification inputs",
             {
                 "fields": (
                     "damage_category",
@@ -96,15 +117,11 @@ class CaseRecordAdmin(admin.ModelAdmin):
         ),
         (
             "People & organisations",
-            {"fields": ("submitted_by_user", "verified_by_user", "claimed_by_org")},
+            {"fields": ("submitted_by_user", "verified_by_user")},
         ),
         ("Duplicates", {"fields": ("duplicate_of_case",)}),
         ("Dates", {"fields": ("created_at", "closed_at")}),
     )
-
-    @admin.display(description="Band", ordering="score_total")
-    def priority_band(self, obj):
-        return obj.priority_band
 
     def get_readonly_fields(self, request, obj=None):
         # Duplicate links are made only by the officer review workflow, which
@@ -158,8 +175,11 @@ class DuplicateCaseMatchAdmin(admin.ModelAdmin):
     """Read-only audit view. Flags are created by detection and decided through
     /api/duplicates/, which enforces the pair rules; editing here would skip them."""
 
-    list_display = ("case_a", "case_b", "similarity_score", "status", "decided_by_user", "decided_at")
-    list_filter = ("status",)
+    list_display = (
+        "case_a", "case_b", "method", "matched_rules", "similarity_score", "status",
+        "decided_by_user", "decided_at",
+    )
+    list_filter = ("status", "method")
     search_fields = ("case_a__reference", "case_b__reference")
 
     def has_add_permission(self, request):

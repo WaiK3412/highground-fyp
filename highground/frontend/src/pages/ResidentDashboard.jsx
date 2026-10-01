@@ -150,23 +150,18 @@ function ApplicationBanner({ user }) {
   return null
 }
 
-function scoreClass(band) {
-  if (band === 'High') return 'score score--high score--sm'
-  if (band === 'Medium') return 'score score--medium score--sm'
+// Same tones as the case queue: class 1 "high", 2 "medium", 3 "low".
+function priorityChipClass(priorityClass) {
+  if (priorityClass === 1) return 'score score--high score--sm'
+  if (priorityClass === 2) return 'score score--medium score--sm'
   return 'score score--low score--sm'
 }
 
 // "child_under_5" reads badly to the household it describes.
 const humanise = (flag) => flag.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
-// The engine writes its reasons for officers, so they carry raw enum members
-// ("urgency: medical_disrupted = 18"). Un-snake them for the household without
-// touching the engine, which other screens also read.
-const readableReason = (reason) =>
-  reason.replace(/[a-z0-9]+(?:_[a-z0-9]+)+/g, (token) => token.replace(/_/g, ' '))
 
-
-function CompletionDecision({ onDecision }) {
+function CompletionDecision({ job, onDecision }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -175,7 +170,7 @@ function CompletionDecision({ onDecision }) {
     setBusy(true)
     setError(null)
     try {
-      await onDecision(decision, note)
+      await onDecision(job.id, decision, note)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -187,16 +182,16 @@ function CompletionDecision({ onDecision }) {
     <div className="meta-rail__section">
       <div className="banner banner--warning">
         <span className="body">
-          <span className="title">Is the recovery work complete?</span>
+          <span className="title">Is the {job.help_type_display.toLowerCase()} work by {job.claimed_by} complete?</span>
           <br />
           Confirm only after checking the work. If something remains, explain it so the response
           team has a clear follow-up record.
         </span>
       </div>
       <div className="field" style={{ marginTop: '1.2rem' }}>
-        <label htmlFor="completion-note">What still needs attention? (required if incomplete)</label>
+        <label htmlFor={`completion-note-${job.id}`}>What still needs attention? (required if incomplete)</label>
         <textarea
-          id="completion-note"
+          id={`completion-note-${job.id}`}
           className="input"
           rows="3"
           maxLength="1000"
@@ -224,9 +219,9 @@ function CompletionDecision({ onDecision }) {
 /**
  * The resident's own case, opened from a card.
  *
- * The point of this panel is the score breakdown (FR10). Explainability exists
- * for the household being ranked, not only for the officer doing the ranking —
- * someone told their case is Low is owed the reasoning.
+ * The point of this panel is the priority and its reasons (FR10).
+ * Explainability exists for the household being prioritised, not only for the
+ * officer — someone told their case is Standard is owed the reasoning.
  */
 function CaseDetailPanel({ detail, onClose, onCompletionDecision }) {
   const ui = STATUS_UI[detail.status] || STATUS_UI.submitted
@@ -252,49 +247,28 @@ function CaseDetailPanel({ detail, onClose, onCompletionDecision }) {
         <p className="text-sm">{detail.description}</p>
       </div>
 
-      {detail.score_total != null && (
-        <div className="meta-rail__section">
+      {detail.priority_class != null && (
+        <div className="meta-rail__section" aria-label="Priority">
           <div className="card__header">
             <h3>Why this priority</h3>
-            {/* The circle is colour-coded by band, so it carries both numbers. */}
-            <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
+            <span
+              className={priorityChipClass(detail.priority_class)}
+              aria-label={`Priority class ${detail.priority_class}: ${detail.priority_label}`}
+            >
+              {detail.priority_class}
+            </span>
           </div>
-
-          {detail.score_components.map((component) => (
-            <div key={component.name}>
-              <div className="score-row">
-                <span>{component.name}</span>
-                <span className="bar progress" style={{ width: '28%' }}>
-                  {/* How much of this criterion's available weight the case scored. */}
-                  <span
-                    className="progress__fill"
-                    style={{
-                      display: 'block',
-                      width: `${Math.round((component.points / component.weight) * 100)}%`,
-                    }}
-                  />
-                </span>
-                <span className="pts">+{component.points}</span>
-              </div>
-              <div
-                className="text-xs text-muted"
-                style={{ marginTop: '-0.4rem', paddingBottom: '0.4rem' }}
-              >
-                {readableReason(component.reason)}
-              </div>
-            </div>
-          ))}
-
+          <p className="text-strong">{detail.priority_label}</p>
+          <ul className="text-sm" style={{ margin: 'var(--sp-8) 0 0', paddingLeft: '1.6rem' }}>
+            {(detail.priority_reasons || []).map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
           <hr className="divider" style={{ margin: '1.2rem 0' }} />
-          <div className="row--between">
-            <span className="text-sm text-muted">
-              Rubric v3.0 · rule-based, reviewed by officers
-            </span>
-            <span className="text-strong" style={{ fontSize: 'var(--fs-20)' }}>
-              {detail.score_total}
-              <span className="text-sm text-muted">/100</span>
-            </span>
-          </div>
+          <span className="text-sm text-muted">
+            Requests are served by priority class, then in the order they were submitted
+            (classes-1.0), and checked by district officers.
+          </span>
         </div>
       )}
 
@@ -352,9 +326,26 @@ function CaseDetailPanel({ detail, onClose, onCompletionDecision }) {
         </div>
       )}
 
-      {detail.status === 'pending_confirm' && (
-        <CompletionDecision onDecision={onCompletionDecision} />
+      {/* Each type of help is confirmed separately: one organisation finishing
+          never closes help another still owes (ADR-020). */}
+      {(detail.jobs || []).length > 0 && (
+        <div className="meta-rail__section" aria-label="Help on this request">
+          <div className="card__header">
+            <h3>Help on this request</h3>
+          </div>
+          <ul className="text-sm" style={{ margin: 0, paddingLeft: '1.6rem' }}>
+            {detail.jobs.map((job) => (
+              <li key={job.id}>
+                <strong>{job.help_type_display}</strong> — {job.status_display}
+                {job.claimed_by ? ` · ${job.claimed_by}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
+      {(detail.jobs || []).filter((job) => job.status === 'pending_confirm').map((job) => (
+        <CompletionDecision key={job.id} job={job} onDecision={onCompletionDecision} />
+      ))}
 
       {/* Screen 06's timeline: every event_log row for this case, oldest first. */}
       <CaseTimeline events={detail.events} />
@@ -382,9 +373,12 @@ function focusCase(cases) {
   const waitingOnThem = open.filter((item) => NEEDS_RESIDENT.has(item.status))
   const pool = waitingOnThem.length > 0 ? waitingOnThem : open
 
-  return pool.reduce((best, item) =>
-    (item.score_total ?? 0) > (best.score_total ?? 0) ? item : best,
-  )
+  // Most urgent class first (1 beats 3; unclassified last), then the oldest.
+  const rank = (item) => item.priority_class ?? 99
+  return pool.reduce((best, item) => {
+    if (rank(item) !== rank(best)) return rank(item) < rank(best) ? item : best
+    return new Date(item.created_at) < new Date(best.created_at) ? item : best
+  })
 }
 
 // The card's "next" line restates the status, which reads as a repetition once
@@ -396,7 +390,7 @@ const BANNER_NEXT = {
   verified: 'Waiting for a response team to take it on',
   claimed: 'They will schedule the work and keep you updated',
   in_progress: 'Someone will be in touch about access to your home',
-  pending_confirm: 'Open the case and confirm, so it can be closed',
+  pending_confirm: 'Open the case and confirm the finished work',
 }
 
 function CaseStatusBanner({ cases }) {
@@ -407,7 +401,7 @@ function CaseStatusBanner({ cases }) {
     submitted: `#${item.reference} has been received`,
     needs_info: `#${item.reference} needs more information from you`,
     verified: `#${item.reference} has been verified and prioritised`,
-    claimed: `${item.claimed_by || 'A response team'} has taken on #${item.reference}`,
+    claimed: `${(item.jobs || []).filter((job) => job.claimed_by).map((job) => job.claimed_by).join(' and ') || 'A response team'} has taken on #${item.reference}`,
     in_progress: `Work has started on #${item.reference}`,
     pending_confirm: `Confirm the work on #${item.reference} is finished`,
   }[item.status]
@@ -425,9 +419,9 @@ function CaseStatusBanner({ cases }) {
       <span className="body">
         <span className="title">{headline}</span>
         <br />
-        {item.score_total != null && (
+        {item.priority_class != null && (
           <>
-            {item.priority_band} priority ({item.score_total} of 100).{' '}
+            Priority class {item.priority_class} ({item.priority_label}).{' '}
           </>
         )}
         {BANNER_NEXT[item.status]} · {waited}.
@@ -478,9 +472,9 @@ function CaseCard({ item, onOpen, isOpen }) {
 
       <div className="row--between" style={{ marginBottom: '0.6rem' }}>
         <span className="text-xs text-muted">{ui.next}</span>
-        {item.score_total != null && (
+        {item.priority_class != null && (
           <span className="text-xs text-strong">
-            Priority {item.score_total} · {item.priority_band}
+            Priority {item.priority_label}
           </span>
         )}
       </div>
@@ -521,8 +515,8 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
     }
   }
 
-  async function decideCompletion(decision, note) {
-    await api.confirmCase(detail.id, decision, note)
+  async function decideCompletion(jobId, decision, note) {
+    await api.confirmJob(jobId, decision, note)
     const [updatedDetail, updatedCases] = await Promise.all([
       api.caseDetail(detail.id),
       api.cases(),
@@ -689,7 +683,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
             ) : cases.length === 0 ? (
               <p className="text-sm text-muted">
                 You have not submitted a request yet. When you do, it will appear here with its
-                priority score and progress.
+                priority and progress.
               </p>
             ) : (
               <div className="stack" style={{ gap: '1.6rem' }}>

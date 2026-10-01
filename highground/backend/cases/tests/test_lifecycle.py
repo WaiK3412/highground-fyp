@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
 from cases.models import CaseEventLog, CaseRecord
+from cases.tests.job_helpers import give_job
 
 
 class LifecycleTestCase(TestCase):
@@ -53,32 +54,43 @@ class LifecycleTestCase(TestCase):
 
 
 class ClaimTests(LifecycleTestCase):
+    """Since ADR-020 the claim is on a job (one type of help); the case here
+    has one job, so these keep their original meaning."""
+
+    def setUp(self):
+        super().setUp()
+        self.job = give_job(self.case)
+
+    def claim_job(self):
+        return self.client.post(f"/api/jobs/{self.job.pk}/claim/")
+
     def test_ngo_can_claim_a_verified_case(self):
         self.login(self.mercy_lead)
-        response = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        response = self.claim_job()
 
         self.assertEqual(response.status_code, 200)
         self.case.refresh_from_db()
-        self.assertEqual(self.case.claimed_by_org, self.mercy)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.claimed_by_org, self.mercy)
         self.assertEqual(self.case.status, CaseRecord.Status.CLAIMED)
 
     def test_second_organisation_is_refused(self):
         """The core requirement: exactly one organisation wins a case."""
         self.login(self.mercy_lead)
-        self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        self.claim_job()
 
         self.login(self.belia_lead)
-        response = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        response = self.claim_job()
 
         self.assertEqual(response.status_code, 409)
-        self.case.refresh_from_db()
-        self.assertEqual(self.case.claimed_by_org, self.mercy)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.claimed_by_org, self.mercy)
 
     def test_reclaiming_by_the_same_org_is_idempotent(self):
         """A dropped response must not turn a successful claim into an error."""
         self.login(self.mercy_lead)
-        first = self.client.post(f"/api/cases/{self.case.pk}/claim/")
-        second = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        first = self.claim_job()
+        second = self.claim_job()
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
@@ -95,13 +107,13 @@ class ClaimTests(LifecycleTestCase):
         self.case.save()
         self.login(self.mercy_lead)
 
-        response = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        response = self.claim_job()
 
         self.assertEqual(response.status_code, 409)
 
     def test_claim_writes_an_audit_row(self):
         self.login(self.mercy_lead)
-        self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        self.claim_job()
 
         event = CaseEventLog.objects.get(
             case=self.case, event_type=CaseEventLog.EventType.CLAIMED
@@ -113,11 +125,11 @@ class ClaimTests(LifecycleTestCase):
         for user in (self.resident, self.officer):
             with self.subTest(role=user.role):
                 self.login(user)
-                response = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+                response = self.claim_job()
                 self.assertEqual(response.status_code, 403)
 
     def test_anonymous_cannot_claim(self):
-        response = self.client.post(f"/api/cases/{self.case.pk}/claim/")
+        response = self.claim_job()
         self.assertEqual(response.status_code, 403)
 
 
@@ -205,8 +217,8 @@ class VerifyTests(LifecycleTestCase):
 
     def test_a_claimed_case_cannot_be_re_verified(self):
         self.case.status = CaseRecord.Status.CLAIMED
-        self.case.claimed_by_org = self.mercy
         self.case.save()
+        give_job(self.case, self.mercy)
         self.login(self.officer)
 
         response = self.client.post(

@@ -1,4 +1,7 @@
-"""Pure, explainable priority scoring for rubric v3.0.
+"""Pure, explainable priority scoring for rubric v3.0 — RETIRED.
+
+The app now uses scoring/classes.py (classes-1.0, ADR-018). This engine and
+its tests are kept, unused, as the evaluated alternative in the report.
 
 No Django imports on purpose: the clock, case data and rubric all arrive as
 arguments. The point tables are value functions describing severity on each

@@ -16,6 +16,7 @@ from cases import duplicate_services as svc
 from cases.models import CaseEventLog, CaseRecord, DuplicateCaseMatch
 
 from .duplicate_helpers import DuplicateWorld, make_case
+from .job_helpers import give_job
 
 Event = CaseEventLog.EventType
 
@@ -49,8 +50,7 @@ class PermissionTests(ApiWorld, TestCase):
     def test_only_disaster_officers_reach_duplicate_endpoints(self):
         # The claiming NGO is included: claiming a case gives no right to
         # compare it with another household's.
-        self.older.claimed_by_org = self.org
-        self.older.save()
+        give_job(self.older, self.org)
         for user in (self.resident, self.relative, self.ngo, self.other_ngo, self.admin_user):
             self.as_user(user)
             for method, url in self.endpoints():
@@ -102,7 +102,11 @@ class ListAndDetailTests(ApiWorld, TestCase):
         data = self.client.get("/api/duplicates/").json()
         self.assertEqual(data["count"], 1)
         row = data["results"][0]
-        self.assertEqual(set(row), {"id", "status", "similarity_score", "classification", "case_a", "case_b"})
+        self.assertEqual(
+            set(row),
+            {"id", "status", "method", "similarity_score", "classification", "matched_rules",
+             "case_a", "case_b"},
+        )
         self.assertEqual(row["case_a"], {"id": self.older.pk, "reference": "FRC-5001"})
         self.assertEqual(row["case_b"]["reference"], "FRC-5002")
 
@@ -123,8 +127,8 @@ class ListAndDetailTests(ApiWorld, TestCase):
         self.assertIsNone(self.client.get(f"/api/cases/{self.newer.pk}/").json()["duplicate_review"])
 
         self.older.status = CaseRecord.Status.VERIFIED
-        self.older.claimed_by_org = self.org
-        self.older.save(update_fields=["status", "claimed_by_org"])
+        self.older.save(update_fields=["status"])
+        give_job(self.older, self.org, status="claimed")
         self.as_user(self.ngo)
         ngo = self.client.get("/api/cases/").json()["results"]
         self.assertTrue(ngo)
@@ -139,33 +143,74 @@ class ListAndDetailTests(ApiWorld, TestCase):
 
     def test_detail_shows_both_cases_and_keeps_stored_and_current_evidence_apart(self):
         data = self.client.get(f"/api/duplicates/{self.match.pk}/").json()
-        self.assertEqual(data["similarity_score"], str(self.match.similarity_score))
+        self.assertEqual(data["method"], "rules-1.0")
+        self.assertIsNone(data["similarity_score"])
         self.assertEqual(data["case_b"]["submitter_name"], "Ahmad Ismail")
         self.assertEqual(data["case_a"]["village"], "Kampung Sireh")
         current = data["current_comparison"]
-        self.assertEqual(current["basis"], "current_inputs_and_village_corpus")
-        self.assertEqual(current["engine_version"], "dup-1.1")
-        self.assertIn(
-            {"signal", "effect", "weight", "text"}, [set(r) for r in current["reasons"]]
-        )
+        self.assertEqual(current["basis"], "current_inputs")
+        self.assertEqual(current["method"], "rules-1.0")
+        self.assertTrue(current["matched"])
+        self.assertTrue(all(set(r) == {"rule", "text"} for r in current["reasons"]))
         self.assertTrue(data["can_confirm"])
         self.assertTrue(data["verification_blocked"])
         self.assertIsNone(data["decided_by"])
 
-    def test_viewing_never_changes_the_stored_score(self):
-        self.newer.description = "Something else entirely."
+    def test_viewing_never_changes_the_stored_rules(self):
+        self.newer.address = "Lot 12, Jalan Sekolah"
         self.newer.save()
-        before = self.match.similarity_score
-        self.client.get(f"/api/duplicates/{self.match.pk}/")
+        before = self.match.matched_rules
+        data = self.client.get(f"/api/duplicates/{self.match.pk}/").json()
         self.match.refresh_from_db()
-        self.assertEqual(self.match.similarity_score, before)
+        self.assertEqual(self.match.matched_rules, before)
+        # The current check reflects the edit; the stored flag does not.
+        self.assertNotIn("same_house_and_address", [r["rule"] for r in data["current_comparison"]["reasons"]])
+        self.assertIn("Same house or lot number and the same address", [r["text"] for r in data["matched_rules"]])
+
+    def test_current_check_shows_contradictions_and_pin_distance(self):
+        self.newer.address = "Lot 89, Jalan Masjid, Kampung Sireh"
+        self.newer.save()
+        current = self.client.get(f"/api/duplicates/{self.match.pk}/").json()["current_comparison"]
+        self.assertEqual(
+            current["contradictions"],
+            [{"rule": "different_house_number", "text": "Different house or lot numbers"}],
+        )
+        self.assertIsNone(current["pin_distance_metres"])  # neither case has a pin
+
+    def test_each_side_lists_its_types_of_help(self):
+        give_job(self.older)
+        data = self.client.get(f"/api/duplicates/{self.match.pk}/").json()
+        self.assertEqual(
+            data["case_a"]["jobs"], [{"help_type_display": "Repair", "status_display": "Waiting for an organisation"}]
+        )
+        self.assertEqual(data["case_b"]["jobs"], [])
+
+    def test_rules_flag_serialises_method_and_rule_texts(self):
+        row = self.client.get("/api/duplicates/").json()["results"][0]
+        self.assertEqual(row["method"], "rules-1.0")
+        self.assertIsNone(row["similarity_score"])
+        self.assertIsNone(row["classification"])
+        self.assertIn({"rule": "same_phone", "text": "Same phone number"}, row["matched_rules"])
+
+    def test_legacy_dup_1_1_flag_still_displays(self):
+        self.match.delete()
+        legacy = DuplicateCaseMatch.objects.create(
+            case_a=self.older, case_b=self.newer, similarity_score=Decimal("37.05"),
+            method="dup-1.1", matched_rules=[],
+        )
+        row = self.client.get("/api/duplicates/").json()["results"][0]
+        self.assertEqual(row["method"], "dup-1.1")
+        self.assertEqual(row["similarity_score"], "37.05")
+        self.assertEqual(row["classification"], "possible")
+        self.assertEqual(row["matched_rules"], [])
+        self.assertEqual(self.client.get(f"/api/duplicates/{legacy.pk}/").status_code, 200)
 
     def test_unknown_match_is_404(self):
         self.assertEqual(self.client.get("/api/duplicates/999999/").status_code, 404)
         self.assertEqual(self.decide("confirm", DuplicateCaseMatch(pk=999999)).status_code, 404)
 
     def test_comparison_failure_is_a_sanitised_503(self):
-        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError("Lot 88 secret")):
+        with mock.patch.object(svc, "compare_by_rules", side_effect=RuntimeError("Lot 88 secret")):
             with self.assertLogs("cases.api", level="WARNING") as logs:
                 response = self.client.get(f"/api/duplicates/{self.match.pk}/")
         self.assertNotIn("Lot 88", logs.output[0])
@@ -333,11 +378,11 @@ class SubmissionHookTests(DuplicateWorld, TestCase):
         self.assertNotIn("FRC-5001", response.content.decode())
         self.assertEqual(DuplicateCaseMatch.objects.count(), 1)
 
-    def test_a_submitted_pin_counts_as_distance_evidence(self):
-        """The resident pin is what lets real submissions use the engine's
-        distance signal; without it only seeded cases had pins."""
+    def test_a_submitted_pin_at_the_same_spot_fires_the_pin_rule(self):
+        """The resident pin is what lets real submissions use the same-pin
+        rule; without it only seeded cases had pins."""
         CaseRecord.objects.filter(reference="FRC-5001").update(
-            latitude=Decimal("6.100300"), longitude=Decimal("102.200200")
+            latitude=Decimal("6.100510"), longitude=Decimal("102.200290")
         )
         payload = {
             "location_code": self.area.code,
@@ -346,20 +391,19 @@ class SubmissionHookTests(DuplicateWorld, TestCase):
             "damage_category": "repair",
             "description": "Air masuk rumah paras pinggang, dapur rosak dan tilam basah.",
             "needs_flags": ["food", "water"],
-            # About 25 m from FRC-5001's pin.
-            "latitude": 6.1005, "longitude": 102.2003,
+            # Equal to FRC-5001's pin at 4 decimal places (about 11 m).
+            "latitude": 6.10049, "longitude": 102.20031,
         }
         response = self.client.post("/api/cases/", payload, content_type="application/json")
         self.assertEqual(response.status_code, 201, response.content)
 
         match = DuplicateCaseMatch.objects.get()
-        distance = [r for r in svc.current_duplicate_comparison(match)["reasons"]
-                    if r["signal"] == "distance"]
-        self.assertEqual(len(distance), 1)
-        self.assertEqual(distance[0]["effect"], "supports")
+        self.assertIn("same_pin", match.matched_rules)
+        current = [r["rule"] for r in svc.current_duplicate_comparison(match)["reasons"]]
+        self.assertIn("same_pin", current)
 
     def test_detection_failure_never_loses_the_submission(self):
-        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError):
+        with mock.patch.object(svc, "compare_by_rules", side_effect=RuntimeError):
             with self.assertLogs("cases.duplicate_services", level="WARNING"):
                 response = self.submit()
         self.assertEqual(response.status_code, 201)
@@ -402,8 +446,8 @@ class PrivacyTests(ApiWorld, TestCase):
 
     def test_claiming_ngo_timeline_hides_internal_duplicate_events(self):
         self.older.status = CaseRecord.Status.CLAIMED
-        self.older.claimed_by_org = self.org
         self.older.save()
+        give_job(self.older, self.org)
         data = self.timeline(self.ngo, self.older)
         self.assertFalse({e["event_type"] for e in data["events"]} & self.INTERNAL)
         self.assertNotIn("FRC-5002", str(data))
@@ -415,8 +459,9 @@ class PrivacyTests(ApiWorld, TestCase):
         # prefetch; the serializer itself must filter.
         self.older.status = CaseRecord.Status.VERIFIED
         self.older.save()
+        job = give_job(self.older)
         self.as_user(self.ngo)
-        data = self.client.post(f"/api/cases/{self.older.pk}/claim/").json()
+        data = self.client.post(f"/api/jobs/{job.pk}/claim/").json()
         self.assertFalse({e["event_type"] for e in data["events"]} & self.INTERNAL)
 
     def test_officer_sees_the_audit_trail_and_review_summary(self):

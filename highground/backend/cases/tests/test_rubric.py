@@ -1,9 +1,10 @@
-"""Tests for the coordinator-facing published rubric endpoint.
+"""Tests for the coordinator-facing "how priority works" endpoint.
 
 Traceability:
-  FR10 Coordinators can inspect the explainable published rubric
-  FR20 Rubric reads enforce role boundaries
-  FR22 Scores and thresholds are attributable to a rubric version
+  FR10 Coordinators can inspect the priority rules (classes-1.0) and sources
+  FR20 Rule reads enforce role boundaries
+  FR22 The retired weighted rubric keeps its model validation (kept for the
+       report's comparison, not used by the app)
 """
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -14,7 +15,7 @@ from cases.management.commands.seed_demo import RUBRIC_V3
 from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
 
 
-class RubricEndpointTests(TestCase):
+class PriorityRulesEndpointTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
             name="Mercy Relief",
@@ -69,57 +70,30 @@ class RubricEndpointTests(TestCase):
             )
 
     def test_anonymous_resident_and_unattached_responder_are_refused(self):
-        self.assertEqual(self.client.get("/api/rubric/").status_code, 403)
+        self.assertEqual(self.client.get("/api/priority-rules/").status_code, 403)
         for user in (self.resident, self.unattached_responder):
             with self.subTest(role=user.role, email=user.email):
                 self.client.force_login(user)
-                self.assertEqual(self.client.get("/api/rubric/").status_code, 403)
+                self.assertEqual(self.client.get("/api/priority-rules/").status_code, 403)
 
-    def test_authorised_coordinator_roles_can_read_the_rubric(self):
+    def test_authorised_coordinator_roles_can_read_the_rules(self):
         for user in (self.officer, self.responder, self.admin):
             with self.subTest(role=user.role):
                 self.client.force_login(user)
-                self.assertEqual(self.client.get("/api/rubric/").status_code, 200)
+                self.assertEqual(self.client.get("/api/priority-rules/").status_code, 200)
 
-    def test_response_uses_versioned_thresholds_weights_and_value_bands(self):
+    def test_response_lists_each_class_with_its_rule_and_sources(self):
         self.client.force_login(self.officer)
-        data = self.client.get("/api/rubric/").json()
+        data = self.client.get("/api/priority-rules/").json()
 
-        self.assertEqual(data["thresholds"], {"high": 65, "medium": 35})
-        safety = next(c for c in data["criteria"] if c["key"] == "safety")
-        urgent = next(b for b in safety["bands"] if b["when"] == "urgent")
-        self.assertEqual(safety["weight"], 50)
-        self.assertEqual(safety["max_points"], 25)
-        self.assertEqual(urgent["points"], 25)
+        self.assertEqual(data["version"], "classes-1.0")
+        first = data["classes"][0]
+        self.assertEqual(first["label"], "Health-critical")
+        self.assertTrue(first["rule"])
+        self.assertTrue(first["sources"])
+        self.assertIn("earliest submitted", data["order"])
 
-    def test_case_detail_names_the_rubric_version_that_scored_it(self):
-        """FR22: the breakdown a coordinator reads says which rubric produced it."""
-        from cases.models import CaseRecord
-
-        scored = CaseRecord.objects.create(
-            reference="FRC-9301", submitted_by_user=self.resident,
-            damage_category=CaseRecord.DamageCategory.CLEANUP, description="Scored case.",
-            village="Kg. Rubric", address="Lot 1", status=CaseRecord.Status.VERIFIED,
-            score_total=70, rubric_version=self.version, created_at=timezone.now(),
-        )
-        unscored = CaseRecord.objects.create(
-            reference="FRC-9302", submitted_by_user=self.resident,
-            damage_category=CaseRecord.DamageCategory.CLEANUP, description="New case.",
-            village="Kg. Rubric", address="Lot 2", status=CaseRecord.Status.SUBMITTED,
-            created_at=timezone.now(),
-        )
-        self.client.force_login(self.officer)
-
-        self.assertEqual(self.client.get(f"/api/cases/{scored.pk}/").json()["rubric_label"], "v3.1")
-        self.assertIsNone(self.client.get(f"/api/cases/{unscored.pk}/").json()["rubric_label"])
-
-        # An NGO's village-level summary carries the label too; it is not private.
-        self.client.force_login(self.responder)
-        self.assertEqual(self.client.get(f"/api/cases/{scored.pk}/").json()["rubric_label"], "v3.1")
-
-    def test_no_published_rubric_returns_404(self):
-        self.version.status = PriorityRubricVersion.Status.RETIRED
-        self.version.save(update_fields=["status"])
+    def test_the_old_rubric_url_is_gone(self):
         self.client.force_login(self.officer)
         self.assertEqual(self.client.get("/api/rubric/").status_code, 404)
 

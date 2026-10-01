@@ -15,11 +15,44 @@ const STATUS_FILTERS = [
   { value: 'in_progress', label: 'In progress' },
   { value: 'submitted', label: 'Submitted' },
 ]
-const BAND_FILTERS = [
+const HELP_FILTERS = [
   { value: '', label: 'All' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: 'cleanup', label: 'Cleanup' },
+  { value: 'repair', label: 'Repair' },
+  { value: 'essential_items', label: 'Essential items' },
+  { value: 'agriculture', label: 'Agriculture' },
+  { value: 'other', label: 'Other' },
+]
+
+// An NGO may claim an open job once the household request is verified.
+const CLAIMABLE_CASE = new Set(['verified', 'claimed', 'in_progress', 'pending_confirm'])
+
+function openJobsFor(user, item) {
+  if (user.role !== 'ngo_volunteer' || !CLAIMABLE_CASE.has(item.status)) return []
+  return (item.jobs || []).filter((job) => job.status === 'open')
+}
+
+// One line per type of help: who holds it, or that it is still waiting.
+function JobChips({ jobs }) {
+  return (
+    <div className="row" style={{ flexWrap: 'wrap', gap: '0.6rem' }}>
+      {(jobs || []).map((job) => (
+        <span key={job.id} className="filter-chip" title={job.status_display}>
+          {job.help_type_display} ·{' '}
+          {job.claimed_by ? (job.claimed_by_you ? 'your organisation' : job.claimed_by) : 'waiting'}
+          {job.status === 'done' ? ' · done' : ''}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// classes-1.0 (scoring/classes.py): the class number is the filter value.
+const PRIORITY_FILTERS = [
+  { value: '', label: 'All' },
+  { value: '1', label: '1 Health-critical' },
+  { value: '2', label: '2 At risk' },
+  { value: '3', label: '3 Standard' },
 ]
 
 // Slim, warm-toned scrollbars on the panels that scroll, plus a gutter so the
@@ -32,26 +65,42 @@ const SCROLL_PANE = {
   paddingRight: 'var(--sp-16)',
 }
 
-function scoreClass(band) {
-  if (band === 'High') return 'score score--high score--sm'
-  if (band === 'Medium') return 'score score--medium score--sm'
-  if (band === 'Low') return 'score score--low score--sm'
+// Class 1 uses the "high" tone, 2 "medium", 3 "low"; unclassified is neutral.
+function priorityChipClass(priorityClass) {
+  if (priorityClass === 1) return 'score score--high score--sm'
+  if (priorityClass === 2) return 'score score--medium score--sm'
+  if (priorityClass === 3) return 'score score--low score--sm'
   return 'score score--neutral score--sm'
 }
 
+function PriorityChip({ item }) {
+  return (
+    <span
+      className={priorityChipClass(item.priority_class)}
+      title={item.priority_label || 'Not yet classified'}
+      aria-label={
+        item.priority_class
+          ? `Priority class ${item.priority_class}: ${item.priority_label}`
+          : 'Not yet classified'
+      }
+    >
+      {item.priority_class ?? '—'}
+    </span>
+  )
+}
+
 function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
-  // Screen 07 puts "Claim case" on the card, not behind the detail panel.
-  const canClaim =
-    user.role === 'ngo_volunteer' && item.status === 'verified' && !item.claimed_by
+  // Screen 07 puts the claim on the card, not behind the detail panel; with
+  // help jobs there is one claim button per type of help still waiting.
+  const openJobs = openJobsFor(user, item)
+  const canClaim = openJobs.length > 0
   const canDecide = user.role === 'disaster_officer' && item.status === 'submitted'
 
   return (
     <div className={`ops-card${selected ? ' ops-card--selected' : ''}`}>
       <div className="row--between">
         <span className="title">#{item.reference}</span>
-        <span className={scoreClass(item.priority_band)} aria-label={item.score_total == null ? 'Not scored yet' : `${item.priority_band} priority, score ${item.score_total}`}>
-          {item.score_total ?? '—'}
-        </span>
+        <PriorityChip item={item} />
       </div>
       <span className="meta">
         {item.damage_category_display} · {item.village} · household of {item.household_size} ·
@@ -62,18 +111,19 @@ function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
         {user.role === 'disaster_officer' && item.has_open_duplicate && (
           <span className="badge badge--duplicate">Possible duplicate</span>
         )}
-        {item.claimed_by && <span className="filter-chip">Claimed by {item.claimed_by}</span>}
       </div>
-      <div className="row" style={{ gap: '0.8rem' }}>
-        {canClaim && (
+      <JobChips jobs={item.jobs} />
+      <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
+        {openJobs.map((job) => (
           <button
+            key={job.id}
             className="btn btn--primary btn--sm"
             disabled={busy}
-            onClick={() => onClaim(item.id)}
+            onClick={() => onClaim(job.id)}
           >
-            {busy ? 'Claiming…' : 'Claim case'}
+            {busy ? 'Claiming…' : `Claim ${job.help_type_display.toLowerCase()}`}
           </button>
-        )}
+        ))}
         <button
           className={`btn btn--sm ${canClaim ? 'btn--ghost' : 'btn--primary'}`}
           onClick={() => onOpen(item.id)}
@@ -90,8 +140,8 @@ function CaseActions({ detail, user, onDone, onOpenDuplicate }) {
   const [error, setError] = useState(null)
   const [note, setNote] = useState('')
 
-  const canClaim =
-    user.role === 'ngo_volunteer' && detail.status === 'verified' && !detail.claimed_by
+  const openJobs = openJobsFor(user, detail)
+  const canClaim = openJobs.length > 0
   const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
 
   if (!canClaim && !canDecide) return null
@@ -146,13 +196,18 @@ function CaseActions({ detail, user, onDone, onOpenDuplicate }) {
       )}
 
       {canClaim && (
-        <button
-          className="btn btn--primary btn--full"
-          disabled={busy}
-          onClick={() => run(() => api.claimCase(detail.id))}
-        >
-          {busy ? 'Claiming…' : 'Claim this case for my organisation'}
-        </button>
+        <div className="stack" style={{ gap: '0.8rem' }}>
+          {openJobs.map((job) => (
+            <button
+              key={job.id}
+              className="btn btn--primary btn--full"
+              disabled={busy}
+              onClick={() => run(() => api.claimJob(job.id))}
+            >
+              {busy ? 'Claiming…' : `Claim the ${job.help_type_display.toLowerCase()} job for my organisation`}
+            </button>
+          ))}
+        </div>
       )}
 
       {canDecide && (
@@ -196,73 +251,41 @@ function CaseActions({ detail, user, onDone, onOpenDuplicate }) {
   )
 }
 
-// Each criterion's share of the total, in the design's teal steps (screen 10).
-const SEGMENT_TONES = ['t900', 't800', 't700', 't600', 't500', 't300']
-
-function scoreOutOf(components) {
-  return components.reduce((sum, component) => sum + component.weight, 0) || 100
-}
-
 /**
- * Screen 08's breakdown: every criterion's points against its weight, then the
- * total and the rubric version that produced it (FR22). The small line under
- * each bar is the engine's stored explanation, shown as recorded.
+ * The case's priority class and the reasons recorded at verification
+ * (classes-1.0). Reasons name household vulnerabilities, so the server sends
+ * them only with the full detail; an NGO's summary shows the class alone.
  */
-function ScoreBreakdown({ detail }) {
-  if (detail.score_total == null) {
+function PriorityPanel({ detail }) {
+  if (detail.priority_class == null) {
     return (
       <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-16)' }}>
-        Not scored yet — a case is scored when an officer verifies it.
+        Not yet classified — priority is assigned when an officer verifies the request.
       </p>
     )
   }
-  const components = detail.score_components || []
-  const outOf = scoreOutOf(components)
+  const reasons = detail.priority_reasons || []
   return (
-    <div style={{ marginTop: 'var(--sp-16)' }}>
+    <section style={{ marginTop: 'var(--sp-16)' }} aria-label="Priority">
       <div className="row--between">
-        <span className="text-strong">Priority score</span>
-        <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
+        <span className="text-strong">Priority</span>
+        <span className="row" style={{ gap: '0.8rem' }}>
+          <strong>{detail.priority_label}</strong>
+          <PriorityChip item={detail} />
+        </span>
       </div>
-      {components.length > 0 && (
-        <div className="stack" style={{ gap: '1rem', marginTop: 'var(--sp-12)' }}>
-          {components.map((component) => (
-            <div key={component.name}>
-              <div className="score-row">
-                <span className="score-row__name">{component.name}</span>
-                <span className="bar progress" aria-hidden="true">
-                  <span
-                    className="progress__fill"
-                    style={{
-                      display: 'block',
-                      width: `${component.weight ? Math.round((component.points / component.weight) * 100) : 0}%`,
-                    }}
-                  />
-                </span>
-                <span className="pts">
-                  +{component.points}
-                  <span className="text-xs text-muted"> / {component.weight}</span>
-                </span>
-              </div>
-              {component.reason && (
-                <div className="text-xs text-muted">{component.reason.replaceAll('_', ' ')}</div>
-              )}
-            </div>
+      {reasons.length > 0 && (
+        <ul className="text-sm" style={{ margin: 'var(--sp-12) 0 0', paddingLeft: '1.6rem' }}>
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
           ))}
-        </div>
+        </ul>
       )}
       <hr className="divider" style={{ margin: '1.2rem 0' }} />
-      <div className="row--between">
-        <span className="text-xs text-muted">
-          {detail.rubric_label ? `Rubric ${detail.rubric_label}` : 'Published rubric'} · rule-based,
-          reviewed by officers
-        </span>
-        <span className="text-strong">
-          {detail.score_total}
-          <span className="text-sm text-muted">/{outOf}</span>
-        </span>
-      </div>
-    </div>
+      <span className="text-xs text-muted">
+        Cases are served by class, then in the order they were submitted (classes-1.0).
+      </span>
+    </section>
   )
 }
 
@@ -272,9 +295,8 @@ function ScoreBreakdown({ detail }) {
  * the side panel, so it shows nothing the viewer's role may not see.
  */
 function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
-  const components = detail.score_components || []
-  const outOf = scoreOutOf(components)
   const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
+  const firstReason = detail.priority_reasons?.[0]
   return (
     <div className="ops-popover case-map__popover" role="dialog" aria-label={`Case ${detail.reference}`}>
       <div className="row--between" style={{ alignItems: 'flex-start' }}>
@@ -284,9 +306,7 @@ function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
             {detail.damage_category_display} · {detail.village}
           </div>
         </div>
-        {detail.score_total != null && (
-          <span className={scoreClass(detail.priority_band)}>{detail.score_total}</span>
-        )}
+        <PriorityChip item={detail} />
       </div>
       <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
         <span className="badge badge--verified">{detail.status_display}</span>
@@ -294,33 +314,15 @@ function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
           <span className="badge badge--duplicate">Possible duplicate</span>
         )}
         <span className="text-xs text-muted">
-          {detail.claimed_by ? `Claimed by ${detail.claimed_by}` : 'Unclaimed'} · waiting{' '}
-          {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
+          waiting {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
         </span>
       </div>
-      {components.length > 0 ? (
-        <div>
-          <div className="score-stack" title={`Score breakdown — rubric ${detail.rubric_label || ''}`}>
-            {components.map((component, index) => (
-              <span
-                key={component.name}
-                className={`score-stack__seg score-stack__seg--${SEGMENT_TONES[index % SEGMENT_TONES.length]}`}
-                style={{ width: `${(component.points / outOf) * 100}%` }}
-                title={`${component.name} · ${component.points}`}
-              />
-            ))}
-          </div>
-          <div className="text-xs text-muted" style={{ marginTop: '0.6rem' }}>
-            {detail.score_total} / {outOf}
-            {detail.rubric_label ? ` · rubric ${detail.rubric_label}` : ''} —{' '}
-            {components.map((component) => `${component.key} ${component.points}`).join(' · ')}
-          </div>
-        </div>
-      ) : (
-        detail.score_total == null && (
-          <div className="text-xs text-muted">Not scored yet — scored when an officer verifies it.</div>
-        )
-      )}
+      <JobChips jobs={detail.jobs} />
+      <div className="text-xs text-muted">
+        {detail.priority_class == null
+          ? 'Not yet classified — classified when an officer verifies it.'
+          : `${detail.priority_label}${firstReason ? ` — ${firstReason}` : ''}`}
+      </div>
       <div className="text-xs text-muted">
         {detail.location.precision === 'exact'
           ? detail.location.address
@@ -348,7 +350,7 @@ function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
   )
 }
 
-function ScorePanel({ detail, onClose, user, onDone, onOpenDuplicate }) {
+function CasePanel({ detail, onClose, user, onDone, onOpenDuplicate }) {
   if (!detail) return null
   const summaryOnly = detail.detail_access === 'summary'
   return (
@@ -375,7 +377,7 @@ function ScorePanel({ detail, onClose, user, onDone, onOpenDuplicate }) {
         </p>
       )}
 
-      <ScoreBreakdown detail={detail} />
+      <PriorityPanel detail={detail} />
 
       {user.role === 'disaster_officer' && detail.duplicate_review?.open_match_ids?.length > 0 && (
         <div className="row" style={{ flexWrap: 'wrap', marginTop: 'var(--sp-12)' }}>
@@ -416,7 +418,9 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   const [cases, setCases] = useState([])
   const [stats, setStats] = useState(null)
   const [status, setStatus] = useState('')
-  const [band, setBand] = useState('')
+  const [priority, setPriority] = useState('')
+  const [help, setHelp] = useState('')
+  const [unmet, setUnmet] = useState(null)
   const [search, setSearch] = useState('')
   const [listError, setListError] = useState(null)
   const [detail, setDetail] = useState(null)
@@ -458,7 +462,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
 
   useEffect(() => {
     let cancelled = false
-    const params = { status, band, q: search }
+    const params = { status, priority, help, q: search }
     Promise.all([api.cases(params), api.stats(params)])
       .then(([list, s]) => {
         if (cancelled) return
@@ -470,14 +474,20 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     return () => {
       cancelled = true
     }
-  }, [status, band, search, reloadKey])
+  }, [status, priority, help, search, reloadKey])
+
+  // Officers: which types of help no organisation has taken (ADR-020).
+  useEffect(() => {
+    if (user.role !== 'disaster_officer') return
+    api.unmetHelp().then(setUnmet).catch(() => setUnmet(null))
+  }, [user.role, reloadKey])
 
   // The map is fetched only when shown, with the same filters as the list.
   useEffect(() => {
     if (view !== 'map') return undefined
     let cancelled = false
     api
-      .caseMap({ status, band, q: search })
+      .caseMap({ status, priority, help, q: search })
       .then((data) => {
         if (cancelled) return
         setMapData(data)
@@ -488,7 +498,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     return () => {
       cancelled = true
     }
-  }, [view, status, band, search, reloadKey])
+  }, [view, status, priority, help, search, reloadKey])
 
   const openCase = async (id) => {
     const version = ++selectionVersion.current
@@ -548,16 +558,17 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   const [claimError, setClaimError] = useState(null)
   const [notice, setNotice] = useState(null)
 
-  async function claimFromCard(id) {
+  async function claimFromCard(jobId) {
     setClaimError(null)
     setNotice(null)
-    setClaimingId(id)
+    setClaimingId(jobId)
     try {
-      const claimed = await api.claimCase(id)
-      // The button vanishes once the case is held; without a message that
+      const claimed = await api.claimJob(jobId)
+      const job = claimed.jobs.find((item) => item.id === jobId)
+      // The button vanishes once the job is held; without a message that
       // reads as nothing having happened.
       setNotice(
-        `#${claimed.reference} is now assigned to ${claimed.claimed_by}. ` +
+        `The ${job.help_type_display.toLowerCase()} job on #${claimed.reference} is now your organisation's. ` +
           `It is locked to other organisations and the change is in the audit log.`,
       )
       await refresh()
@@ -668,7 +679,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                 d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25V6.75zM7.5 9h9M7.5 12h9M7.5 15h5.25"
               />
             </svg>
-            How scoring works
+            How priority works
           </a>
 
           <span className="side-nav__label">Organisation</span>
@@ -705,8 +716,8 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             <h1>Case queue</h1>
             <p>
               Recovery cases visible to you as{' '}
-              {user.role === 'ngo_volunteer' ? 'an NGO responder' : `a ${user.role_display.toLowerCase()}`}. Priority is computed
-              from the rubric version that scored each case.
+              {user.role === 'ngo_volunteer' ? 'an NGO responder' : `a ${user.role_display.toLowerCase()}`}. Cases are ordered by
+              priority class, then by submission time.
             </p>
           </div>
           <div className="view-toggle" role="group" aria-label="Queue view">
@@ -742,18 +753,34 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             </span>
             <span className="map-kpi">
               <span className="map-kpi__value" style={{ color: 'var(--danger-600)' }}>
-                {stats.high}
+                {stats.health_critical}
               </span>{' '}
-              high priority
+              health-critical
             </span>
             <span className="map-kpi">
               <span className="map-kpi__value" style={{ color: 'var(--teal-700)' }}>
                 {stats.unclaimed}
               </span>{' '}
-              unclaimed
+              with help waiting
             </span>
             <span className="map-kpi">
               <span className="map-kpi__value">{stats.in_progress}</span> in progress
+            </span>
+          </div>
+        )}
+
+        {unmet && unmet.length > 0 && (
+          <div className="banner banner--warning" role="status">
+            <span className="body text-sm">
+              <span className="title">Help no organisation has taken yet</span>
+              <br />
+              {unmet.map((row) => (
+                <span key={row.help_type} style={{ display: 'block' }}>
+                  {row.help_type_display}: {row.open_jobs} {row.open_jobs === 1 ? 'job' : 'jobs'}
+                  {row.health_critical > 0 ? `, ${row.health_critical} health-critical` : ''}, oldest
+                  waiting {row.oldest_waiting_days} {row.oldest_waiting_days === 1 ? 'day' : 'days'}
+                </span>
+              ))}
             </span>
           </div>
         )}
@@ -777,18 +804,36 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
               </button>
             ))}
           </div>
-          <div className="case-queue__filter-group" role="group" aria-label="Priority band">
+          <div className="case-queue__filter-group" role="group" aria-label="Priority class">
             <span className="case-queue__filter-label" aria-hidden="true">Priority</span>
-            {BAND_FILTERS.map((filter) => (
+            {PRIORITY_FILTERS.map((filter) => (
               <button
                 key={filter.value}
                 type="button"
-                className={`filter-chip${band === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={band === filter.value}
+                className={`filter-chip${priority === filter.value ? ' filter-chip--active' : ''}`}
+                aria-pressed={priority === filter.value}
                 onClick={() => {
-                  if (band === filter.value) return
+                  if (priority === filter.value) return
                   invalidateQueue()
-                  setBand(filter.value)
+                  setPriority(filter.value)
+                }}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="case-queue__filter-group" role="group" aria-label="Type of help">
+            <span className="case-queue__filter-label" aria-hidden="true">Help</span>
+            {HELP_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`filter-chip${help === filter.value ? ' filter-chip--active' : ''}`}
+                aria-pressed={help === filter.value}
+                onClick={() => {
+                  if (help === filter.value) return
+                  invalidateQueue()
+                  setHelp(filter.value)
                 }}
               >
                 {filter.label}
@@ -807,11 +852,11 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             }}
           />
         </div>
-        {band && <p className="case-queue__filter-note">Cases awaiting scoring appear under Priority: All.</p>}
+        {priority && <p className="case-queue__filter-note">Cases awaiting verification appear under Priority: All.</p>}
 
         {/* vp-fill claims the rest of the viewport and each column scrolls on
             its own, so the filter bar and stat strip stay pinned while a long
-            queue or a long score panel scrolls independently. */}
+            queue or a long case panel scrolls independently. */}
         <div
           className={`vp-fill case-queue__workspace${detail ? ' case-queue__workspace--split' : ''}`}
           style={{
@@ -917,7 +962,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                 key={item.id}
                 item={item}
                 user={user}
-                busy={claimingId === item.id}
+                busy={(item.jobs || []).some((job) => job.id === claimingId)}
                 selected={detail?.id === item.id}
                 onClaim={claimFromCard}
                 onOpen={openCase}
@@ -928,7 +973,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
 
           {detail && (
             <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
-              <ScorePanel
+              <CasePanel
                 detail={detail}
                 user={user}
                 onOpenDuplicate={onOpenDuplicate}

@@ -14,6 +14,7 @@ from cases import duplicate_services as svc
 from cases.models import CaseEventLog, CaseRecord, CaseTask, DuplicateCaseMatch
 
 from .duplicate_helpers import DuplicateWorld, event_types, make_case
+from .job_helpers import give_job
 
 Event = CaseEventLog.EventType
 MatchStatus = DuplicateCaseMatch.Status
@@ -63,7 +64,8 @@ class DetectionTests(DuplicateWorld, TestCase):
         match = DuplicateCaseMatch.objects.get()
         self.assertEqual((match.case_a, match.case_b), (older, newer))
         self.assertEqual(match.status, MatchStatus.OPEN)
-        self.assertGreaterEqual(match.similarity_score, 35)
+        self.assertEqual(match.method, "rules-1.0")
+        self.assertTrue(match.matched_rules)
         self.assertEqual(result.created, 1)
         self.assertEqual(svc.duplicate_check_state(newer), "completed")
         self.assertIn(Event.DUPLICATE_FLAGGED, event_types(older))
@@ -104,7 +106,7 @@ class DetectionTests(DuplicateWorld, TestCase):
 
     def test_detection_failure_rolls_back_its_writes_and_leaves_pending(self):
         older, newer = self.older_and_newer()
-        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError("boom")):
+        with mock.patch.object(svc, "compare_by_rules", side_effect=RuntimeError("boom")):
             with self.assertLogs("cases.duplicate_services", level="WARNING") as logs:
                 svc.run_detection_after_submission(newer)
         self.assertFalse(DuplicateCaseMatch.objects.exists())
@@ -134,25 +136,25 @@ class ScanTests(DuplicateWorld, TestCase):
         self.assertFalse(DuplicateCaseMatch.objects.exists())
         self.assertEqual(CaseEventLog.objects.count(), before)
 
-    def test_rescan_preserves_decisions_and_scores(self):
+    def test_rescan_preserves_decisions_and_stored_rules(self):
         svc.scan_duplicate_area(self.area.pk)
         match = DuplicateCaseMatch.objects.get()
         svc.decide_duplicate_match(match.pk, self.officer, "dismiss")
-        score = match.similarity_score
+        stored_rules = match.matched_rules
 
         result = svc.scan_duplicate_area(self.area.pk)
         match.refresh_from_db()
         self.assertEqual(result.existing, 1)
         self.assertEqual(result.created, 0)
         self.assertEqual(match.status, MatchStatus.REJECTED)
-        self.assertEqual(match.similarity_score, score)
+        self.assertEqual(match.matched_rules, stored_rules)
         self.assertEqual(
             CaseEventLog.objects.filter(event_type=Event.DUPLICATE_FLAGGED).count(), 2
         )
 
     def test_failed_scan_leaves_cases_pending_not_completed(self):
         svc.scan_duplicate_area(self.area.pk)
-        with mock.patch.object(svc, "compare_cases", side_effect=RuntimeError):
+        with mock.patch.object(svc, "compare_by_rules", side_effect=RuntimeError):
             DuplicateCaseMatch.objects.all().delete()
             with self.assertRaises(RuntimeError):
                 svc.scan_duplicate_area(self.area.pk)
@@ -195,6 +197,33 @@ class DecisionTests(DuplicateWorld, TestCase):
 
     def decide(self, decision, match=None):
         return svc.decide_duplicate_match((match or self.match).pk, self.officer, decision)
+
+    def test_confirm_adds_help_the_older_request_does_not_have(self):
+        # ADR-020: closing the newer request must not lose a type of help only
+        # it asked for. Older: cleanup. Newer: cleanup + essential items.
+        from cases.models import CaseJob
+
+        CaseJob.objects.create(case=self.older, help_type="cleanup")
+        CaseJob.objects.create(case=self.newer, help_type="cleanup")
+        CaseJob.objects.create(case=self.newer, help_type="essential_items")
+        self.decide("confirm")
+        self.assertEqual(
+            sorted(self.older.jobs.values_list("help_type", flat=True)),
+            ["cleanup", "essential_items"],
+        )
+        added = self.older.jobs.get(help_type="essential_items")
+        self.assertEqual(added.status, CaseJob.Status.OPEN)
+        self.assertIsNone(added.claimed_by_org)
+        detail = CaseEventLog.objects.filter(case=self.older, event_type=Event.DUPLICATE_CONFIRMED).get().detail
+        self.assertIn("Essential items added", detail)
+
+    def test_confirm_adds_nothing_when_the_help_is_the_same(self):
+        from cases.models import CaseJob
+
+        CaseJob.objects.create(case=self.older, help_type="cleanup")
+        CaseJob.objects.create(case=self.newer, help_type="cleanup")
+        self.decide("confirm")
+        self.assertEqual(list(self.older.jobs.values_list("help_type", flat=True)), ["cleanup"])
 
     def test_confirm_links_and_closes_the_newer_case_and_keeps_its_history(self):
         CaseEventLog.objects.create(
@@ -269,8 +298,8 @@ class DecisionTests(DuplicateWorld, TestCase):
 
     def test_newer_case_with_an_organisation_working_on_it_cannot_be_closed(self):
         self.newer.status = CaseRecord.Status.CLAIMED
-        self.newer.claimed_by_org = self.org
         self.newer.save()
+        give_job(self.newer, self.org)
         with self.assertRaises(svc.DuplicateConflict) as caught:
             self.decide("confirm")
         self.assertEqual(caught.exception.code, "active_case")
@@ -285,8 +314,8 @@ class DecisionTests(DuplicateWorld, TestCase):
 
     def test_older_case_may_be_operationally_active(self):
         self.older.status = CaseRecord.Status.CLAIMED
-        self.older.claimed_by_org = self.org
         self.older.save()
+        give_job(self.older, self.org)
         self.assertTrue(self.decide("confirm").changed)
 
     def test_confirming_would_not_create_a_chain(self):
@@ -305,3 +334,49 @@ class DecisionTests(DuplicateWorld, TestCase):
             self.decide("confirm")
         self.assertEqual(caught.exception.code, "stale_pair")
         self.assertTrue(self.decide("dismiss").changed)
+
+
+class RulesFlagTests(DuplicateWorld, TestCase):
+    """rules-1.0 (ADR-019): a flag records which rules fired, and no score."""
+
+    def setUp(self):
+        self.build_world()
+
+    def test_new_flag_records_method_and_rules(self):
+        older, newer = self.older_and_newer()  # relative: same name after particles + same phone
+        svc.detect_duplicates_for_case(newer.pk)
+        match = DuplicateCaseMatch.objects.get()
+        self.assertEqual(match.method, "rules-1.0")
+        self.assertEqual(match.matched_rules, ["same_name", "same_phone", "same_house_and_address"])
+        self.assertIsNone(match.similarity_score)
+
+    def test_flag_event_names_the_rules(self):
+        older, newer = self.older_and_newer()
+        svc.detect_duplicates_for_case(newer.pk)
+        detail = CaseEventLog.objects.filter(
+            case=newer, event_type=CaseEventLog.EventType.DUPLICATE_FLAGGED
+        ).get().detail
+        self.assertIn("rules-1.0", detail)
+        self.assertIn("Same phone number", detail)
+
+    def test_different_household_is_not_flagged(self):
+        make_case(self.resident, self.area, reference="FRC-5001", minutes_ago=120)
+        other = make_case(self.neighbour, self.area, reference="FRC-5003", minutes_ago=5,
+                          address="Lot 12, Jalan Sekolah, Kampung Sireh")
+        svc.detect_duplicates_for_case(other.pk)
+        self.assertFalse(DuplicateCaseMatch.objects.exists())
+
+    def test_current_comparison_reports_rules(self):
+        older, newer = self.older_and_newer()
+        svc.detect_duplicates_for_case(newer.pk)
+        comparison = svc.current_duplicate_comparison(DuplicateCaseMatch.objects.get())
+        self.assertEqual(comparison["method"], "rules-1.0")
+        self.assertTrue(comparison["matched"])
+        self.assertIn("same_phone", [r["rule"] for r in comparison["reasons"]])
+
+    def test_admin_label_names_the_rules_not_a_percentage(self):
+        older, newer = self.older_and_newer()
+        svc.detect_duplicates_for_case(newer.pk)
+        label = str(DuplicateCaseMatch.objects.get())
+        self.assertIn("rules-1.0", label)
+        self.assertNotIn("%", label)

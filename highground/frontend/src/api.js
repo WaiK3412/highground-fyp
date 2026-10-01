@@ -94,9 +94,10 @@ export const api = {
     request('/api/cases/', { method: 'POST', body: payload, files, fileField: 'photos' }),
   caseDetail: (id) => request(`/api/cases/${id}/`),
   locations: () => request('/api/locations/'),
-  claimCase: (id) => request(`/api/cases/${id}/claim/`, { method: 'POST' }),
-  releaseCase: (id, reason) =>
-    request(`/api/cases/${id}/release/`, { method: 'POST', body: { reason } }),
+  // Help jobs (ADR-020): each type of help is claimed and finished on its own.
+  claimJob: (id) => request(`/api/jobs/${id}/claim/`, { method: 'POST' }),
+  releaseJob: (id, reason) =>
+    request(`/api/jobs/${id}/release/`, { method: 'POST', body: { reason } }),
   verifyCase: (id, decision, note) =>
     request(`/api/cases/${id}/verify/`, { method: 'POST', body: { decision, note } }),
   taskBoard: () => request('/api/tasks/'),
@@ -105,18 +106,19 @@ export const api = {
     request(`/api/cases/${caseId}/tasks/`, { method: 'POST', body: payload }),
   updateTask: (id, payload) =>
     request(`/api/tasks/${id}/`, { method: 'PATCH', body: payload }),
-  completeCase: (id) => request(`/api/cases/${id}/complete/`, { method: 'POST' }),
-  confirmCase: (id, decision, note = '') =>
-    request(`/api/cases/${id}/confirm/`, { method: 'POST', body: { decision, note } }),
+  completeJob: (id) => request(`/api/jobs/${id}/complete/`, { method: 'POST' }),
+  confirmJob: (id, decision, note = '') =>
+    request(`/api/jobs/${id}/confirm/`, { method: 'POST', body: { decision, note } }),
+  unmetHelp: () => request('/api/jobs/unmet/'),
   stats: (params = {}) => {
     const query = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v),
     ).toString()
     return request('/api/cases/stats/' + (query ? `?${query}` : ''))
   },
+  // Screen 18 — how priority works (classes-1.0), read-only.
+  priorityRules: () => request('/api/priority-rules/'),
   // Notifications are event-log rows addressed to this user (ADR-004).
-  // Screen 18 — the published rubric, read-only.
-  rubric: () => request('/api/rubric/'),
   notifications: () => request('/api/notifications/'),
   markNotificationRead: (id) => request(`/api/notifications/${id}/read/`, { method: 'POST' }),
   markAllNotificationsRead: () => request('/api/notifications/read-all/', { method: 'POST' }),

@@ -30,6 +30,7 @@ from cases.duplicates import (
     classify_score,
     compare_cases,
 )
+from cases.duplicate_rules import compare_by_rules
 
 FIXTURE_PATH = Path(__file__).parent / "evaluation" / "duplicate_pairs.json"
 RESULTS_PATH = Path(__file__).parent / "evaluation" / "duplicate_results.json"
@@ -137,6 +138,29 @@ def score_split(data: dict, split: str, **thresholds) -> list[PairOutcome]:
         if not blocked:
             idf = idf_by_village[a["village_code"]]
             score = compare_cases(to_input(a), to_input(b), idf, **thresholds).score
+        outcomes.append(PairOutcome(
+            a["id"], b["id"], duplicate, blocked, score, stratum(a["language"], b["language"])
+        ))
+    return outcomes
+
+
+def score_split_rules(data: dict, split: str) -> list[PairOutcome]:
+    """rules-1.0 on the same pairs and blocking as score_split.
+
+    The rules give yes/no, not a score, so a flagged pair scores 100 and an
+    unflagged one 0; confusion(outcomes, 50.0) then counts them unchanged.
+    """
+    families = data["families"]
+    records = [r for r in data["records"] if families[r["family"]]["split"] == split]
+    outcomes = []
+    for a, b in combinations(records, 2):
+        duplicate = a["household"] == b["household"]
+        blocked = a["village_code"] != b["village_code"]
+        if blocked and not duplicate:
+            continue
+        score = None
+        if not blocked:
+            score = 100.0 if compare_by_rules(to_input(a), to_input(b)).needs_review else 0.0
         outcomes.append(PairOutcome(
             a["id"], b["id"], duplicate, blocked, score, stratum(a["language"], b["language"])
         ))

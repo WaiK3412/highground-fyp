@@ -7,7 +7,7 @@ import TaskBoard from './pages/TaskBoard'
 import ResidentDashboard from './pages/ResidentDashboard'
 import SubmitRequest from './pages/SubmitRequest'
 import Notifications from './pages/Notifications'
-import ScoringRules from './pages/ScoringRules'
+import PriorityRules from './pages/PriorityRules'
 import ResponderShell from './pages/ResponderShell'
 import DuplicateReview from './pages/DuplicateReview'
 
@@ -182,7 +182,7 @@ export default function App() {
     if (responderScreen === 'rules')
       return (
         <ResponderShell user={user} active="rules" onNavigate={navigateResponder} onLogout={handleLogout} duplicateCount={duplicateCount}>
-          <ScoringRules />
+          <PriorityRules />
         </ResponderShell>
       )
     if (responderScreen === 'duplicates' && user.role === 'disaster_officer')

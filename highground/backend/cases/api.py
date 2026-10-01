@@ -10,8 +10,7 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.urls import reverse
-from django.db.models import F, Prefetch, Q, Value
-from django.db.models.functions import Coalesce
+from django.db.models import F, Prefetch, Q
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import APIException, ValidationError
@@ -27,33 +26,56 @@ from accounts.permissions import (
     IsDisasterOfficer,
     IsNgoVolunteer,
     may_see_exact_location,
+    holds_active_job,
     may_see_private_case_details,
     visible_cases,
 )
 from accounts.models import UserAccount
-from scoring.engine import HIGH_THRESHOLD, MEDIUM_THRESHOLD
 
 from .duplicates import haversine_metres
-from .models import CaseEventLog, CasePhoto, CaseRecord, CaseTask, LocationArea
+from .models import CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask, LocationArea
 from .privacy import safe_case_text
 from .upload_validation import has_expected_signature
 
 
-class ScoreComponentSerializer(serializers.Serializer):
-    key = serializers.CharField(source="criterion.key")
-    name = serializers.CharField(source="criterion.name")
-    weight = serializers.IntegerField(source="criterion.weight")
-    points = serializers.IntegerField()
-    reason = serializers.CharField()
+class CaseJobSerializer(serializers.ModelSerializer):
+    """One type of help on a case and who, if anyone, is doing it.
+
+    Shown to every role that can see the case: which help is still needed
+    and which organisation holds each job is coordination information, not
+    household detail (the address and evidence stay behind the job claim).
+    """
+
+    help_type_display = serializers.CharField(source="get_help_type_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    claimed_by = serializers.CharField(source="claimed_by_org.name", default=None, read_only=True)
+    claimed_by_you = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CaseJob
+        fields = [
+            "id", "help_type", "help_type_display", "status", "status_display",
+            "claimed_by", "claimed_by_you",
+        ]
+
+    def get_claimed_by_you(self, obj):
+        request = self.context.get("request")
+        org_id = getattr(getattr(request, "user", None), "organization_id", None)
+        return bool(org_id and obj.claimed_by_org_id == org_id)
 
 
 class CaseListSerializer(serializers.ModelSerializer):
-    priority_band = serializers.CharField(read_only=True)
+    # classes-1.0. The label is safe on the shared queue (it is the class
+    # name, nothing about the household); the reasons name vulnerabilities,
+    # so they travel only with the full detail.
+    priority_label = serializers.CharField(
+        source="get_priority_class_display", read_only=True, default=None
+    )
     damage_category_display = serializers.CharField(
         source="get_damage_category_display", read_only=True
     )
     status_display = serializers.CharField(source="get_status_display", read_only=True)
-    claimed_by = serializers.CharField(source="claimed_by_org.name", default=None, read_only=True)
+    jobs = CaseJobSerializer(many=True, read_only=True)
     days_waiting = serializers.SerializerMethodField()
     duplicate_check = serializers.SerializerMethodField()
     has_open_duplicate = serializers.SerializerMethodField()
@@ -68,10 +90,10 @@ class CaseListSerializer(serializers.ModelSerializer):
             "damage_category_display",
             "status",
             "status_display",
-            "score_total",
-            "priority_band",
+            "priority_class",
+            "priority_label",
             "household_size",
-            "claimed_by",
+            "jobs",
             "days_waiting",
             "duplicate_check",
             "has_open_duplicate",
@@ -229,11 +251,9 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 
     detail_access = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
-    # Which rubric produced the score (FR22) — public, like the rubric page.
-    rubric_label = serializers.CharField(source="rubric_version.label", default=None, read_only=True)
 
     class Meta(CaseListSerializer.Meta):
-        fields = CaseListSerializer.Meta.fields + ["detail_access", "location", "rubric_label"]
+        fields = CaseListSerializer.Meta.fields + ["detail_access", "location"]
 
     def get_detail_access(self, obj):
         return "summary"
@@ -249,14 +269,12 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 
 class CaseDetailSerializer(CaseListSerializer):
     description = serializers.SerializerMethodField()
-    score_components = ScoreComponentSerializer(many=True, read_only=True)
     photos = CasePhotoSerializer(many=True, read_only=True)
     events = serializers.SerializerMethodField()
     tasks = CaseTaskSummarySerializer(many=True, read_only=True)
     location = serializers.SerializerMethodField()
     detail_access = serializers.SerializerMethodField()
     duplicate_review = serializers.SerializerMethodField()
-    rubric_label = serializers.CharField(source="rubric_version.label", default=None, read_only=True)
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
     # than leaving each client to invent its own labels.
@@ -284,13 +302,12 @@ class CaseDetailSerializer(CaseListSerializer):
             "access_level_display",
             "needs_flags",
             "vulnerability_flags",
-            "score_components",
+            "priority_reasons",
             "location",
             "photos",
             "events",
             "tasks",
             "detail_access",
-            "rubric_label",
             "duplicate_review",
         ]
 
@@ -371,7 +388,7 @@ def _known_flags(values, vocabulary, field):
     unknown = sorted({str(v) for v in values} - vocabulary)
     if unknown:
         raise serializers.ValidationError(f"Unrecognised {field}: {', '.join(unknown)}.")
-    # De-duplicated: the engine counts entries, so a repeated flag would score twice.
+    # De-duplicated: a repeated flag would otherwise be listed twice as a reason.
     return sorted(set(values))
 
 
@@ -379,10 +396,10 @@ class CaseCreateSerializer(serializers.ModelSerializer):
     """What a household may put in a new case (FR3).
 
     The field list IS the security boundary, and it is deliberately short.
-    Everything a resident must not control — status, score_total,
-    verified_by_user, claimed_by_org, rubric_version, reference,
+    Everything a resident must not control — status, priority_class,
+    verified_by_user, jobs and who claims them, rubric_version, reference,
     submitted_by_user — is simply absent, so DRF drops it instead of trusting
-    it. Posting score_total=100 is not an error; it is ignored.
+    it. Posting priority_class=1 is not an error; it is ignored.
 
     Same rule as ADR-012 registration: the request records what you want, the
     server decides what you get.
@@ -411,10 +428,14 @@ class CaseCreateSerializer(serializers.ModelSerializer):
     longitude = serializers.FloatField(
         required=False, allow_null=True, min_value=-180, max_value=180
     )
+    # Other types of help besides the main one (damage_category). Each type
+    # becomes its own job that a different organisation can claim (ADR-020).
+    also_need = serializers.JSONField(required=False, write_only=True)
 
     class Meta:
         model = CaseRecord
         fields = [
+            "also_need",
             "location_code",
             "latitude",
             "longitude",
@@ -445,6 +466,9 @@ class CaseCreateSerializer(serializers.ModelSerializer):
 
     def validate_needs_flags(self, value):
         return _known_flags(value, NEEDS_VOCAB, "needs flags")
+
+    def validate_also_need(self, value):
+        return _known_flags(value, set(CaseRecord.DamageCategory.values), "types of help")
 
     def validate(self, attrs):
         # The name as filed stays on the case, so it still reads the same if
@@ -517,23 +541,13 @@ def _next_reference():
         return "FRC-1042"
 
 
-def _filter_priority_band(queryset, band):
-    """Match CaseRecord.priority_band using the rubric that scored each case."""
-    if band not in ("", "high", "medium", "low"):
-        raise ValidationError({"band": ["Choose high, medium, or low."]})
-    if not band:
+def _filter_priority_class(queryset, value):
+    """Filter by classes-1.0 priority class; blank means all, unclassified included."""
+    if value in ("", None):
         return queryset
-    queryset = queryset.alias(
-        _band_high=Coalesce("rubric_version__high_threshold", Value(HIGH_THRESHOLD)),
-        _band_medium=Coalesce("rubric_version__medium_threshold", Value(MEDIUM_THRESHOLD)),
-    ).filter(score_total__isnull=False)
-    if band == "high":
-        return queryset.filter(score_total__gte=F("_band_high"))
-    if band == "medium":
-        return queryset.filter(
-            score_total__gte=F("_band_medium"), score_total__lt=F("_band_high")
-        )
-    return queryset.filter(score_total__lt=F("_band_medium"))
+    if value not in ("1", "2", "3"):
+        raise ValidationError({"priority": ["Choose 1, 2 or 3."]})
+    return queryset.filter(priority_class=int(value))
 
 
 def _queue_queryset(request):
@@ -542,9 +556,9 @@ def _queue_queryset(request):
     Shared by the list, map, and stats so they agree about which
     cases exist for a user.
     """
-    queryset = CaseRecord.objects.select_related(
-        "claimed_by_org", "submitted_by_user", "rubric_version"
-    ).all()
+    queryset = CaseRecord.objects.select_related("submitted_by_user").prefetch_related(
+        "jobs__claimed_by_org"
+    )
     queryset = visible_cases(request.user, queryset)
 
     status_filter = request.query_params.get("status")
@@ -568,13 +582,28 @@ def _queue_queryset(request):
         if request.user.role == UserAccount.Role.NGO_VOLUNTEER:
             if request.user.organization_id:
                 search_query |= Q(
-                    claimed_by_org=request.user.organization,
+                    jobs__claimed_by_org=request.user.organization,
+                    jobs__status__in=CaseJob.ACTIVE,
                     description__icontains=search,
                 )
         else:
             search_query |= Q(description__icontains=search)
         queryset = queryset.filter(search_query)
-    return _filter_priority_band(queryset, request.query_params.get("band", ""))
+    help_type = request.query_params.get("help", "")
+    if help_type:
+        # Cases that still need this type of help: an NGO filters to the work
+        # it can do, and the class order below still applies within it.
+        if help_type not in CaseRecord.DamageCategory.values:
+            raise ValidationError({"help": ["Choose a listed type of help."]})
+        queryset = queryset.filter(
+            pk__in=CaseJob.objects.filter(help_type=help_type, status=CaseJob.Status.OPEN)
+            .values("case_id")
+        )
+    queryset = _filter_priority_class(queryset, request.query_params.get("priority", ""))
+    # Class first, then first come, first served; unverified cases last.
+    return queryset.distinct().order_by(
+        F("priority_class").asc(nulls_last=True), "created_at", "pk"
+    )
 
 
 class CaseListView(ListCreateAPIView):
@@ -602,10 +631,10 @@ class CaseListView(ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         """Create a case from a household's submission (FR3).
 
-        Scoring deliberately does not happen here. Screen 17 is explicit that
-        a request is checked by an officer "before it is scored and released
-        to the NGO queue", so a new case carries score_total=None until it is
-        verified.
+        Classification deliberately does not happen here. Screen 17 is
+        explicit that a request is checked by an officer before it is
+        prioritised and released to the NGO queue, so a new case carries
+        priority_class=None until it is verified.
         """
         if request.user.role != UserAccount.Role.COMMUNITY_MEMBER:
             return Response({"detail": "Only residents may submit a request."}, status=403)
@@ -626,6 +655,13 @@ class CaseListView(ListCreateAPIView):
                     status=400,
                 )
 
+        also_need = serializer.validated_data.pop("also_need", [])
+        # Main type first, then the extras in the form's order, each once.
+        order = list(CaseRecord.DamageCategory.values)
+        help_types = list(dict.fromkeys(
+            [serializer.validated_data["damage_category"], *sorted(also_need, key=order.index)]
+        ))
+
         with transaction.atomic():
             case = serializer.save(
                 submitted_by_user=request.user,
@@ -635,6 +671,8 @@ class CaseListView(ListCreateAPIView):
             )
             for upload in photos:
                 CasePhoto.objects.create(case=case, file_path=upload)
+            for help_type in help_types:
+                CaseJob.objects.create(case=case, help_type=help_type)
 
             CaseEventLog.objects.create(
                 case=case,
@@ -677,8 +715,8 @@ def case_detail(request, pk):
         events = events.exclude(event_type=CaseEventLog.EventType.SAFETY_ACKNOWLEDGED)
     queryset = visible_cases(
         request.user,
-        CaseRecord.objects.select_related("claimed_by_org").prefetch_related(
-            "score_components__criterion",
+        CaseRecord.objects.prefetch_related(
+            "jobs__claimed_by_org",
             "photos",
             "tasks__lead_user",
             # Oldest first: a timeline reads downwards.
@@ -708,14 +746,14 @@ def queue_stats(request):
     return Response(
         {
             "total": queryset.count(),
-            "high": _filter_priority_band(queryset, "high").count(),
-            "unclaimed": queryset.filter(claimed_by_org__isnull=True).count(),
+            "health_critical": queryset.filter(priority_class=1).count(),
+            # Cases with at least one type of help no organisation has taken.
+            "unclaimed": queryset.filter(
+                pk__in=CaseJob.objects.filter(status=CaseJob.Status.OPEN).values("case_id")
+            ).count(),
             "in_progress": queryset.filter(status="in_progress").count(),
         }
     )
-
-
-BAND_RANK = {"High": 3, "Medium": 2, "Low": 1}
 
 
 @api_view(["GET"])
@@ -730,7 +768,7 @@ def case_map(request):
     al. 2006), and the village is already on the list, so counting it adds
     nothing an NGO could not already read.
     """
-    cases = _queue_queryset(request).select_related("location_area", "rubric_version")
+    cases = _queue_queryset(request).select_related("location_area")
     if request.user.role == UserAccount.Role.DISASTER_OFFICER:
         from .duplicate_services import open_match_annotation
 
@@ -757,13 +795,14 @@ def case_map(request):
                     "precision": precision,
                     "status": case.status,
                     "status_display": case.get_status_display(),
-                    "score_total": case.score_total,
-                    "priority_band": case.priority_band,
-                    "claimed_by": case.claimed_by_org.name if case.claimed_by_org_id else None,
-                    "claimed_by_you": bool(
-                        case.claimed_by_org_id
-                        and case.claimed_by_org_id == request.user.organization_id
+                    "priority_class": case.priority_class,
+                    "priority_label": (
+                        case.get_priority_class_display() if case.priority_class else None
                     ),
+                    "claimed_by": ", ".join(
+                        sorted({job.claimed_by_org.name for job in case.jobs.all() if job.claimed_by_org_id})
+                    ) or None,
+                    "claimed_by_you": holds_active_job(request.user, case),
                 }
             if request.user.role == UserAccount.Role.DISASTER_OFFICER:
                 point["has_open_duplicate"] = case.has_open_duplicate
@@ -777,13 +816,15 @@ def case_map(request):
                     "latitude": str(area.latitude),
                     "longitude": str(area.longitude),
                     "case_count": 0,
-                    "highest_band": "unscored",
+                    # 1 is the most urgent, so "highest" is the smallest number.
+                    "highest_class": None,
                 },
             )
             entry["case_count"] += 1
-            band = case.priority_band
-            if BAND_RANK.get(band, 0) > BAND_RANK.get(entry["highest_band"], 0):
-                entry["highest_band"] = band
+            if case.priority_class and (
+                entry["highest_class"] is None or case.priority_class < entry["highest_class"]
+            ):
+                entry["highest_class"] = case.priority_class
         else:
             unmapped += 1
     return Response(
@@ -828,11 +869,17 @@ def locations(request):
 
 class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
     safety_note = serializers.SerializerMethodField()
+    job_id = serializers.IntegerField(source="job.id", default=None, read_only=True)
+    job_help_type_display = serializers.CharField(
+        source="job.get_help_type_display", default=None, read_only=True
+    )
     case_id = serializers.IntegerField(source="case.id", read_only=True)
     case_reference = serializers.CharField(source="case.reference", read_only=True)
     case_village = serializers.CharField(source="case.village", read_only=True)
-    case_score_total = serializers.IntegerField(source="case.score_total", read_only=True)
-    case_priority_band = serializers.CharField(source="case.priority_band", read_only=True)
+    case_priority_class = serializers.IntegerField(source="case.priority_class", read_only=True)
+    case_priority_label = serializers.CharField(
+        source="case.get_priority_class_display", read_only=True, default=None
+    )
     case_status = serializers.CharField(source="case.status", read_only=True)
     case_status_display = serializers.CharField(
         source="case.get_status_display", read_only=True
@@ -843,11 +890,13 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
 
     class Meta(CaseTaskSummarySerializer.Meta):
         fields = CaseTaskSummarySerializer.Meta.fields + [
+            "job_id",
+            "job_help_type_display",
             "case_id",
             "case_reference",
             "case_village",
-            "case_score_total",
-            "case_priority_band",
+            "case_priority_class",
+            "case_priority_label",
             "case_status",
             "case_status_display",
             "lead",
@@ -902,7 +951,34 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
         ]
 
 
+class BoardJobSerializer(CaseJobSerializer):
+    """A job on the organisation's own board, with the case it belongs to."""
+
+    case_id = serializers.IntegerField(source="case.id", read_only=True)
+    case_reference = serializers.CharField(source="case.reference", read_only=True)
+    case_village = serializers.CharField(source="case.village", read_only=True)
+    case_priority_class = serializers.IntegerField(source="case.priority_class", read_only=True)
+    case_priority_label = serializers.CharField(
+        source="case.get_priority_class_display", read_only=True, default=None
+    )
+    task_count = serializers.SerializerMethodField()
+    tasks_done = serializers.SerializerMethodField()
+
+    class Meta(CaseJobSerializer.Meta):
+        fields = CaseJobSerializer.Meta.fields + [
+            "case_id", "case_reference", "case_village", "case_priority_class",
+            "case_priority_label", "task_count", "tasks_done",
+        ]
+
+    def get_task_count(self, obj):
+        return len(obj.tasks.all())
+
+    def get_tasks_done(self, obj):
+        return sum(1 for task in obj.tasks.all() if task.status == CaseTask.Status.DONE)
+
+
 class CaseTaskCreateSerializer(serializers.Serializer):
+    job_id = serializers.IntegerField()
     title = serializers.CharField(max_length=150)
     task_type = serializers.ChoiceField(choices=CaseTask.TaskType.choices)
     lead_user_id = serializers.IntegerField(required=False, allow_null=True)
@@ -941,15 +1017,17 @@ def _may_read_tasks(user, case):
         return True
     if user.role == UserAccount.Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
+    # An organisation reads the tasks of a case it has worked on; it can
+    # change only the tasks on its own jobs (update_task).
     return (
         user.role == UserAccount.Role.NGO_VOLUNTEER
         and user.organization_id is not None
-        and case.claimed_by_org_id == user.organization_id
+        and case.jobs.filter(claimed_by_org_id=user.organization_id).exists()
     )
 
 
 def _task_queryset():
-    return CaseTask.objects.select_related("case", "lead_user").prefetch_related(
+    return CaseTask.objects.select_related("case", "job", "lead_user").prefetch_related(
         "events__actor_user"
     )
 
@@ -957,33 +1035,25 @@ def _task_queryset():
 @api_view(["GET"])
 @permission_classes([IsNgoVolunteer])
 def task_board(request):
-    """The claiming organisation's tasks, active cases and assignable responders."""
+    """The organisation's own jobs, their tasks, and assignable responders."""
     from datetime import timedelta
     from django.db.models import Q
 
     recent = timezone.now() - timedelta(days=7)
     tasks = (
         _task_queryset()
-        .filter(case__claimed_by_org=request.user.organization)
+        .filter(job__claimed_by_org=request.user.organization)
         .filter(
-            Q(
-                case__status__in=[
-                    CaseRecord.Status.CLAIMED,
-                    CaseRecord.Status.IN_PROGRESS,
-                    CaseRecord.Status.PENDING_CONFIRM,
-                ]
-            )
+            Q(job__status__in=CaseJob.ACTIVE)
             | Q(status=CaseTask.Status.DONE, completed_at__gte=recent)
         )
         .order_by("case__reference", "id")
     )
-    cases = CaseRecord.objects.filter(
-        claimed_by_org=request.user.organization,
-        status__in=[
-            CaseRecord.Status.CLAIMED,
-            CaseRecord.Status.IN_PROGRESS,
-            CaseRecord.Status.PENDING_CONFIRM,
-        ],
+    jobs = (
+        CaseJob.objects.filter(claimed_by_org=request.user.organization, status__in=CaseJob.ACTIVE)
+        .select_related("case", "claimed_by_org")
+        .prefetch_related("tasks")
+        .order_by("case__reference", "id")
     )
     responders = UserAccount.objects.filter(
         role=UserAccount.Role.NGO_VOLUNTEER,
@@ -993,7 +1063,7 @@ def task_board(request):
     return Response(
         {
             "tasks": CaseTaskBoardSerializer(tasks, many=True, context={"request": request}).data,
-            "cases": CaseListSerializer(cases, many=True).data,
+            "jobs": BoardJobSerializer(jobs, many=True, context={"request": request}).data,
             "responders": [
                 {"id": responder.id, "full_name": responder.full_name}
                 for responder in responders
@@ -1005,7 +1075,7 @@ def task_board(request):
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def case_tasks(request, pk):
-    case = CaseRecord.objects.select_related("claimed_by_org").filter(pk=pk).first()
+    case = CaseRecord.objects.filter(pk=pk).first()
     if case is None or not _may_read_tasks(request.user, case):
         return Response({"detail": "Not found."}, status=404)
 
@@ -1021,22 +1091,19 @@ def case_tasks(request, pk):
         )
         return Response(serializer_class(tasks, many=True, context={"request": request}).data)
 
-    if (
-        request.user.role != UserAccount.Role.NGO_VOLUNTEER
-        or request.user.organization_id is None
-        or case.claimed_by_org_id != request.user.organization_id
-    ):
-        return Response(
-            {"detail": "Only the claiming organisation may create tasks."}, status=403
-        )
-    if case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
-        return Response(
-            {"detail": "Tasks can only be added while a claimed case is active."},
-            status=409,
-        )
+    if request.user.role != UserAccount.Role.NGO_VOLUNTEER or request.user.organization_id is None:
+        return Response({"detail": "Only the organisation holding the job may create tasks."}, status=403)
 
     serializer = CaseTaskCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    job = case.jobs.filter(pk=serializer.validated_data["job_id"]).first()
+    if job is None or job.claimed_by_org_id != request.user.organization_id:
+        return Response({"detail": "Only the organisation holding the job may create tasks."}, status=403)
+    if job.status not in {CaseJob.Status.CLAIMED, CaseJob.Status.IN_PROGRESS}:
+        return Response(
+            {"detail": "Tasks can only be added while the job is claimed or in progress."},
+            status=409,
+        )
     lead_id = serializer.validated_data.get("lead_user_id")
     lead = _lead_for_organisation(lead_id, request.user.organization)
     if lead_id is not None and lead is None:
@@ -1046,18 +1113,20 @@ def case_tasks(request, pk):
         )
 
     with transaction.atomic():
+        # Lock order everywhere: the case row, then the job row.
         locked_case = CaseRecord.objects.select_for_update().get(pk=case.pk)
+        locked_job = CaseJob.objects.select_for_update().get(pk=job.pk)
         if (
-            locked_case.claimed_by_org_id != request.user.organization_id
-            or locked_case.status
-            not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}
+            locked_job.claimed_by_org_id != request.user.organization_id
+            or locked_job.status not in {CaseJob.Status.CLAIMED, CaseJob.Status.IN_PROGRESS}
         ):
             return Response(
-                {"detail": "This case is no longer available for task changes."},
+                {"detail": "This job is no longer available for task changes."},
                 status=409,
             )
         task = CaseTask.objects.create(
             case=locked_case,
+            job=locked_job,
             lead_user=lead,
             title=serializer.validated_data["title"],
             task_type=serializer.validated_data["task_type"],
@@ -1111,14 +1180,14 @@ def update_task(request, pk):
             # to the nullable side of that outer join. The lead id is already
             # on the task row; load the related user lazily for the response.
             .select_related("case")
-            .filter(pk=pk, case__claimed_by_org=request.user.organization)
+            .filter(pk=pk, job__claimed_by_org=request.user.organization)
             .first()
         )
         if task is None:
             return Response({"detail": "Not found."}, status=404)
-        if task.case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
+        if task.job.status not in {CaseJob.Status.CLAIMED, CaseJob.Status.IN_PROGRESS}:
             return Response(
-                {"detail": "This task cannot change while the case awaits confirmation or is closed."},
+                {"detail": "This task cannot change while its job awaits confirmation or is done."},
                 status=409,
             )
 
@@ -1221,9 +1290,13 @@ def update_task(request, pk):
                 created_at=timezone.now(),
             )
 
-        if target_status == CaseTask.Status.IN_PROGRESS and task.case.status == CaseRecord.Status.CLAIMED:
-            task.case.status = CaseRecord.Status.IN_PROGRESS
-            task.case.save(update_fields=["status"])
+        if target_status == CaseTask.Status.IN_PROGRESS and task.job.status == CaseJob.Status.CLAIMED:
+            # The first task started moves its job, and so the case, along.
+            from .services import refresh_case_status
+
+            task.job.status = CaseJob.Status.IN_PROGRESS
+            task.job.save(update_fields=["status"])
+            refresh_case_status(CaseRecord.objects.select_for_update().get(pk=task.case_id))
 
         event_type = (
             CaseEventLog.EventType.TASK_ASSIGNED
@@ -1255,132 +1328,123 @@ def update_task(request, pk):
     return Response(CaseTaskBoardSerializer(task, context={"request": request}).data)
 
 
+def _locked_job(pk):
+    """Lock the job's case row, then the job row (the one lock order)."""
+    case_id = CaseJob.objects.filter(pk=pk).values_list("case_id", flat=True).first()
+    if case_id is None:
+        return None, None
+    case = CaseRecord.objects.select_for_update().get(pk=case_id)
+    job = CaseJob.objects.select_for_update().get(pk=pk)
+    return case, job
+
+
+def _job_response(request, case):
+    """The case as this user may now see it, with every job's state."""
+    case = CaseRecord.objects.prefetch_related("jobs__claimed_by_org").get(pk=case.pk)
+    serializer_class = (
+        CaseDetailSerializer
+        if may_see_private_case_details(request.user, case)
+        else CaseSummaryDetailSerializer
+    )
+    return Response(serializer_class(case, context={"request": request}).data)
+
+
+class AlreadyClaimed(APIException):
+    status_code = 409
+    default_detail = "This job has already been claimed by another organisation."
+
+
 @api_view(["POST"])
 @permission_classes([IsNgoVolunteer])
-def complete_case(request, pk):
-    with transaction.atomic():
-        case = (
-            CaseRecord.objects.select_for_update()
-            .filter(pk=pk, claimed_by_org=request.user.organization)
-            .first()
-        )
-        if case is None:
-            return Response({"detail": "Not found."}, status=404)
-        if case.status not in {CaseRecord.Status.CLAIMED, CaseRecord.Status.IN_PROGRESS}:
-            return Response({"detail": "This case is not ready for completion."}, status=409)
-        tasks = case.tasks.all()
-        if not tasks.exists():
-            return Response(
-                {"detail": "Create and complete at least one task first."}, status=409
-            )
-        if tasks.exclude(status=CaseTask.Status.DONE).exists():
-            return Response(
-                {"detail": "Every task must be done before requesting confirmation."},
-                status=409,
-            )
+def claim_job(request, pk):
+    """Claim one type of help on a verified case for the caller's organisation.
 
-        case.status = CaseRecord.Status.PENDING_CONFIRM
-        case.save(update_fields=["status"])
+    Two NGOs can press this in the same millisecond. Unlocked, both read
+    claimed_by_org IS NULL, both believe the job is free, and the later write
+    silently wins — a lost update. The row locks make the second caller wait,
+    then see the truth. Different jobs on one case can go to different
+    organisations (ADR-020); one job only ever has one.
+
+    Adapted from the user-written claim_case: the same steps — lock, retry
+    check before status check, save, audit row — now on the job.
+    """
+    from .services import refresh_case_status
+
+    with transaction.atomic():
+        case, job = _locked_job(pk)
+        if job is None:
+            return Response({"detail": "Not found."}, status=404)
+
+        if job.claimed_by_org_id is not None:
+            if job.claimed_by_org_id == request.user.organization_id:
+                # A retry of a claim that already succeeded: write nothing.
+                return _job_response(request, case)
+            raise AlreadyClaimed(f"Already claimed by {job.claimed_by_org.name}.")
+
+        if case.status not in {
+            CaseRecord.Status.VERIFIED, CaseRecord.Status.CLAIMED,
+            CaseRecord.Status.IN_PROGRESS, CaseRecord.Status.PENDING_CONFIRM,
+        } or job.status != CaseJob.Status.OPEN:
+            return Response({"detail": "Only open jobs on verified cases can be claimed."}, status=409)
+
+        job.claimed_by_org = request.user.organization
+        job.status = CaseJob.Status.CLAIMED
+        job.claimed_at = timezone.now()
+        job.save(update_fields=["claimed_by_org", "status", "claimed_at"])
+        refresh_case_status(case)
         CaseEventLog.objects.create(
             case=case,
             actor_user=request.user,
-            event_type=CaseEventLog.EventType.COMPLETION_REQUESTED,
-            detail=f"{request.user.organization.name} marked the recovery work complete. Please confirm the result.",
+            event_type=CaseEventLog.EventType.CLAIMED,
+            detail=f"{job.get_help_type_display()} claimed by {request.user.organization.name}.",
             created_at=timezone.now(),
         )
 
     from .notifications import notify
 
-    notify(case, CaseEventLog.EventType.COMPLETION_REQUESTED, request.user)
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
-
-
-@api_view(["POST"])
-@permission_classes([IsCommunityMember])
-def confirm_case(request, pk):
-    decision = request.data.get("decision")
-    if decision not in {"confirm", "incomplete"}:
-        return Response(
-            {"decision": ["Choose confirm or incomplete."]}, status=400
-        )
-    note = (request.data.get("note") or "").strip()
-    if decision == "incomplete" and not note:
-        return Response(
-            {"note": ["Explain what still needs attention."]}, status=400
-        )
-
-    with transaction.atomic():
-        case = (
-            CaseRecord.objects.select_for_update()
-            .filter(pk=pk, submitted_by_user=request.user)
-            .first()
-        )
-        if case is None:
-            return Response({"detail": "Not found."}, status=404)
-        if case.status != CaseRecord.Status.PENDING_CONFIRM:
-            return Response(
-                {"detail": "This case is not waiting for resident confirmation."},
-                status=409,
-            )
-
-        if decision == "confirm":
-            case.status = CaseRecord.Status.CLOSED
-            case.closed_at = timezone.now()
-            event_type = CaseEventLog.EventType.CLOSED
-            detail = "The resident confirmed that the recovery work is complete."
-            update_fields = ["status", "closed_at"]
-        else:
-            case.status = CaseRecord.Status.IN_PROGRESS
-            case.closed_at = None
-            event_type = CaseEventLog.EventType.REOPENED
-            detail = f"The resident reported incomplete work: {note}"
-            update_fields = ["status", "closed_at"]
-        case.save(update_fields=update_fields)
-        CaseEventLog.objects.create(
-            case=case,
-            actor_user=request.user,
-            event_type=event_type,
-            detail=detail,
-            created_at=timezone.now(),
-        )
-
-    from .notifications import notify
-
-    notify(case, event_type, request.user, detail)
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+    notify(
+        case,
+        CaseEventLog.EventType.CLAIMED,
+        request.user,
+        f"{request.user.organization.name} will be in touch about the "
+        f"{job.get_help_type_display().lower()} help.",
+        job=job,
+    )
+    return _job_response(request, case)
 
 
 @api_view(["POST"])
 @permission_classes([IsNgoVolunteer])
-def release_case(request, pk):
+def release_job(request, pk):
     reason = (request.data.get("reason") or "").strip()
     if not reason:
-        return Response({"reason": ["Give a reason for releasing the case."]}, status=400)
+        return Response({"reason": ["Give a reason for releasing the job."]}, status=400)
+    from .services import refresh_case_status
 
     with transaction.atomic():
-        case = (
-            CaseRecord.objects.select_for_update()
-            .filter(pk=pk, claimed_by_org=request.user.organization)
-            .first()
-        )
-        if case is None:
+        case, job = _locked_job(pk)
+        if job is None or job.claimed_by_org_id != request.user.organization_id:
             return Response({"detail": "Not found."}, status=404)
-        if case.status != CaseRecord.Status.CLAIMED:
+        if job.status != CaseJob.Status.CLAIMED:
             return Response(
-                {"detail": "Only a claimed case whose work has not started can be released."},
+                {"detail": "Only a claimed job whose work has not started can be released."},
                 status=409,
             )
-        if case.tasks.exists():
+        if job.tasks.exists():
             return Response(
-                {"detail": "A case with tasks needs an explicit operational handover; it cannot be returned to the public queue."},
+                {"detail": "A job with tasks needs an explicit operational handover; it cannot be returned to the public queue."},
                 status=409,
             )
-
         organisation_name = request.user.organization.name
-        case.claimed_by_org = None
-        case.status = CaseRecord.Status.VERIFIED
-        case.save(update_fields=["claimed_by_org", "status"])
-        detail = f"{organisation_name} released the case back to the verified queue: {reason}"
+        job.claimed_by_org = None
+        job.claimed_at = None
+        job.status = CaseJob.Status.OPEN
+        job.save(update_fields=["claimed_by_org", "claimed_at", "status"])
+        refresh_case_status(case)
+        detail = (
+            f"{organisation_name} released the {job.get_help_type_display().lower()} job "
+            f"back to the queue: {reason}"
+        )
         CaseEventLog.objects.create(
             case=case,
             actor_user=request.user,
@@ -1391,99 +1455,144 @@ def release_case(request, pk):
 
     from .notifications import notify
 
-    notify(case, CaseEventLog.EventType.RELEASED, request.user, detail)
-    return Response(CaseSummaryDetailSerializer(case, context={"request": request}).data)
-
-
-# ---------------------------------------------------------------------------
-# Lifecycle actions
-# ---------------------------------------------------------------------------
-
-
-class AlreadyClaimed(APIException):
-    status_code = 409
-    default_detail = "This case has already been claimed by another organisation."
+    notify(case, CaseEventLog.EventType.RELEASED, request.user, detail, job=job)
+    return _job_response(request, case)
 
 
 @api_view(["POST"])
 @permission_classes([IsNgoVolunteer])
-def claim_case(request, pk):
-    """Claim a verified case for the caller's organisation.
+def complete_job(request, pk):
+    from .services import refresh_case_status
 
-    Two NGOs can press this in the same millisecond. Unlocked, both read
-    claimed_by_org IS NULL, both believe the case is free, and the later write
-    silently wins — a lost update. The row lock makes the second caller wait,
-    then see the truth.
-
-    ------------------------------------------------------------------
-    YOURS TO WRITE. Run `python manage.py test cases` after each step.
-    `IsNgoVolunteer` has already checked the role, so request.user is an
-    NGO responder with an organisation.
-
-    1. Open a transaction:            with transaction.atomic():
-    2. Fetch the case WITH A ROW LOCK:
-           CaseRecord.objects.select_for_update().filter(pk=pk).first()
-    3. If it is None                  -> return 404 {"detail": "Not found."}
-    4. If case.claimed_by_org_id is not None:
-         - if it equals request.user.organization_id, this is a retry of a
-           claim that already succeeded: return the serialised case, 200,
-           writing NOTHING (no second audit row)
-         - otherwise                  -> raise AlreadyClaimed(...)
-    5. If case.status is not VERIFIED -> return 409, only verified cases
-    6. Set claimed_by_org and status, then
-           case.save(update_fields=["claimed_by_org", "status"])
-    7. Write the audit row:
-           CaseEventLog.objects.create(case=..., actor_user=request.user,
-               event_type=CaseEventLog.EventType.CLAIMED, detail="...",
-               created_at=timezone.now())
-    8. Outside the `with`, return:
-           Response(CaseDetailSerializer(case, context={"request": request}).data)
-
-    The order of 4 and 5 is deliberate — think about which check should win
-    if a case is somehow both claimed and not yet verified.
-    ------------------------------------------------------------------
-    """
     with transaction.atomic():
-        case =  CaseRecord.objects.select_for_update().filter(pk=pk).first()
-
-        if case is None:
-
-            return Response({"detail":"Not Found"},status =404)
-
-        if case.claimed_by_org is not None:
-
-            if case.claimed_by_org_id == request.user.organization_id:
-                return Response(CaseDetailSerializer(case, context={"request": request}).data)
-            raise AlreadyClaimed(f'Already claimed by {case.claimed_by_org.name}.')
-
-        if case.status != CaseRecord.Status.VERIFIED:
-            return Response({"detail": "Only verified cases can be claimed."}, status=409)
-
-        case.claimed_by_org = request.user.organization
-        case.status =  CaseRecord.Status.CLAIMED
-        case.save(update_fields=['claimed_by_org','status'])
-
+        case, job = _locked_job(pk)
+        if job is None or job.claimed_by_org_id != request.user.organization_id:
+            return Response({"detail": "Not found."}, status=404)
+        if job.status not in {CaseJob.Status.CLAIMED, CaseJob.Status.IN_PROGRESS}:
+            return Response({"detail": "This job is not ready for completion."}, status=409)
+        tasks = job.tasks.all()
+        if not tasks.exists():
+            return Response({"detail": "Create and complete at least one task first."}, status=409)
+        if tasks.exclude(status=CaseTask.Status.DONE).exists():
+            return Response(
+                {"detail": "Every task must be done before requesting confirmation."},
+                status=409,
+            )
+        job.status = CaseJob.Status.PENDING_CONFIRM
+        job.save(update_fields=["status"])
+        refresh_case_status(case)
         CaseEventLog.objects.create(
             case=case,
             actor_user=request.user,
-            event_type=CaseEventLog.EventType.CLAIMED,
-            detail=f"Case claimed by {request.user.organization.name}.",
+            event_type=CaseEventLog.EventType.COMPLETION_REQUESTED,
+            detail=(
+                f"{request.user.organization.name} marked the {job.get_help_type_display().lower()} "
+                "work complete. Please confirm the result."
+            ),
             created_at=timezone.now(),
         )
 
     from .notifications import notify
 
-    notify(
-        case,
-        CaseEventLog.EventType.CLAIMED,
-        request.user,
-        f"{request.user.organization.name} will be in touch about your case.",
+    notify(case, CaseEventLog.EventType.COMPLETION_REQUESTED, request.user, job=job)
+    return _job_response(request, case)
+
+
+@api_view(["POST"])
+@permission_classes([IsCommunityMember])
+def confirm_job(request, pk):
+    """The household confirms one job's work, or reports it unfinished.
+
+    The case closes only when its last job is confirmed (refresh_case_status),
+    so one organisation finishing never closes help another still owes.
+    """
+    decision = request.data.get("decision")
+    if decision not in {"confirm", "incomplete"}:
+        return Response({"decision": ["Choose confirm or incomplete."]}, status=400)
+    note = (request.data.get("note") or "").strip()
+    if decision == "incomplete" and not note:
+        return Response({"note": ["Explain what still needs attention."]}, status=400)
+    from .services import refresh_case_status
+
+    with transaction.atomic():
+        case, job = _locked_job(pk)
+        if job is None or case.submitted_by_user_id != request.user.id:
+            return Response({"detail": "Not found."}, status=404)
+        if job.status != CaseJob.Status.PENDING_CONFIRM:
+            return Response(
+                {"detail": "This job is not waiting for resident confirmation."}, status=409
+            )
+        help_name = job.get_help_type_display().lower()
+        if decision == "confirm":
+            job.status = CaseJob.Status.DONE
+            job.completed_at = timezone.now()
+            event_type = CaseEventLog.EventType.CLOSED
+            detail = f"The resident confirmed that the {help_name} work is complete."
+        else:
+            job.status = CaseJob.Status.IN_PROGRESS
+            job.completed_at = None
+            event_type = CaseEventLog.EventType.REOPENED
+            detail = f"The resident reported incomplete {help_name} work: {note}"
+        job.save(update_fields=["status", "completed_at"])
+        refresh_case_status(case)
+        if decision == "confirm" and case.status == CaseRecord.Status.CLOSED:
+            detail += " Every type of help on this request is now done; the request is closed."
+        CaseEventLog.objects.create(
+            case=case,
+            actor_user=request.user,
+            event_type=event_type,
+            detail=detail,
+            created_at=timezone.now(),
+        )
+
+    from .notifications import notify
+
+    notify(case, event_type, request.user, detail, job=job)
+    return _job_response(request, case)
+
+
+@api_view(["GET"])
+@permission_classes([IsDisasterOfficer])
+def unmet_help(request):
+    """Officers: types of help no organisation has taken yet.
+
+    Open jobs on verified cases, by type of help: how many, how many
+    households are Health-critical, and how long the oldest has waited. A
+    priority class cannot help a household if no NGO offers the work it
+    needs; this shows the district where to find more help.
+    """
+    from django.db.models import Count, Min, Q
+
+    rows = (
+        CaseJob.objects.filter(
+            status=CaseJob.Status.OPEN,
+            case__status__in=[
+                CaseRecord.Status.VERIFIED, CaseRecord.Status.CLAIMED,
+                CaseRecord.Status.IN_PROGRESS, CaseRecord.Status.PENDING_CONFIRM,
+            ],
+        )
+        .values("help_type")
+        .annotate(
+            open_jobs=Count("id"),
+            health_critical=Count("id", filter=Q(case__priority_class=1)),
+            oldest=Min("case__created_at"),
+        )
+        .order_by("help_type")
     )
-
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
-
-
-    
+    labels = dict(CaseRecord.DamageCategory.choices)
+    now = timezone.now()
+    return Response(
+        [
+            {
+                "help_type": row["help_type"],
+                "help_type_display": labels.get(row["help_type"], row["help_type"]),
+                "open_jobs": row["open_jobs"],
+                "health_critical": row["health_critical"],
+                "oldest_waiting_days": (now - row["oldest"]).days,
+            }
+            for row in rows
+        ]
+    )
 
 
 DECISIONS = {
@@ -1519,13 +1628,13 @@ def verify_case(request, pk):
         if case is None:
             return Response({"detail": "Not found."}, status=404)
 
-        if case.claimed_by_org_id is not None:
+        if case.jobs.exclude(claimed_by_org=None).exists():
             return Response(
                 {"detail": "A claimed case cannot be re-verified."}, status=409
             )
 
         # Duplicate review comes before verification (report §3.7.8): a
-        # possible duplicate is resolved by an officer before it is scored and
+        # possible duplicate is resolved by an officer before it is classified and
         # released to NGOs. Asking for information or rejecting stays open.
         from .duplicate_services import duplicate_verification_block
 
@@ -1558,21 +1667,22 @@ def verify_case(request, pk):
             created_at=timezone.now(),
         )
 
-        # Scoring happens at verification, not submission: screen 17 has an
-        # officer check a request "before it is scored and released to the NGO
-        # queue". Inside the transaction, so a scoring failure undoes the
-        # verification rather than leaving a verified case with no score.
+        # Classification happens at verification, not submission: screen 17
+        # has an officer check a request before it is prioritised and released
+        # to the NGO queue. Inside the transaction, so a failure undoes the
+        # verification rather than leaving a verified case with no class.
+        # Re-verifying (after needs_info) recomputes from the current answers.
         if decision == "verified":
             # Imported here, not at module level: services imports the models
             # this module also imports, and at import time that loop cannot
             # resolve. Inside the function it runs after both are loaded.
-            from .services import score_case_record
+            from .services import classify_case_record
 
-            score_case_record(case, request.user)
+            classify_case_record(case, request.user)
 
     from .notifications import notify
 
-    case.refresh_from_db()  # so a verification notification carries the score
+    case.refresh_from_db()  # so a verification notification carries the class
     notify(case, event_type, request.user, note)
 
     return Response(CaseDetailSerializer(case, context={"request": request}).data)
@@ -1654,73 +1764,15 @@ def mark_all_notifications_read(request):
 
 @api_view(["GET"])
 @permission_classes([IsCoordinator])
-def rubric(request):
-    """The published rubric, read-only — screen 18, "how scoring works".
-
-    Criteria, weights and thresholds belong to the published version. Point
-    bands remain explicit code rules; each raw band is scaled by its criterion
-    weight exactly as the scoring engine does.
-    """
-    from scoring.engine import (
-        ACCESS_POINTS,
-        NEEDS_POINTS_EACH,
-        PARTIAL_DEPTH_POINTS,
-        URGENCY_POINTS,
-        VULNERABILITY_POINTS,
-        WAITING_POINTS_PER_DAY,
-    )
-    from scoring.models import PriorityRubricVersion
-
-    version = (
-        PriorityRubricVersion.objects.filter(
-            status=PriorityRubricVersion.Status.PUBLISHED
-        )
-        .order_by("-published_at")
-        .first()
-    )
-    if version is None:
-        return Response({"detail": "No rubric has been published."}, status=404)
-
-    # Raw value-function bands. Additive criteria combine these severity values
-    # before the engine caps and scales the result to the versioned weight.
-    raw_bands = {
-        "safety": [(k, v) for k, v in URGENCY_POINTS.items()],
-        "damage": [("cosmetic", 4)]
-        + [(f"partially unliveable, {k}", v) for k, v in PARTIAL_DEPTH_POINTS.items()],
-        "vulnerability": [(k, v) for k, v in VULNERABILITY_POINTS.items()],
-        "needs": [("each shortage category", NEEDS_POINTS_EACH)],
-        "access": [(k, v) for k, v in ACCESS_POINTS.items()],
-        "waiting": [("each day waiting", WAITING_POINTS_PER_DAY)],
-    }
-
-    criteria = []
-    for stored in version.criteria.all():
-        bands = list(raw_bands.get(stored.key, []))
-        if stored.key == "damage":
-            bands.append(("fully unliveable", stored.max_points))
-        criteria.append(
-            {
-                "key": stored.key,
-                "name": stored.name,
-                "weight": stored.weight,
-                "max_points": stored.max_points,
-                "rule_text": stored.rule_text,
-                "bands": [
-                    {"when": label, "points": raw}
-                    for label, raw in bands
-                ],
-            }
-        )
+def priority_rules(request):
+    """Screen 18, "how priority works": the classes-1.0 rules and their sources."""
+    from scoring.classes import CLASS_RULES_VERSION, RULES
 
     return Response(
         {
-            "label": version.label,
-            "published_at": version.published_at,
-            "thresholds": {
-                "high": version.high_threshold,
-                "medium": version.medium_threshold,
-            },
-            "criteria": criteria,
+            "version": CLASS_RULES_VERSION,
+            "classes": RULES,
+            "order": "Class first; within a class, the earliest submitted case first.",
         }
     )
 
@@ -1744,17 +1796,28 @@ class DuplicateCaseRefSerializer(serializers.Serializer):
 class DuplicateSummarySerializer(serializers.Serializer):
     id = serializers.IntegerField()
     status = serializers.CharField()
-    similarity_score = serializers.DecimalField(max_digits=5, decimal_places=2)
+    # rules-1.0 flags carry matched_rules and no score; flags raised by the
+    # retired dup-1.1 engine keep their score and classification.
+    method = serializers.CharField()
+    similarity_score = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
     classification = serializers.SerializerMethodField()
+    matched_rules = serializers.SerializerMethodField()
     case_a = DuplicateCaseRefSerializer()
     case_b = DuplicateCaseRefSerializer()
 
     def get_classification(self, obj):
-        # Derived from the stored score with the engine's frozen thresholds,
-        # exactly as it was classified when flagged.
+        # Only dup-1.1 flags have a score to classify, with that engine's
+        # frozen thresholds, exactly as it was classified when flagged.
+        if obj.similarity_score is None:
+            return None
         from .duplicates import classify_score
 
         return classify_score(float(obj.similarity_score))
+
+    def get_matched_rules(self, obj):
+        from .duplicate_rules import RULE_TEXT
+
+        return [{"rule": rule, "text": RULE_TEXT.get(rule, rule)} for rule in obj.matched_rules]
 
 
 class DuplicateCaseSerializer(serializers.Serializer):
@@ -1778,6 +1841,15 @@ class DuplicateCaseSerializer(serializers.Serializer):
     photo_count = serializers.SerializerMethodField()
     latitude = serializers.SerializerMethodField()
     longitude = serializers.SerializerMethodField()
+    # Each request's types of help, so the officer can see what confirming
+    # would add to the older request (ADR-020).
+    jobs = serializers.SerializerMethodField()
+
+    def get_jobs(self, obj):
+        return [
+            {"help_type_display": job.get_help_type_display(), "status_display": job.get_status_display()}
+            for job in obj.jobs.order_by("id")
+        ]
 
     def get_photo_count(self, obj):
         return obj.photos.count()
@@ -1801,7 +1873,7 @@ def _decided_by(match):
 @api_view(["GET"])
 @permission_classes([IsDisasterOfficer])
 def duplicate_list(request):
-    """Flags for review, highest evidence first; ?status= defaults to open."""
+    """Flags for review, oldest flag first; ?status= defaults to open."""
     from rest_framework.pagination import PageNumberPagination
 
     from .models import DuplicateCaseMatch
@@ -1816,7 +1888,8 @@ def duplicate_list(request):
     queryset = (
         DuplicateCaseMatch.objects.filter(status=status_filter)
         .select_related("case_a", "case_b")
-        .order_by("-similarity_score", "pk")
+        # rules-1.0 flags have no score to sort by, so the oldest flag comes first.
+        .order_by("pk")
     )
     paginator = PageNumberPagination()
     page = paginator.paginate_queryset(queryset, request)

@@ -1,5 +1,8 @@
 """End-to-end rules for the NGO task and resident-completion workflow.
 
+Since ADR-020 an organisation claims a job (one type of help) on a case,
+not the whole case; these tests run with one cleanup job.
+
 Traceability:
   FR6  A responding organisation owns the work it claimed
   FR7  The organisation assigns and updates recovery tasks
@@ -12,7 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseRecord, CaseTask
+from cases.models import CaseEventLog, CaseJob, CaseRecord, CaseTask
 
 
 class TaskWorkflowTests(TestCase):
@@ -69,7 +72,6 @@ class TaskWorkflowTests(TestCase):
         self.case = CaseRecord.objects.create(
             reference="FRC-8101",
             submitted_by_user=self.resident,
-            claimed_by_org=self.org,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Mud and damaged furniture throughout the house.",
             village="Kg. Task Test",
@@ -78,10 +80,15 @@ class TaskWorkflowTests(TestCase):
             score_total=72,
             created_at=timezone.now(),
         )
+        self.job = CaseJob.objects.create(
+            case=self.case, help_type=CaseRecord.DamageCategory.CLEANUP,
+            status=CaseJob.Status.CLAIMED, claimed_by_org=self.org,
+        )
 
     def create_task(self, *, status=CaseTask.Status.ASSIGNED, lead=None):
         return CaseTask.objects.create(
             case=self.case,
+            job=self.job,
             lead_user=self.responder if lead is None else lead,
             title="Remove flood debris",
             task_type=CaseTask.TaskType.CLEANUP,
@@ -94,7 +101,7 @@ class TaskWorkflowTests(TestCase):
         self.client.force_login(self.responder)
         response = self.client.post(
             f"/api/cases/{self.case.pk}/tasks/",
-            {
+            {"job_id": self.job.pk, 
                 "title": "Clear the kitchen",
                 "task_type": "cleanup",
                 "lead_user_id": self.colleague.pk,
@@ -115,7 +122,7 @@ class TaskWorkflowTests(TestCase):
         for lead_id in (self.other_responder.pk, self.resident.pk):
             response = self.client.post(
                 f"/api/cases/{self.case.pk}/tasks/",
-                {"title": "Unsafe assignment", "task_type": "repair", "lead_user_id": lead_id},
+                {"job_id": self.job.pk, "title": "Unsafe assignment", "task_type": "repair", "lead_user_id": lead_id},
                 content_type="application/json",
             )
             self.assertEqual(response.status_code, 400)
@@ -127,7 +134,7 @@ class TaskWorkflowTests(TestCase):
         get_response = self.client.get(f"/api/cases/{self.case.pk}/tasks/")
         post_response = self.client.post(
             f"/api/cases/{self.case.pk}/tasks/",
-            {"title": "Take over", "task_type": "cleanup"},
+            {"job_id": self.job.pk, "title": "Take over", "task_type": "cleanup"},
             content_type="application/json",
         )
         self.assertEqual(get_response.status_code, 404)
@@ -141,12 +148,12 @@ class TaskWorkflowTests(TestCase):
             404,
         )
         self.assertEqual(
-            self.client.post(f"/api/cases/{self.case.pk}/complete/").status_code,
+            self.client.post(f"/api/jobs/{self.job.pk}/complete/").status_code,
             404,
         )
         self.assertEqual(
             self.client.post(
-                f"/api/cases/{self.case.pk}/release/",
+                f"/api/jobs/{self.job.pk}/release/",
                 {"reason": "No capacity"},
                 content_type="application/json",
             ).status_code,
@@ -164,7 +171,7 @@ class TaskWorkflowTests(TestCase):
         self.assertEqual(
             self.client.post(
                 f"/api/cases/{self.case.pk}/tasks/",
-                {"title": "Officer task", "task_type": "assessment"},
+                {"job_id": self.job.pk, "title": "Officer task", "task_type": "assessment"},
                 content_type="application/json",
             ).status_code,
             403,
@@ -178,12 +185,12 @@ class TaskWorkflowTests(TestCase):
             403,
         )
         self.assertEqual(
-            self.client.post(f"/api/cases/{self.case.pk}/complete/").status_code,
+            self.client.post(f"/api/jobs/{self.job.pk}/complete/").status_code,
             403,
         )
         self.assertEqual(
             self.client.post(
-                f"/api/cases/{self.case.pk}/release/",
+                f"/api/jobs/{self.job.pk}/release/",
                 {"reason": "Officer cannot release NGO claims"},
                 content_type="application/json",
             ).status_code,
@@ -209,7 +216,7 @@ class TaskWorkflowTests(TestCase):
         self.assertEqual(
             self.client.post(
                 f"/api/cases/{self.case.pk}/tasks/",
-                {"title": "Resident task", "task_type": "cleanup"},
+                {"job_id": self.job.pk, "title": "Resident task", "task_type": "cleanup"},
                 content_type="application/json",
             ).status_code,
             403,
@@ -223,12 +230,12 @@ class TaskWorkflowTests(TestCase):
             403,
         )
         self.assertEqual(
-            self.client.post(f"/api/cases/{self.case.pk}/complete/").status_code,
+            self.client.post(f"/api/jobs/{self.job.pk}/complete/").status_code,
             403,
         )
         self.assertEqual(
             self.client.post(
-                f"/api/cases/{self.case.pk}/release/",
+                f"/api/jobs/{self.job.pk}/release/",
                 {"reason": "Resident cannot release NGO claims"},
                 content_type="application/json",
             ).status_code,
@@ -244,7 +251,6 @@ class TaskWorkflowTests(TestCase):
         other_case = CaseRecord.objects.create(
             reference="FRC-8102",
             submitted_by_user=self.other_resident,
-            claimed_by_org=self.other_org,
             damage_category=CaseRecord.DamageCategory.REPAIR,
             description="Roof damage.",
             village="Kg. Other",
@@ -252,8 +258,13 @@ class TaskWorkflowTests(TestCase):
             status=CaseRecord.Status.IN_PROGRESS,
             created_at=timezone.now(),
         )
+        other_job = CaseJob.objects.create(
+            case=other_case, help_type=CaseRecord.DamageCategory.REPAIR,
+            status=CaseJob.Status.IN_PROGRESS, claimed_by_org=self.other_org,
+        )
         CaseTask.objects.create(
             case=other_case,
+            job=other_job,
             lead_user=self.other_responder,
             title="Repair roof",
             task_type=CaseTask.TaskType.REPAIR,
@@ -310,12 +321,12 @@ class TaskWorkflowTests(TestCase):
     def test_completion_requires_at_least_one_task_and_all_tasks_done(self):
         self.client.force_login(self.responder)
         self.assertEqual(
-            self.client.post(f"/api/cases/{self.case.pk}/complete/").status_code,
+            self.client.post(f"/api/jobs/{self.job.pk}/complete/").status_code,
             409,
         )
         self.create_task(status=CaseTask.Status.IN_PROGRESS)
         self.assertEqual(
-            self.client.post(f"/api/cases/{self.case.pk}/complete/").status_code,
+            self.client.post(f"/api/jobs/{self.job.pk}/complete/").status_code,
             409,
         )
 
@@ -323,7 +334,7 @@ class TaskWorkflowTests(TestCase):
         self.create_task(status=CaseTask.Status.DONE)
         self.client.force_login(self.responder)
 
-        response = self.client.post(f"/api/cases/{self.case.pk}/complete/")
+        response = self.client.post(f"/api/jobs/{self.job.pk}/complete/")
 
         self.assertEqual(response.status_code, 200, response.content)
         self.case.refresh_from_db()
@@ -338,11 +349,12 @@ class TaskWorkflowTests(TestCase):
     def test_owner_can_confirm_and_close_the_case(self):
         self.case.status = CaseRecord.Status.PENDING_CONFIRM
         self.case.save(update_fields=["status"])
+        CaseJob.objects.filter(pk=self.job.pk).update(status=CaseJob.Status.PENDING_CONFIRM)
         self.create_task(status=CaseTask.Status.DONE)
         self.client.force_login(self.resident)
 
         response = self.client.post(
-            f"/api/cases/{self.case.pk}/confirm/",
+            f"/api/jobs/{self.job.pk}/confirm/",
             {"decision": "confirm"},
             content_type="application/json",
         )
@@ -361,18 +373,19 @@ class TaskWorkflowTests(TestCase):
     def test_resident_dispute_requires_a_note_and_reopens_the_case(self):
         self.case.status = CaseRecord.Status.PENDING_CONFIRM
         self.case.save(update_fields=["status"])
+        CaseJob.objects.filter(pk=self.job.pk).update(status=CaseJob.Status.PENDING_CONFIRM)
         self.create_task(status=CaseTask.Status.DONE)
         self.client.force_login(self.resident)
 
         missing = self.client.post(
-            f"/api/cases/{self.case.pk}/confirm/",
+            f"/api/jobs/{self.job.pk}/confirm/",
             {"decision": "incomplete", "note": ""},
             content_type="application/json",
         )
         self.assertEqual(missing.status_code, 400)
 
         response = self.client.post(
-            f"/api/cases/{self.case.pk}/confirm/",
+            f"/api/jobs/{self.job.pk}/confirm/",
             {"decision": "incomplete", "note": "The rear room still has flood debris."},
             content_type="application/json",
         )
@@ -390,9 +403,10 @@ class TaskWorkflowTests(TestCase):
     def test_another_resident_cannot_confirm_the_case(self):
         self.case.status = CaseRecord.Status.PENDING_CONFIRM
         self.case.save(update_fields=["status"])
+        CaseJob.objects.filter(pk=self.job.pk).update(status=CaseJob.Status.PENDING_CONFIRM)
         self.client.force_login(self.other_resident)
         response = self.client.post(
-            f"/api/cases/{self.case.pk}/confirm/",
+            f"/api/jobs/{self.job.pk}/confirm/",
             {"decision": "confirm"},
             content_type="application/json",
         )
@@ -401,7 +415,7 @@ class TaskWorkflowTests(TestCase):
     def test_release_requires_a_reason_and_no_existing_tasks(self):
         self.client.force_login(self.responder)
         missing = self.client.post(
-            f"/api/cases/{self.case.pk}/release/",
+            f"/api/jobs/{self.job.pk}/release/",
             {"reason": ""},
             content_type="application/json",
         )
@@ -409,7 +423,7 @@ class TaskWorkflowTests(TestCase):
 
         self.create_task(status=CaseTask.Status.OPEN, lead=None)
         blocked = self.client.post(
-            f"/api/cases/{self.case.pk}/release/",
+            f"/api/jobs/{self.job.pk}/release/",
             {"reason": "Outside our service area."},
             content_type="application/json",
         )
@@ -418,7 +432,7 @@ class TaskWorkflowTests(TestCase):
     def test_unstarted_case_can_be_released_to_the_verified_queue(self):
         self.client.force_login(self.responder)
         response = self.client.post(
-            f"/api/cases/{self.case.pk}/release/",
+            f"/api/jobs/{self.job.pk}/release/",
             {"reason": "Our cleanup equipment is unavailable."},
             content_type="application/json",
         )
@@ -426,7 +440,9 @@ class TaskWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.case.refresh_from_db()
         self.assertEqual(self.case.status, CaseRecord.Status.VERIFIED)
-        self.assertIsNone(self.case.claimed_by_org)
+        self.job.refresh_from_db()
+        self.assertIsNone(self.job.claimed_by_org)
+        self.assertEqual(self.job.status, CaseJob.Status.OPEN)
         self.assertTrue(
             CaseEventLog.objects.filter(
                 case=self.case,
@@ -466,7 +482,6 @@ class CaseDetailPrivacyTests(TestCase):
         self.case = CaseRecord.objects.create(
             reference="FRC-8201",
             submitted_by_user=self.resident,
-            claimed_by_org=self.claiming_org,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Sensitive household description.",
             village="Kg. Privacy",
@@ -476,6 +491,10 @@ class CaseDetailPrivacyTests(TestCase):
             status=CaseRecord.Status.CLAIMED,
             score_total=81,
             created_at=timezone.now(),
+        )
+        CaseJob.objects.create(
+            case=self.case, help_type=CaseRecord.DamageCategory.CLEANUP,
+            status=CaseJob.Status.CLAIMED, claimed_by_org=self.claiming_org,
         )
         CaseEventLog.objects.create(
             case=self.case,
@@ -535,6 +554,7 @@ class TaskSafetyTests(TestCase):
     def create_task(self, note="Unstable floor near the rear door."):
         return CaseTask.objects.create(
             case=self.case,
+            job=self.job,
             lead_user=self.responder,
             title="Remove flood debris",
             task_type=CaseTask.TaskType.CLEANUP,
@@ -552,7 +572,7 @@ class TaskSafetyTests(TestCase):
         self.client.force_login(self.responder)
         response = self.client.post(
             f"/api/cases/{self.case.pk}/tasks/",
-            {"title": "Clear entry", "task_type": "cleanup", "lead_user_id": self.responder.pk,
+            {"job_id": self.job.pk, "title": "Clear entry", "task_type": "cleanup", "lead_user_id": self.responder.pk,
              "safety_note": "  Wear boots near broken glass.  "},
             content_type="application/json",
         )
@@ -565,13 +585,13 @@ class TaskSafetyTests(TestCase):
 
         too_long = self.client.post(
             f"/api/cases/{self.case.pk}/tasks/",
-            {"title": "Another task", "task_type": "cleanup", "safety_note": "x" * 501},
+            {"job_id": self.job.pk, "title": "Another task", "task_type": "cleanup", "safety_note": "x" * 501},
             content_type="application/json",
         )
         self.assertEqual(too_long.status_code, 400)
         blank = self.client.post(
             f"/api/cases/{self.case.pk}/tasks/",
-            {"title": "Blank note", "task_type": "cleanup", "safety_note": "   "},
+            {"job_id": self.job.pk, "title": "Blank note", "task_type": "cleanup", "safety_note": "   "},
             content_type="application/json",
         )
         self.assertEqual(blank.status_code, 201, blank.content)
@@ -667,6 +687,7 @@ class TaskSafetyTests(TestCase):
         # claim that work was interrupted.
         task = CaseTask.objects.create(
             case=self.case,
+            job=self.job,
             title="Remove flood debris",
             task_type=CaseTask.TaskType.CLEANUP,
             status=CaseTask.Status.OPEN,

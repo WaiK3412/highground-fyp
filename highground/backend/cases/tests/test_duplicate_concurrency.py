@@ -18,6 +18,7 @@ from cases import duplicate_services as svc
 from cases.models import CaseEventLog, CaseRecord, DuplicateCaseMatch
 
 from .duplicate_helpers import DuplicateWorld
+from .job_helpers import give_job
 
 
 def race(*requests):
@@ -93,14 +94,16 @@ class DuplicateRaceTests(DuplicateWorld, TransactionTestCase):
         # open flag is still waiting for review.
         self.newer.status = CaseRecord.Status.VERIFIED
         self.newer.save()
+        job = give_job(self.newer)
 
         claim, confirm = race(
-            self.poster(self.ngo, f"/api/cases/{self.newer.pk}/claim/"),
+            self.poster(self.ngo, f"/api/jobs/{job.pk}/claim/"),
             self.poster(self.officer, f"/api/duplicates/{self.match.pk}/decide/", {"decision": "confirm"}),
         )
         self.newer.refresh_from_db()
         self.match.refresh_from_db()
-        claimed = self.newer.claimed_by_org_id is not None
+        job.refresh_from_db()
+        claimed = job.claimed_by_org_id is not None
         linked = self.newer.duplicate_of_case_id is not None
 
         self.assertNotEqual(claimed, linked, "exactly one of claim or confirm must win")

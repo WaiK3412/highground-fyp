@@ -28,21 +28,24 @@ urlpatterns = [
     path("api/locations/", cases_api.locations),
     path("api/cases/<int:pk>/", cases_api.case_detail),
     path("api/case-photos/<int:pk>/file/", private_files.case_photo, name="case-photo"),
-    path("api/cases/<int:pk>/claim/", cases_api.claim_case),
-    path("api/cases/<int:pk>/release/", cases_api.release_case),
     path("api/cases/<int:pk>/verify/", cases_api.verify_case),
     path("api/cases/<int:pk>/tasks/", cases_api.case_tasks),
-    path("api/cases/<int:pk>/complete/", cases_api.complete_case),
-    path("api/cases/<int:pk>/confirm/", cases_api.confirm_case),
     # Duplicate review, screen 12 — district officers only.
     path("api/duplicates/", cases_api.duplicate_list),
     path("api/duplicates/<int:pk>/", cases_api.duplicate_detail),
     path("api/duplicates/<int:pk>/decide/", cases_api.decide_duplicate),
+    # Help jobs (ADR-020): each type of help is claimed, finished and
+    # confirmed on its own, so several organisations can help one household.
+    path("api/jobs/unmet/", cases_api.unmet_help),
+    path("api/jobs/<int:pk>/claim/", cases_api.claim_job),
+    path("api/jobs/<int:pk>/release/", cases_api.release_job),
+    path("api/jobs/<int:pk>/complete/", cases_api.complete_job),
+    path("api/jobs/<int:pk>/confirm/", cases_api.confirm_job),
     path("api/tasks/", cases_api.task_board),
     path("api/tasks/<int:pk>/", cases_api.update_task),
     # Notifications are the same event-log rows, filtered by recipient (ADR-004).
-    # Screen 18 — how scoring works, read-only.
-    path("api/rubric/", cases_api.rubric),
+    # Screen 18 — how priority works (classes-1.0), read-only.
+    path("api/priority-rules/", cases_api.priority_rules),
     path("api/notifications/", cases_api.notifications),
     path("api/notifications/read-all/", cases_api.mark_all_notifications_read),
     path("api/notifications/<int:pk>/read/", cases_api.mark_notification_read),

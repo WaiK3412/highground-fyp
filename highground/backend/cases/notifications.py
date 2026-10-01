@@ -35,7 +35,7 @@ from .models import CaseEventLog
 #   event         | goes to                        | why
 #   --------------|--------------------------------|---------------------------
 #   submitted     | every disaster officer          | a case is waiting to be seen
-#   verified      | the household                   | with the score, folded in
+#   verified      | the household                   | with the priority class, folded in
 #   needs_info    | the household                   | C6: they must notice this one
 #   rejected      | the household                   | with the reason given
 #   claimed       | the household                   | someone is coming
@@ -67,19 +67,20 @@ TO_CLAIMING_ORGANISATION = {
 }
 
 
-def recipients_for(case, event_type, actor):
+def recipients_for(case, event_type, actor, job=None):
     """Who should be told about this event. Returns a list of users."""
-    # Completion decisions are made by the household, so the operational team
-    # needs the notification rather than the person who just pressed the button.
+    # Completion decisions are made by the household, so the organisation
+    # that did that job needs the notification, not the person who pressed it.
     if (
         event_type in TO_CLAIMING_ORGANISATION
         and actor == case.submitted_by_user
-        and case.claimed_by_org_id
+        and job is not None
+        and job.claimed_by_org_id
     ):
         return list(
             UserAccount.objects.filter(
                 role=UserAccount.Role.NGO_VOLUNTEER,
-                organization=case.claimed_by_org,
+                organization_id=job.claimed_by_org_id,
                 is_active=True,
             )
             .exclude(pk=getattr(actor, "pk", None))
@@ -124,14 +125,14 @@ HEADLINES = {
 
 def headline(case, event_type):
     text = HEADLINES.get(event_type, "Your case was updated")
-    if event_type == CaseEventLog.EventType.VERIFIED and case.score_total is not None:
-        # Fold the score in rather than sending a second, near-identical
+    if event_type == CaseEventLog.EventType.VERIFIED and case.priority_class is not None:
+        # Fold the class in rather than sending a second, near-identical
         # notification seconds later.
-        return f"{text} — {case.priority_band} priority, {case.score_total} of 100"
+        return f"{text} — priority class {case.priority_class} ({case.get_priority_class_display()})"
     return text
 
 
-def notify(case, event_type, actor, detail=""):
+def notify(case, event_type, actor, detail="", job=None):
     """Address the event to its recipients, and email each of them.
 
     The caller has already written the audit row for the action. The first
@@ -142,7 +143,7 @@ def notify(case, event_type, actor, detail=""):
     Only when an event goes to several people (a new case reaching every
     officer) are extra rows created, because read state is per person.
     """
-    people = recipients_for(case, event_type, actor)
+    people = recipients_for(case, event_type, actor, job)
     if not people:
         return []
 

@@ -24,10 +24,10 @@ const ATTRIBUTION =
 // Kelantan's centre point from the HDX gazetteer, shown until markers arrive.
 const KELANTAN = [5.398, 102.077]
 
-// Same three bands as the queue's score chips.
-const TONE = { High: 'danger', Medium: 'warning', Low: 'success' }
+// Same tones as the queue's priority chips, keyed by class (classes-1.0).
+const TONE = { 1: 'danger', 2: 'warning', 3: 'success' }
 // Nearby markers overlap; the most urgent one is drawn on top.
-const LAYER = { High: 3000, Medium: 2000, Low: 1000 }
+const LAYER = { 1: 3000, 2: 2000, 3: 1000 }
 
 // Case and village text can come from older free-text submissions, so it is
 // set as text content — never passed to Leaflet as an HTML string.
@@ -42,7 +42,7 @@ function tooltip(lines) {
 }
 
 function pinIcon(point, selected, isOfficer) {
-  const tone = TONE[point.priority_band] || 'neutral'
+  const tone = TONE[point.priority_class] || 'neutral'
   const ring = point.claimed_by_you ? ' ops-pin--ring' : ''
   const chosen = selected ? ' ops-pin--selected' : ''
   const hasDuplicate = isOfficer && point.has_open_duplicate
@@ -57,7 +57,7 @@ function pinIcon(point, selected, isOfficer) {
 }
 
 function areaIcon(area) {
-  const tone = TONE[area.highest_band] || 'neutral'
+  const tone = TONE[area.highest_class] || 'neutral'
   const count = Number(area.case_count) || 0
   return L.divIcon({
     className: 'case-map__icon',
@@ -124,7 +124,7 @@ export default function CaseMap({
     areas.forEach((area) => {
       const at = [Number(area.latitude), Number(area.longitude)]
       const label = `${area.name}: ${area.case_count} ${area.case_count === 1 ? 'case' : 'cases'}`
-      L.marker(at, { icon: areaIcon(area), title: label, keyboard: true, zIndexOffset: LAYER[area.highest_band] || 0 })
+      L.marker(at, { icon: areaIcon(area), title: label, keyboard: true, zIndexOffset: LAYER[area.highest_class] || 0 })
         .bindTooltip(tooltip([label, 'Exact locations are held by the claiming organisation.']))
         .on('click', () => handlers.current.onOpenArea(area.name))
         .addTo(group)
@@ -134,7 +134,7 @@ export default function CaseMap({
       const at = [Number(point.latitude), Number(point.longitude)]
       const lines = [
         `#${point.reference} · ${point.village}`,
-        `${point.status_display}${point.score_total != null ? ` · score ${point.score_total}` : ''}`,
+        `${point.status_display}${point.priority_label ? ` · ${point.priority_label}` : ''}`,
       ]
       if (point.precision === 'village') lines.push('Placed at the village centre — no household pin yet.')
       const hasDuplicate = isOfficer && point.has_open_duplicate
@@ -144,7 +144,7 @@ export default function CaseMap({
         title: `#${point.reference}${hasDuplicate ? ' · Possible duplicate' : ''}`,
         keyboard: true,
         // The selected pin rises above everything else.
-        zIndexOffset: point.id === selectedId ? 5000 : LAYER[point.priority_band] || 0,
+        zIndexOffset: point.id === selectedId ? 5000 : LAYER[point.priority_class] || 0,
       })
         .bindTooltip(tooltip(lines))
         .on('click', () => handlers.current.onOpenCase(point.id))
@@ -183,12 +183,12 @@ export default function CaseMap({
             Map legend <span aria-hidden="true">{legendOpen ? '−' : '+'}</span>
           </button>
           <div id="case-map-legend-content" className="case-map__legend-body" hidden={!legendOpen}>
-            <p className="case-map__legend-title">Priority band</p>
+            <p className="case-map__legend-title">Priority class</p>
             {[
-              ['danger', 'High'],
-              ['warning', 'Medium'],
-              ['success', 'Low'],
-              ['neutral', 'Unscored'],
+              ['danger', '1 Health-critical'],
+              ['warning', '2 At risk'],
+              ['success', '3 Standard'],
+              ['neutral', 'Not yet classified'],
             ].map(([tone, label]) => (
               <div className="case-map__legend-row" key={tone}>
                 <span className={`case-map__legend-pin case-map__legend-pin--${tone}`} aria-hidden="true" />
@@ -202,7 +202,7 @@ export default function CaseMap({
             </div>
             <div className="case-map__legend-row">
               <span className="case-map__legend-bubble" aria-hidden="true">3</span>
-              <span>Village count. Colour shows the highest priority band in that group.</span>
+              <span>Village count. Colour shows the highest priority class in that group.</span>
             </div>
             <div className="case-map__legend-row">
               <span className="case-map__legend-ring" aria-hidden="true" />

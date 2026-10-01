@@ -14,6 +14,13 @@ function classification(value) {
   return ({ match: 'Match signal', possible: 'Possible match', non_match: 'Below review threshold' })[value] || value
 }
 
+// rules-1.0 flags list the rules that fired; flags raised by the retired
+// weighted engine (dup-1.1) still show the score they were raised with.
+function flagSummary(flag) {
+  if (flag.method === 'rules-1.0') return flag.matched_rules.map((rule) => rule.text).join(' · ')
+  return `${flag.similarity_score}/100 · ${classification(flag.classification)} (retired weighted method)`
+}
+
 const CONFIRM_BLOCK = {
   active_case: 'An organisation is working on the newer case.',
   duplicate_chain: 'Other cases are already linked to the newer case.',
@@ -44,6 +51,7 @@ function CaseComparison({ item, older }) {
         <dt>Village</dt><dd>{item.village || 'Not recorded'}</dd>
         <dt>Contact</dt><dd>{item.submitter_phone || 'Not provided'}</dd>
         <dt>Damage</dt><dd>{item.damage_category_display}</dd>
+        <dt>Help asked for</dt><dd>{item.jobs?.length ? item.jobs.map((job) => `${job.help_type_display} (${job.status_display.toLowerCase()})`).join(', ') : 'None recorded'}</dd>
         <dt>Household</dt><dd>{item.household_size} members</dd>
         <dt>Needs</dt><dd>{item.needs_flags?.join(', ') || 'None recorded'}</dd>
         <dt>Photos</dt><dd>{item.photo_count}</dd>
@@ -242,7 +250,7 @@ export default function DuplicateReview({ user, initialId, duplicateCount, onCou
         <div className="duplicate-review__pairs" aria-label="Open possible duplicate pairs">
           {rows.map((row) => (
             <button key={row.id} className={`duplicate-review__pair${row.id === selectedId ? ' duplicate-review__pair--selected' : ''}`} onClick={() => selectPair(row.id)}>
-              #{row.case_a.reference} / #{row.case_b.reference} · {row.similarity_score}/100 · {classification(row.classification)}
+              #{row.case_a.reference} / #{row.case_b.reference} · {flagSummary(row)}
             </button>
           ))}
         </div>
@@ -255,18 +263,37 @@ export default function DuplicateReview({ user, initialId, duplicateCount, onCou
           {notice && <div className="banner banner--info" role="status"><span className="body">{notice}</span></div>}
           <div className="banner banner--warning duplicate-review__evidence">
             <span className="body">
-              <span className="title">Flagged at {detail.similarity_score}/100 · {classification(detail.classification)}</span>
-              <br />Stored evidence from the original flag. The current comparison below can differ as case details or the village corpus change.
+              <span className="title">Flagged because: {flagSummary(detail)}</span>
+              <br />Stored when the flag was raised. The current check below re-runs the same rules on today&apos;s case details, so it can differ.
             </span>
           </div>
           <section className="card duplicate-review__reasons">
-            <h2>Current comparison</h2>
-            <p className="text-sm">{detail.current_comparison.score}/100 · {classification(detail.current_comparison.classification)} · engine {detail.current_comparison.engine_version}</p>
-            <ul>
-              {detail.current_comparison.reasons.map((reason) => (
-                <li key={reason.signal} className="text-sm">{reason.text}</li>
-              ))}
-            </ul>
+            <h2>Current check · {detail.current_comparison.method}</h2>
+            {detail.current_comparison.matched ? (
+              <ul>
+                {detail.current_comparison.reasons.map((reason) => (
+                  <li key={reason.rule} className="text-sm">{reason.text}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm">No rule matches on the current details.</p>
+            )}
+            {/* What disagrees is shown beside what matches; it never decides the flag. */}
+            {detail.current_comparison.contradictions.length > 0 && (
+              <>
+                <h3 className="text-sm text-strong">But these differ</h3>
+                <ul>
+                  {detail.current_comparison.contradictions.map((item) => (
+                    <li key={item.rule} className="text-sm">{item.text}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <p className="text-xs text-muted">
+              {detail.current_comparison.pin_distance_metres == null
+                ? 'Pin distance: not available (one or both cases have no household pin).'
+                : `Household pins are ${detail.current_comparison.pin_distance_metres} m apart.`}
+            </p>
           </section>
           <div className="grid-2 duplicate-review__cases">
             <CaseComparison item={detail.case_a} older />
@@ -276,7 +303,7 @@ export default function DuplicateReview({ user, initialId, duplicateCount, onCou
             <h2>Officer decision</h2>
             {detail.status === 'open' ? (
               <>
-                <p className="text-sm text-muted">Confirming closes #{detail.case_b.reference} as a duplicate of #{detail.case_a.reference}; both records and their history remain. Dismissing keeps the cases separate.</p>
+                <p className="text-sm text-muted">Confirming closes #{detail.case_b.reference} as a duplicate of #{detail.case_a.reference}; any type of help only the newer request asked for is added to #{detail.case_a.reference}, and both records and their history remain. Dismissing keeps the cases separate. If the older request already finished a type of help and the household needs it again, dismiss instead.</p>
                 <label className="field" htmlFor="duplicate-note">Optional internal note
                   <textarea id="duplicate-note" className="input" maxLength={1000} rows={3} value={note} onChange={(event) => setNote(event.target.value)} disabled={busy} />
                 </label>

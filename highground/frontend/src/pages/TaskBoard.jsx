@@ -6,7 +6,7 @@
  * changes instead: open/assigned, in progress, done, then resident confirmation.
  *
  * Layout follows design-prototype-v2/screens/09-ngo-task-board.html: three
- * columns on a 3px status rail, a card per task, the score chip from the queue.
+ * columns on a 3px status rail, a card per task, the priority chip from the queue.
  * Assignment and progress notes open in place so a card at rest stays a card.
  */
 
@@ -67,10 +67,10 @@ function initials(name) {
     .join('')
 }
 
-// Same three bands as the case queue, so a score reads the same on both screens.
-function scoreClass(band) {
-  if (band === 'High') return 'score score--high score--sm'
-  if (band === 'Medium') return 'score score--medium score--sm'
+// Same tones as the case queue, so a priority class reads the same on both screens.
+function priorityChipClass(priorityClass) {
+  if (priorityClass === 1) return 'score score--high score--sm'
+  if (priorityClass === 2) return 'score score--medium score--sm'
   return 'score score--low score--sm'
 }
 
@@ -133,12 +133,13 @@ function TaskCard({ task, responders, currentUserId, onChanged }) {
           {TYPE_PATHS[task.task_type] && <Icon path={TYPE_PATHS[task.task_type]} />}
           #{task.case_reference}
         </span>
-        {task.case_score_total != null && (
+        {task.case_priority_class != null && (
           <span
-            className={scoreClass(task.case_priority_band)}
-            title={`Case priority ${task.case_score_total} (${task.case_priority_band})`}
+            className={priorityChipClass(task.case_priority_class)}
+            title={`Priority class ${task.case_priority_class}: ${task.case_priority_label}`}
+            aria-label={`Priority class ${task.case_priority_class}: ${task.case_priority_label}`}
           >
-            {task.case_score_total}
+            {task.case_priority_class}
           </span>
         )}
       </div>
@@ -379,7 +380,7 @@ function TaskCard({ task, responders, currentUserId, onChanged }) {
 
 export default function TaskBoard({ user, onLogout, onNavigate }) {
   useDocumentTitle('Task board')
-  const [board, setBoard] = useState({ tasks: [], cases: [], responders: [] })
+  const [board, setBoard] = useState({ tasks: [], jobs: [], responders: [] })
   const [loading, setLoading] = useState(true)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [error, setError] = useState(null)
@@ -387,8 +388,8 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
   const [notice, setNotice] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ caseId: '', title: '', taskType: 'cleanup', leadId: '', safetyNote: '' })
-  const [releaseCaseId, setReleaseCaseId] = useState(null)
+  const [form, setForm] = useState({ jobId: '', title: '', taskType: 'cleanup', leadId: '', safetyNote: '' })
+  const [releaseJobId, setReleaseJobId] = useState(null)
   const [releaseReason, setReleaseReason] = useState('')
   const [releasing, setReleasing] = useState(false)
   const [completingId, setCompletingId] = useState(null)
@@ -409,7 +410,7 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
         setBoard(data)
         setForm((current) => ({
           ...current,
-          caseId: current.caseId || String(data.cases.find((item) => item.status !== 'pending_confirm')?.id || ''),
+          jobId: current.jobId || String(data.jobs.find((item) => item.status !== 'pending_confirm')?.id || ''),
           leadId: current.leadId || String(user.id),
         }))
       })
@@ -435,7 +436,10 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
     setCreating(true)
     setError(null)
     try {
-      await api.createTask(Number(form.caseId), {
+      // A task belongs to one of the organisation's jobs (ADR-020).
+      const job = board.jobs.find((item) => item.id === Number(form.jobId))
+      await api.createTask(job.case_id, {
+        job_id: job.id,
         title: form.title,
         task_type: form.taskType,
         lead_user_id: form.leadId ? Number(form.leadId) : null,
@@ -451,11 +455,11 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
     }
   }
 
-  async function requestCompletion(caseId) {
-    setCompletingId(caseId)
+  async function requestCompletion(jobId) {
+    setCompletingId(jobId)
     setError(null)
     try {
-      await api.completeCase(caseId)
+      await api.completeJob(jobId)
       await refresh('The resident has been asked to confirm completion.')
     } catch (err) {
       setError(err.message)
@@ -464,14 +468,14 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
     }
   }
 
-  async function releaseClaim(caseId) {
+  async function releaseClaim(jobId) {
     setReleasing(true)
     setError(null)
     try {
-      await api.releaseCase(caseId, releaseReason)
-      setReleaseCaseId(null)
+      await api.releaseJob(jobId, releaseReason)
+      setReleaseJobId(null)
       setReleaseReason('')
-      await refresh('The case was released to the verified queue.')
+      await refresh('The job was released back to the queue.')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -497,21 +501,17 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
     return grouped
   }, [board.tasks])
 
-  // Two cases need a decision from the team: the one claimed with nothing on
-  // the board, and the one whose tasks are all finished.
-  const unstartedCases = board.cases.filter(
-    (item) => item.status === 'claimed' && !tasksByCase.has(item.id),
-  )
-  const completionCases = board.cases.filter((item) => {
-    const tasks = tasksByCase.get(item.id) || []
-    return (
+  // Two kinds of job need a decision from the team: one claimed with nothing
+  // on the board, and one whose tasks are all finished.
+  const unstartedJobs = board.jobs.filter((item) => item.status === 'claimed' && item.task_count === 0)
+  const completionJobs = board.jobs.filter(
+    (item) =>
       ['claimed', 'in_progress'].includes(item.status) &&
-      tasks.length > 0 &&
-      tasks.every((task) => task.status === 'done')
-    )
-  })
-  const activeCases = board.cases.filter((item) => item.status !== 'pending_confirm')
-  const releaseCase = unstartedCases.find((item) => item.id === releaseCaseId)
+      item.task_count > 0 &&
+      item.tasks_done === item.task_count,
+  )
+  const activeJobs = board.jobs.filter((item) => item.status !== 'pending_confirm')
+  const releaseJob = unstartedJobs.find((item) => item.id === releaseJobId)
 
   const userInitials = initials(user.full_name)
 
@@ -562,7 +562,7 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
             {unread > 0 && <span className="side-nav__count">{unread}</span>}
           </a>
           <a href="#rules" onClick={(event) => { event.preventDefault(); onNavigate('rules') }}>
-            <Icon path={PATHS.rules} /> How scoring works
+            <Icon path={PATHS.rules} /> How priority works
           </a>
           <span className="side-nav__label">Organisation</span>
           <span className="side-nav__item side-nav__item--static">
@@ -596,8 +596,8 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
           </div>
           <button
             className="btn btn--primary"
-            disabled={activeCases.length === 0}
-            title={activeCases.length === 0 ? 'Claim a case before adding tasks to it.' : undefined}
+            disabled={activeJobs.length === 0}
+            title={activeJobs.length === 0 ? 'Claim a job before adding tasks to it.' : undefined}
             aria-expanded={showCreate}
             onClick={() => setShowCreate((shown) => !shown)}
           >
@@ -628,10 +628,10 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
             </div>
             <div className="panel__grid">
               <div className="field">
-                <label htmlFor="task-case">Claimed case</label>
-                <select id="task-case" className="input" required value={form.caseId} onChange={(event) => setForm({ ...form, caseId: event.target.value })}>
-                  <option value="">Choose a case</option>
-                  {activeCases.map((item) => <option key={item.id} value={item.id}>#{item.reference} · {item.village}</option>)}
+                <label htmlFor="task-case">Your job</label>
+                <select id="task-case" className="input" required value={form.jobId} onChange={(event) => setForm({ ...form, jobId: event.target.value })}>
+                  <option value="">Choose a job</option>
+                  {activeJobs.map((item) => <option key={item.id} value={item.id}>#{item.case_reference} · {item.case_village} · {item.help_type_display}</option>)}
                 </select>
               </div>
               <div className="field">
@@ -671,43 +671,55 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
           </form>
         )}
 
-        {(unstartedCases.length > 0 || completionCases.length > 0) && (
+        {(unstartedJobs.length > 0 || completionJobs.length > 0) && (
           <div className="stack" style={{ gap: '0.8rem', marginBottom: 'var(--sp-12)' }}>
-            {unstartedCases.map((item) => (
+            {unstartedJobs.map((item) => (
               <div key={`unstarted-${item.id}`} className="case-strip">
-                {item.score_total != null && (
-                  <span className={scoreClass(item.priority_band)}>{item.score_total}</span>
+                {item.case_priority_class != null && (
+                  <span
+                    className={priorityChipClass(item.case_priority_class)}
+                    title={item.case_priority_label}
+                    aria-label={`Priority class ${item.case_priority_class}: ${item.case_priority_label}`}
+                  >
+                    {item.case_priority_class}
+                  </span>
                 )}
                 <div className="case-strip__body">
-                  <div className="nm">#{item.reference} · {item.village}</div>
+                  <div className="nm">#{item.case_reference} · {item.case_village} · {item.help_type_display}</div>
                   <div className="sk">
-                    Claimed, with nothing on the board yet. Add the first task, or release the case
-                    back to the verified queue.
+                    Claimed, with nothing on the board yet. Add the first task, or release the job
+                    back to the queue.
                   </div>
                 </div>
                 <div className="case-strip__actions">
                   <button
                     className="btn btn--ghost btn--sm"
-                    aria-expanded={releaseCaseId === item.id}
+                    aria-expanded={releaseJobId === item.id}
                     onClick={() => {
-                      setReleaseCaseId((current) => (current === item.id ? null : item.id))
+                      setReleaseJobId((current) => (current === item.id ? null : item.id))
                       setReleaseReason('')
                     }}
                   >
-                    Release case
+                    Release job
                   </button>
                 </div>
               </div>
             ))}
-            {completionCases.map((item) => (
+            {completionJobs.map((item) => (
               <div key={`complete-${item.id}`} className="case-strip">
-                {item.score_total != null && (
-                  <span className={scoreClass(item.priority_band)}>{item.score_total}</span>
+                {item.case_priority_class != null && (
+                  <span
+                    className={priorityChipClass(item.case_priority_class)}
+                    title={item.case_priority_label}
+                    aria-label={`Priority class ${item.case_priority_class}: ${item.case_priority_label}`}
+                  >
+                    {item.case_priority_class}
+                  </span>
                 )}
                 <div className="case-strip__body">
-                  <div className="nm">#{item.reference} · {item.village}</div>
+                  <div className="nm">#{item.case_reference} · {item.case_village} · {item.help_type_display}</div>
                   <div className="sk">
-                    Every task is done. The resident confirms before the case closes.
+                    Every task on this job is done. The resident confirms before it closes.
                   </div>
                 </div>
                 <div className="case-strip__actions">
@@ -724,16 +736,16 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
           </div>
         )}
 
-        {releaseCase && (
+        {releaseJob && (
           <div className="panel panel--narrow" style={{ marginBottom: 'var(--sp-12)' }}>
             <div className="panel__header">
-              <h4>Release #{releaseCase.reference} back to the verified queue</h4>
-              <button className="btn btn--ghost btn--sm" onClick={() => setReleaseCaseId(null)}>
+              <h4>Release the {releaseJob.help_type_display.toLowerCase()} job on #{releaseJob.case_reference}</h4>
+              <button className="btn btn--ghost btn--sm" onClick={() => setReleaseJobId(null)}>
                 Close
               </button>
             </div>
             <p className="text-sm text-muted">
-              Giving a case back is a normal outcome, not a failure — the wrong equipment, no
+              Giving a job back is a normal outcome, not a failure — the wrong equipment, no
               access, or another organisation already on site. The reason goes into the case's
               event log, so whoever claims it next is not starting blind.
             </p>
@@ -755,11 +767,11 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
               <button
                 className="btn btn--primary btn--sm"
                 disabled={releasing || !releaseReason.trim()}
-                onClick={() => releaseClaim(releaseCase.id)}
+                onClick={() => releaseClaim(releaseJob.id)}
               >
-                {releasing ? 'Releasing…' : 'Release case'}
+                {releasing ? 'Releasing…' : 'Release job'}
               </button>
-              <button className="btn btn--ghost btn--sm" onClick={() => setReleaseCaseId(null)}>
+              <button className="btn btn--ghost btn--sm" onClick={() => setReleaseJobId(null)}>
                 Cancel
               </button>
             </div>

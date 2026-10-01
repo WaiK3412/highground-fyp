@@ -2,8 +2,8 @@
 
 Reuses the prototype's sample content (GAPS C10 item 10) so what appears on
 screen matches the figures in the report — in particular the canonical case
-#FRC-1042, whose score of 87 is COMPUTED by the scoring engine here, not
-stored as a literal.
+#FRC-1042, whose priority class is COMPUTED by the classifier here
+(scoring/classes.py, via cases/services.py), not stored as a literal.
 
     python manage.py seed_demo --flush
 """
@@ -19,8 +19,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseRecord, CaseTask, DropOffPoint, LocationArea, demo_audit_reset
-from scoring.engine import CaseScoreInput, Criterion, Rubric, score_case
+from cases.services import classify_case_record
+from cases.models import (
+    CaseEventLog, CaseJob, CaseRecord, CaseTask, DropOffPoint, LocationArea, demo_audit_reset,
+)
 from scoring.models import (
     CaseScoreComponent,
     PriorityRubricCriterion,
@@ -123,7 +125,9 @@ class Command(BaseCommand):
                 UserAccount.objects.filter(is_superuser=False).delete()
                 Organization.objects.all().delete()
 
-        # ---------------- rubric v3.0 ----------------
+        # ---------------- rubric v3.0 (retired) ----------------
+        # Kept so the admin and the report can show the weighted method that
+        # classes-1.0 replaced. Nothing scores against it any more.
         version = PriorityRubricVersion.objects.create(
             label="v3.0",
             status=PriorityRubricVersion.Status.PUBLISHED,
@@ -137,16 +141,6 @@ class Command(BaseCommand):
                 weight=weight, max_points=max_points, rule_text=rule,
             )
         self.stdout.write(self.style.SUCCESS(f"  rubric {version.label} — 6 criteria, weight 100"))
-
-        engine_rubric = Rubric(
-            label=version.label,
-            criteria=tuple(
-                Criterion(c.key, c.name, c.weight, c.max_points)
-                for c in version.criteria.all()
-            ),
-            high_threshold=version.high_threshold,
-            medium_threshold=version.medium_threshold,
-        )
 
         # ---------------- organisations ----------------
         orgs = [
@@ -170,6 +164,14 @@ class Command(BaseCommand):
             password=DEMO_PASSWORD, phone="016-220 9931",
             role=UserAccount.Role.NGO_VOLUNTEER, organization=orgs[0],
         )
+        # A second organisation, so the demo can show two NGOs taking
+        # different jobs on one household's request (ADR-020).
+        volunteer2 = UserAccount.objects.create_user(
+            email="ngo2@hg.my", full_name="Hafiz bin Omar",
+            password=DEMO_PASSWORD, phone="019-983 4471",
+            role=UserAccount.Role.NGO_VOLUNTEER, organization=orgs[3],
+        )
+        lead_for = {orgs[0].pk: volunteer, orgs[3].pk: volunteer2}
         residents = [resident] + [
             UserAccount.objects.create_user(
                 email=f"r{i}@hg.my", full_name=f"Resident {i}",
@@ -222,6 +224,7 @@ class Command(BaseCommand):
             status=CaseRecord.Status.VERIFIED,
             created_at=now - timedelta(days=4),
             verified_by=officer,
+            extra_jobs=[(CaseRecord.DamageCategory.CLEANUP, None), (CaseRecord.DamageCategory.REPAIR, None)],
         )
         cases.append(frc)
 
@@ -261,42 +264,57 @@ class Command(BaseCommand):
                 created_at=now - timedelta(days=random.randint(0, 9), hours=random.randint(0, 20)),
                 verified_by=officer if status != CaseRecord.Status.SUBMITTED else None,
                 claimed_by=orgs[i % len(orgs)] if claimed else None,
+                # One household mid-recovery with two organisations on it and
+                # a third type of help nobody has taken (the unmet-help report).
+                extra_jobs=(
+                    [(CaseRecord.DamageCategory.REPAIR, orgs[0]), (CaseRecord.DamageCategory.AGRICULTURE, None)]
+                    if i == 7 else []
+                ),
             )
             cases.append(case)
 
-        # ---------------- score the VERIFIED cases with the ENGINE ----------------
-        # Only cases an officer has actually looked at carry a score. Screen 17
-        # is explicit that a request is checked "before it is scored and
-        # released to the NGO queue", and the running system now does exactly
-        # that (cases/services.py). Seeding a score onto a submitted case would
-        # contradict the behaviour the demo is showing.
-        UNSCORED = {CaseRecord.Status.SUBMITTED, CaseRecord.Status.NEEDS_INFO}
+        # ---------------- classify the VERIFIED cases ----------------
+        # Only cases an officer has actually looked at carry a class. Screen 17
+        # has a request checked before it is prioritised and released to the
+        # NGO queue, and the running system does exactly that
+        # (cases/services.py). Classifying a submitted case would contradict
+        # the behaviour the demo is showing.
+        UNCLASSIFIED = {CaseRecord.Status.SUBMITTED, CaseRecord.Status.NEEDS_INFO}
         for case in cases:
-            if case.status not in UNSCORED:
-                self._score(case, engine_rubric, version, now, officer)
+            if case.status not in UNCLASSIFIED:
+                # Same service the verify endpoint calls; timestamped just
+                # after the seeded verification so the timeline reads in order.
+                classify_case_record(
+                    case, officer, at=case.created_at + timedelta(hours=6, minutes=1)
+                )
 
         # ---------------- tasks ----------------
-        for case in cases:
-            if case.status in {CaseRecord.Status.IN_PROGRESS, CaseRecord.Status.PENDING_CONFIRM}:
-                CaseTask.objects.create(
-                    case=case, lead_user=volunteer,
-                    title=f"Mud clearance and disinfection — {case.village}",
-                    task_type=CaseTask.TaskType.CLEANUP,
-                    status=CaseTask.Status.IN_PROGRESS,
-                    assigned_at=now - timedelta(days=1),
-                )
-                CaseEventLog.objects.create(
-                    case=case, actor_user=volunteer,
-                    event_type=CaseEventLog.EventType.TASK_ASSIGNED,
-                    detail=f"Cleanup task assigned to {volunteer.full_name}.",
-                    created_at=now - timedelta(days=1),
-                )
+        for job in CaseJob.objects.filter(
+            status__in=[CaseJob.Status.IN_PROGRESS, CaseJob.Status.PENDING_CONFIRM]
+        ).select_related("case"):
+            lead = lead_for.get(job.claimed_by_org_id)
+            done = job.status == CaseJob.Status.PENDING_CONFIRM
+            CaseTask.objects.create(
+                case=job.case, job=job, lead_user=lead,
+                title=f"{job.get_help_type_display()} work — {job.case.village}",
+                task_type=CaseTask.TaskType.REPAIR if job.help_type == "repair" else CaseTask.TaskType.CLEANUP,
+                status=CaseTask.Status.DONE if done else (CaseTask.Status.IN_PROGRESS if lead else CaseTask.Status.OPEN),
+                assigned_at=now - timedelta(days=1) if lead else None,
+                completed_at=now - timedelta(hours=3) if done else None,
+            )
+            CaseEventLog.objects.create(
+                case=job.case, actor_user=lead or officer,
+                event_type=CaseEventLog.EventType.TASK_ASSIGNED,
+                detail=f"{job.get_help_type_display()} task created by {job.claimed_by_org.name}.",
+                created_at=now - timedelta(days=1),
+            )
 
         # ---------------- a duplicate for the review screen ----------------
         # A relative re-reports the FRC-1042 household from her own account, in
-        # Malay, with the address abbreviated. The descriptions share almost no
-        # words, so the scan has to recognise it from the address, lot number
-        # and a pin ~25 m away — the case duplicate detection exists for.
+        # Malay, with the address abbreviated. Name, phone, pin (~25 m away) and
+        # description all differ, so rules-1.0 recognises it from the lot number
+        # and the abbreviated address (Jln -> Jalan) — the case duplicate
+        # detection exists for.
         relative = UserAccount.objects.create_user(
             email="relative@hg.my", full_name="Nurul binti Rahman",
             password=DEMO_PASSWORD, phone="013-778 2140",
@@ -307,7 +325,7 @@ class Command(BaseCommand):
             reference="FRC-1056",
             submitted_by=relative,
             area=kubang_kerian,
-            address="Lot 4231, Jln Hospital, Kg. Kubang Kerian",
+            address="Lot 4231, Jln Hospital, Kubang Kerian",
             lat=lat, lng=lng,
             description=(
                 "Rumah ibu bapa saya dinaiki air paras pinggang dan belum surut. "
@@ -325,16 +343,21 @@ class Command(BaseCommand):
             created_at=now - timedelta(days=3),
         ))
 
-        scored = [c for c in cases if c.score_total is not None]
-        high = sum(1 for c in scored if c.score_total >= 70)
+        classified = [c for c in cases if c.priority_class is not None]
+        health_critical = sum(1 for c in classified if c.priority_class == 1)
         self.stdout.write(
             self.style.SUCCESS(
-                f"  cases — {len(cases)} seeded, {len(scored)} scored, {high} high priority "
-                f"({len(cases) - len(scored)} awaiting verification, so unscored)"
+                f"  cases — {len(cases)} seeded, {len(classified)} classified, "
+                f"{health_critical} health-critical "
+                f"({len(cases) - len(classified)} awaiting verification, so unclassified)"
             )
         )
+        frc.refresh_from_db()
         self.stdout.write(
-            self.style.SUCCESS(f"  #FRC-1042 scored {frc.score_total} by the engine ({frc.priority_band})")
+            self.style.SUCCESS(
+                f"  #FRC-1042 classified as priority class {frc.priority_class} "
+                f"({frc.get_priority_class_display()})"
+            )
         )
         # Seeded cases skip the submission view, so run the village scan here;
         # otherwise every demo case would stay "duplicate check pending" and
@@ -351,7 +374,8 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write("  Demo logins (credentials are defined in seed_demo.py)")
         self.stdout.write(f"    officer   {officer.email}")
-        self.stdout.write(f"    ngo lead  {volunteer.email}")
+        self.stdout.write(f"    ngo lead  {volunteer.email} ({volunteer.organization.name})")
+        self.stdout.write(f"    ngo lead  {volunteer2.email} ({volunteer2.organization.name})")
         self.stdout.write(f"    resident  {resident.email}")
 
     # ------------------------------------------------------------------
@@ -359,7 +383,7 @@ class Command(BaseCommand):
     def _make_case(self, *, reference, submitted_by, area, address, lat, lng,
                    description, damage_category, urgency, liveability, flood_depth,
                    access_level, needs, vulns, household_size, status, created_at,
-                    verified_by=None, claimed_by=None):
+                    verified_by=None, claimed_by=None, extra_jobs=()):
         case = CaseRecord.objects.create(
             reference=reference, submitted_by_user=submitted_by,
             location_area=area, village=area.name,
@@ -368,9 +392,30 @@ class Command(BaseCommand):
             urgency=urgency, liveability=liveability, flood_depth=flood_depth,
             access_level=access_level, needs_flags=needs, vulnerability_flags=vulns,
             household_size=household_size, status=status, created_at=created_at,
-            verified_by_user=verified_by, claimed_by_org=claimed_by,
+            verified_by_user=verified_by,
             closed_at=created_at + timedelta(days=3) if status == CaseRecord.Status.CLOSED else None,
         )
+        # The main type of help is a job in the case's own state; any extra
+        # types are further jobs, claimed (in progress) by the given org or open.
+        main_status = {
+            CaseRecord.Status.CLAIMED: CaseJob.Status.CLAIMED,
+            CaseRecord.Status.IN_PROGRESS: CaseJob.Status.IN_PROGRESS,
+            CaseRecord.Status.PENDING_CONFIRM: CaseJob.Status.PENDING_CONFIRM,
+            CaseRecord.Status.CLOSED: CaseJob.Status.DONE,
+        }.get(status, CaseJob.Status.OPEN) if claimed_by else CaseJob.Status.OPEN
+        CaseJob.objects.create(
+            case=case, help_type=damage_category, status=main_status, claimed_by_org=claimed_by,
+            claimed_at=created_at + timedelta(hours=12) if claimed_by else None,
+            completed_at=case.closed_at if main_status == CaseJob.Status.DONE else None,
+        )
+        for help_type, org in extra_jobs:
+            if help_type == damage_category:
+                continue  # already the main job
+            CaseJob.objects.create(
+                case=case, help_type=help_type, claimed_by_org=org,
+                status=CaseJob.Status.IN_PROGRESS if org else CaseJob.Status.OPEN,
+                claimed_at=created_at + timedelta(hours=14) if org else None,
+            )
         CaseEventLog.objects.create(
             case=case, actor_user=submitted_by,
             event_type=CaseEventLog.EventType.SUBMITTED,
@@ -384,43 +429,11 @@ class Command(BaseCommand):
                 detail="Household details confirmed against the district register.",
                 created_at=created_at + timedelta(hours=6),
             )
-        if claimed_by:
+        for job in case.jobs.exclude(claimed_by_org=None):
             CaseEventLog.objects.create(
                 case=case, actor_user=verified_by,
                 event_type=CaseEventLog.EventType.CLAIMED,
-                detail=f"Case claimed by {claimed_by.name}.",
-                created_at=created_at + timedelta(hours=12),
+                detail=f"{job.get_help_type_display()} claimed by {job.claimed_by_org.name}.",
+                created_at=job.claimed_at,
             )
         return case
-
-    def _score(self, case, engine_rubric, version, now, officer):
-        """Run the pure engine, then persist its result and its reasoning."""
-        result = score_case(
-            CaseScoreInput(
-                urgency=case.urgency,
-                liveability=case.liveability,
-                flood_depth=case.flood_depth,
-                access_level=case.access_level,
-                needs_flags=tuple(case.needs_flags),
-                vulnerability_flags=tuple(case.vulnerability_flags),
-                created_at=case.created_at,
-            ),
-            engine_rubric,
-            now=now,
-        )
-        case.score_total = result.total
-        case.rubric_version = version
-        case.save(update_fields=["score_total", "rubric_version"])
-
-        criteria = {c.key: c for c in version.criteria.all()}
-        for component in result.components:
-            CaseScoreComponent.objects.create(
-                case=case, criterion=criteria[component.key],
-                points=component.points, reason=component.reason,
-            )
-        CaseEventLog.objects.create(
-            case=case, actor_user=officer,
-            event_type=CaseEventLog.EventType.SCORE_COMPUTED,
-            detail=f"Priority {result.total} ({result.band}) under rubric {version.label}.",
-            created_at=case.created_at + timedelta(hours=6, minutes=1),
-        )

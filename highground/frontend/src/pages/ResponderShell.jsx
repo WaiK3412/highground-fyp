@@ -80,7 +80,7 @@ export default function ResponderShell({ user, active, unread = 0, duplicateCoun
           </a>
           <a href="#rules" className={current('rules')} onClick={go('rules')}>
             <Icon path={PATHS.rules} />
-            How scoring works
+            How priority works
           </a>
 
           <span className="side-nav__label">Organisation</span>

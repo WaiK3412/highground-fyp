@@ -170,13 +170,6 @@ class CaseRecord(models.Model):
         on_delete=models.PROTECT,
         related_name="submitted_cases",
     )
-    claimed_by_org = models.ForeignKey(
-        Organization,
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="claimed_cases",
-    )
     verified_by_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -227,12 +220,26 @@ class CaseRecord(models.Model):
     status = models.CharField(max_length=20, choices=Status, default=Status.SUBMITTED)
     score_total = models.IntegerField(null=True, blank=True)
 
+    # classes-1.0 (scoring/classes.py). Set at verification; NULL until then.
+    # score_total above is the retired weighted score, kept for the report's
+    # comparison and no longer written for new cases.
+    class PriorityClass(models.IntegerChoices):
+        HEALTH_CRITICAL = 1, "Health-critical"
+        AT_RISK = 2, "At risk"
+        STANDARD = 3, "Standard"
+
+    priority_class = models.PositiveSmallIntegerField(
+        choices=PriorityClass, null=True, blank=True
+    )
+    priority_reasons = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField()
     closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "case_record"
-        ordering = ["-score_total", "created_at"]
+        # Class first, then first come, first served; unclassified last.
+        ordering = [models.F("priority_class").asc(nulls_last=True), "created_at", "pk"]
 
     def __str__(self):
         return f"{self.reference} — {self.village}"
@@ -268,6 +275,50 @@ class CasePhoto(models.Model):
         return self.caption or self.file_path
 
 
+class CaseJob(models.Model):
+    """One type of help a household asked for, claimable on its own.
+
+    A household submits one request (CaseRecord): one address, one officer
+    verification, one priority class. Each type of help it needs becomes a
+    job, and each job can be claimed by a different organisation, as Crisis
+    Cleanup does with work types (ADR-020). Only one organisation can hold a
+    job, so two NGOs never turn up for the same work.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Waiting for an organisation"
+        CLAIMED = "claimed", "Claimed"
+        IN_PROGRESS = "in_progress", "In progress"
+        PENDING_CONFIRM = "pending_confirm", "Awaiting resident confirmation"
+        DONE = "done", "Done"
+
+    # An organisation holding a job in one of these may see the exact address.
+    ACTIVE = (Status.CLAIMED, Status.IN_PROGRESS, Status.PENDING_CONFIRM)
+
+    case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="jobs")
+    help_type = models.CharField(max_length=20, choices=CaseRecord.DamageCategory)
+    status = models.CharField(max_length=20, choices=Status, default=Status.OPEN)
+    claimed_by_org = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="claimed_jobs",
+    )
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "case_job"
+        ordering = ["case_id", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["case", "help_type"], name="one_job_per_help_type"),
+        ]
+
+    def __str__(self):
+        return f"{self.case.reference} · {self.get_help_type_display()}"
+
+
 class CaseTask(models.Model):
     class TaskType(models.TextChoices):
         CLEANUP = "cleanup", "Cleanup"
@@ -282,6 +333,11 @@ class CaseTask(models.Model):
         DONE = "done", "Done"
 
     case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="tasks")
+    # The job this work belongs to; its organisation owns the task. Null only
+    # for rows created before jobs existed and not yet migrated.
+    job = models.ForeignKey(
+        CaseJob, on_delete=models.CASCADE, null=True, blank=True, related_name="tasks"
+    )
     lead_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -323,7 +379,11 @@ class DuplicateCaseMatch(models.Model):
         blank=True,
         related_name="duplicate_decisions",
     )
-    similarity_score = models.DecimalField(max_digits=5, decimal_places=2)
+    # rules-1.0 flags store which rules fired and no score. dup-1.1 flags
+    # (retired weighted engine) keep their evidence index here.
+    similarity_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    method = models.CharField(max_length=20, default="dup-1.1")
+    matched_rules = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=20, choices=Status, default=Status.OPEN)
     decided_at = models.DateTimeField(null=True, blank=True)
 
@@ -344,7 +404,13 @@ class DuplicateCaseMatch(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.case_a.reference} ~ {self.case_b.reference} ({self.similarity_score}%)"
+        # rules-1.0 flags have no score; dup-1.1 flags keep their 0-100 index,
+        # which is an evidence index, not a percentage chance.
+        if self.similarity_score is None:
+            evidence = f"{self.method}: {', '.join(self.matched_rules) or 'no rules'}"
+        else:
+            evidence = f"{self.method} index {self.similarity_score}"
+        return f"{self.case_a.reference} ~ {self.case_b.reference} ({evidence})"
 
 
 _audit_reset = ContextVar("audit_reset", default=False)

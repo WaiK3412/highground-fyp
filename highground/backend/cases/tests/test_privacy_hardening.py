@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from accounts.models import Organization, RegistrationDocument, UserAccount
 from cases.models import CaseEventLog, CasePhoto, CaseRecord
+from cases.tests.job_helpers import give_job
 from cases.redaction import redact_personal_data
 
 
@@ -59,11 +60,12 @@ class PrivacyBoundaryTests(TestCase):
         self.admin = user("Admin One", UserAccount.Role.SYSTEM_ADMIN, staff=True)
         self.case = CaseRecord.objects.create(
             reference="FRC-9901", submitted_by_user=self.owner,
-            claimed_by_org=self.org, damage_category=CaseRecord.DamageCategory.CLEANUP,
+            damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Resident One can be reached at 012-345 6789. Bring water.",
             village="Kg. Test", address="Lot 14, Jalan Hospital",
             status=CaseRecord.Status.CLAIMED, created_at=timezone.now(),
         )
+        self.job = give_job(self.case, self.org)
         self.photo = CasePhoto.objects.create(
             case=self.case,
             file_path=SimpleUploadedFile("private.jpg", b"\xff\xd8\xffphoto", content_type="image/jpeg"),
@@ -121,9 +123,9 @@ class PrivacyBoundaryTests(TestCase):
         self.assertNotIn("description", payload)
 
     def test_unattached_ngo_sees_no_unclaimed_case(self):
-        self.case.claimed_by_org = None
+        give_job(self.case, None)
         self.case.status = CaseRecord.Status.VERIFIED
-        self.case.save(update_fields=["claimed_by_org", "status"])
+        self.case.save(update_fields=["status"])
         self.client.force_login(self.unattached)
         self.assertEqual(self.client.get("/api/cases/").json()["count"], 0)
         self.assertEqual(self.client.get(f"/api/cases/{self.case.pk}/").status_code, 404)
