@@ -225,7 +225,7 @@ export default function DuplicateReview({ user, initialId, duplicateCount, onCou
   }
 
   return (
-    <ResponderShell user={user} active="duplicates" duplicateCount={duplicateCount} onNavigate={onNavigate} onLogout={onLogout}>
+    <ResponderShell user={user} active="duplicates" counts={{ duplicates: duplicateCount }} onNavigate={onNavigate} onLogout={onLogout}>
       <div className="page-header duplicate-review__header">
         <div>
           <h1>Duplicate review</h1>

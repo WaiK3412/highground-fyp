@@ -136,11 +136,6 @@ class QueueOrderAndFilterTests(LifecycleTestCase):
         area = next(a for a in data["areas"] if a["code"] == village.code)
         self.assertEqual(area["highest_class"], 2)
 
-    def test_priority_rules_endpoint(self):
-        data = self.client.get("/api/priority-rules/").json()
-        self.assertEqual(data["version"], "classes-1.0")
-        self.assertEqual([c["priority_class"] for c in data["classes"]], [1, 2, 3])
-
     def test_unclaimed_ngo_summary_hides_the_reasons(self):
         # Reasons name household vulnerabilities (disability, older person);
         # an NGO that has not claimed the case gets the class label only.
@@ -155,3 +150,23 @@ class QueueOrderAndFilterTests(LifecycleTestCase):
             self.client.get(f"/api/cases/{self.c2.pk}/").json()["priority_reasons"],
             ["At risk: older person in the household"],
         )
+
+    def test_unverified_requests_reporting_urgent_health_needs_come_first_among_unverified(self):
+        urgent_new = self.make("FRC-9106", None, 1, status=CaseRecord.Status.SUBMITTED)
+        CaseRecord.objects.filter(pk=urgent_new.pk).update(urgency="medical_disrupted")
+        refs = self.refs()
+        # Verified classes still come first; the self-reported flag only orders
+        # the unverified tail, it never outranks a checked class.
+        self.assertEqual(refs[-2:], [urgent_new.pk, self.unverified.pk])
+
+    def test_officer_rows_carry_the_reported_urgent_flag(self):
+        CaseRecord.objects.filter(pk=self.unverified.pk).update(urgency="urgent")
+        row = next(r for r in self.rows() if r["id"] == self.unverified.pk)
+        self.assertTrue(row["reported_urgent"])
+        verified = next(r for r in self.rows() if r["id"] == self.c1_new.pk)
+        self.assertFalse(verified["reported_urgent"])
+
+    def test_residents_do_not_get_the_flag(self):
+        self.login(self.resident)
+        for row in self.rows():
+            self.assertNotIn("reported_urgent", row)

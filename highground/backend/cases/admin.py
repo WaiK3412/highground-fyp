@@ -1,10 +1,10 @@
 """Django admin as the case-management interface (ADR-002: admin = screens 14/19)."""
 
 from django.contrib import admin
+from django.db import transaction
+from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
-
-from scoring.models import CaseScoreComponent
 
 from .models import (
     CaseEventLog,
@@ -16,26 +16,15 @@ from .models import (
     DropOffPoint,
     DuplicateCaseMatch,
     LocationArea,
+    SupplyAppeal,
 )
-
-
-class CaseScoreComponentInline(admin.TabularInline):
-    """The explainable breakdown, shown inline on the case it belongs to."""
-
-    model = CaseScoreComponent
-    extra = 0
-    readonly_fields = ("criterion", "points", "reason")
-    can_delete = False
-
-    def has_add_permission(self, request, obj=None):
-        return False
 
 
 class CasePhotoInline(admin.TabularInline):
     model = CasePhoto
     extra = 0
-    fields = ("caption", "download", "uploaded_at")
-    readonly_fields = ("caption", "download", "uploaded_at")
+    fields = ("stage", "caption", "uploaded_by_user", "task", "download", "uploaded_at")
+    readonly_fields = fields
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -64,7 +53,11 @@ class CaseTaskInline(admin.TabularInline):
     model = CaseTask
     extra = 0
     fields = ("title", "job", "task_type", "status", "lead_user")
+    readonly_fields = fields
     can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CaseRecord)
@@ -82,19 +75,22 @@ class CaseRecordAdmin(admin.ModelAdmin):
     )
     search_fields = ("reference", "village", "address", "description")
     date_hierarchy = "created_at"
-    # Computed at verification (classes-1.0); editing them here would make
-    # a class that no rule produced.
-    readonly_fields = ("priority_class", "priority_reasons", "score_total")
-    inlines = [CaseScoreComponentInline, CaseJobInline, CasePhotoInline, CaseTaskInline]
+    # Lifecycle and assessment change only through the API, which locks,
+    # audits, reclassifies and notifies. The village stays editable for the
+    # no-village duplicate path (scan_duplicates), and that edit is audited.
+    readonly_fields = (
+        "reference", "status", "description", "priority_class", "priority_reasons",
+        "score_total", "rubric_version", "damage_category", "urgency", "flood_depth",
+        "liveability", "access_level", "needs_flags", "vulnerability_flags",
+        "household_size", "address", "latitude", "longitude", "submitted_by_user",
+        "verified_by_user", "duplicate_of_case", "created_at", "closed_at",
+    )
+    inlines = [CaseJobInline, CasePhotoInline, CaseTaskInline]
     fieldsets = (
         (None, {"fields": ("reference", "status", "description")}),
         (
             "Priority (classes-1.0, set at verification)",
             {"fields": ("priority_class", "priority_reasons")},
-        ),
-        (
-            "Retired weighted score (kept for comparison)",
-            {"fields": ("score_total", "rubric_version"), "classes": ("collapse",)},
         ),
         (
             "Assessment — the classification inputs",
@@ -123,14 +119,23 @@ class CaseRecordAdmin(admin.ModelAdmin):
         ("Dates", {"fields": ("created_at", "closed_at")}),
     )
 
-    def get_readonly_fields(self, request, obj=None):
-        # Duplicate links are made only by the officer review workflow, which
-        # locks, audits and notifies. A linked case cannot be reopened here
-        # either, or it would be both closed-as-duplicate and live.
-        fields = self.readonly_fields + ("duplicate_of_case",)
-        if obj is not None and obj.duplicate_of_case_id:
-            fields += ("status", "closed_at")
-        return fields
+    def has_add_permission(self, request):
+        return False
+
+    @transaction.atomic
+    def save_model(self, request, obj, form, change):
+        # Update only the correction fields: a stale admin form must not
+        # overwrite a lifecycle action committed while it was open.
+        changed = [field for field in form.changed_data if field in {"location_area", "village"}]
+        if change and changed:
+            obj.save(update_fields=changed)
+            CaseEventLog.objects.create(
+                case=obj,
+                actor_user=request.user,
+                event_type=CaseEventLog.EventType.ADMIN_CORRECTED,
+                detail=f"Corrected in admin by {request.user.full_name}: {', '.join(changed)}.",
+                created_at=timezone.now(),
+            )
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -165,6 +170,12 @@ class CaseTaskAdmin(admin.ModelAdmin):
     list_display = ("title", "case", "task_type", "status", "lead_user", "assigned_at")
     list_filter = ("status", "task_type")
     search_fields = ("title", "case__reference")
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -267,3 +278,13 @@ class CasePhotoAdmin(admin.ModelAdmin):
 admin.site.site_header = "HighGround — flood recovery coordination"
 admin.site.site_title = "HighGround admin"
 admin.site.index_title = "Case management"
+
+
+@admin.register(SupplyAppeal)
+class SupplyAppealAdmin(admin.ModelAdmin):
+    list_display = ("title", "organization", "drop_off_point", "needed_until", "status")
+    list_filter = ("status", "organization")
+    search_fields = ("title", "items")
+
+    def has_delete_permission(self, request, obj=None):
+        return False

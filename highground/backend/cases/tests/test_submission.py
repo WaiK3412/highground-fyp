@@ -5,21 +5,23 @@ Traceability — requirements covered by this file:
   FR20 Role-based permissions on every endpoint
   FR21 Submission is recorded in the append-only event log
 
-The tests that matter here are the refusals, not the happy path. A create
-endpoint that accepts everything it is sent would let a household set its own
-priority score, which is the one thing the whole rubric exists to prevent.
+Refusal tests ensure a household cannot set its own priority or workflow
+fields. Only officer verification assigns the priority class (ADR-018).
 """
 
 import json
 import shutil
 import tempfile
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from PIL import Image
 
 from accounts.models import UserAccount
 from cases.models import CaseEventLog, CasePhoto, CaseRecord, LocationArea
+from .photo_helpers import jpeg_with_gps, photo_upload
 
 URL = "/api/cases/"
 
@@ -117,28 +119,22 @@ class ValidationTests(SubmissionTestCase):
         super().setUp()
         self.client.force_login(self.resident)
 
-    def test_unknown_needs_flags_are_refused(self):
-        """The engine awards points per flag, so an open list is a way to
-        inflate your own priority."""
-        response = self.post(needs_flags=["water", "helicopter", "cash"])
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(CaseRecord.objects.count(), 0)
-
-    def test_unknown_vulnerability_flags_are_refused(self):
-        response = self.post(vulnerability_flags=["elderly", "vip"])
-        self.assertEqual(response.status_code, 400)
+    def test_invalid_submission_fields_are_refused_without_creating_a_case(self):
+        # Unknown flags must not reach class rules or household explanations.
+        cases = (
+            ("unknown needs", {"needs_flags": ["water", "helicopter", "cash"]}, 400),
+            ("unknown vulnerability", {"vulnerability_flags": ["elderly", "vip"]}, 400),
+            ("blank description", {"description": "   "}, 400),
+            ("zero household", {"household_size": 0}, 400),
+        )
+        for value, payload, expected_status in cases:
+            with self.subTest(value=value):
+                self.assertEqual(self.post(**payload).status_code, expected_status)
+                self.assertEqual(CaseRecord.objects.count(), 0)
 
     def test_repeated_flags_are_counted_once(self):
         self.post(needs_flags=["water", "water", "water"])
         self.assertEqual(CaseRecord.objects.get().needs_flags, ["water"])
-
-    def test_an_empty_description_is_refused(self):
-        response = self.post(description="   ")
-        self.assertEqual(response.status_code, 400)
-
-    def test_a_household_of_zero_is_refused(self):
-        response = self.post(household_size=0)
-        self.assertEqual(response.status_code, 400)
 
 
 class LocationTests(SubmissionTestCase):
@@ -164,18 +160,19 @@ class LocationTests(SubmissionTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("location_code", response.json())
 
-    def test_an_unknown_code_is_refused(self):
-        response = self.post(location_code="MY0307-V999")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(CaseRecord.objects.count(), 0)
+    def test_unknown_or_district_location_codes_are_refused(self):
+        cases = (
+            ("unknown village", "MY0307-V999", 400),
+            ("district", "MY0307", 400),
+        )
+        for value, location_code, expected_status in cases:
+            with self.subTest(value=value):
+                self.assertEqual(self.post(location_code=location_code).status_code, expected_status)
+                self.assertEqual(CaseRecord.objects.count(), 0)
 
     def test_a_retired_village_is_refused(self):
         LocationArea.objects.filter(code="MY0307-V001").update(active=False)
         response = self.post()
-        self.assertEqual(response.status_code, 400)
-
-    def test_a_district_is_not_a_village(self):
-        response = self.post(location_code="MY0307")
         self.assertEqual(response.status_code, 400)
 
 
@@ -185,8 +182,8 @@ class SubmittedStateTests(SubmissionTestCase):
         self.client.force_login(self.resident)
 
     def test_a_new_case_is_unscored_and_awaiting_verification(self):
-        """Screen 17: a request is checked by an officer 'before it is scored
-        and released to the NGO queue'. Scoring is FR13's job, not FR3's."""
+        """FR3 submission leaves priority unset until officer verification
+        assigns a class (FR10, ADR-018) and releases it to the NGO queue."""
         self.post()
         case = CaseRecord.objects.get()
 
@@ -241,13 +238,9 @@ class PhotoUploadTests(SubmissionTestCase):
         self.client.force_login(self.resident)
 
     def photo(self, name="damage.jpg", content_type="image/jpeg", size=32):
-        signatures = {
-            "image/jpeg": b"\xff\xd8\xff",
-            "image/png": b"\x89PNG\r\n\x1a\n",
-            "image/webp": b"RIFF\x04\x00\x00\x00WEBP",
-        }
-        header = signatures.get(content_type, b"x")
-        return SimpleUploadedFile(name, header + b"x" * max(size - len(header), 0), content_type=content_type)
+        formats = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
+        content = photo_upload(name, formats[content_type]).read() if content_type in formats else b"x"
+        return SimpleUploadedFile(name, content + b"x" * max(size - len(content), 0), content_type=content_type)
 
     def post_multipart(self, photos, **overrides):
         payload = {**VALID, **overrides}
@@ -265,6 +258,31 @@ class PhotoUploadTests(SubmissionTestCase):
         case = CaseRecord.objects.get()
         self.assertEqual(case.photos.count(), 1)
         self.assertTrue(case.photos.get().file_path.name.endswith(".jpg"))
+
+    def test_photo_metadata_and_source_name_are_removed(self):
+        """FR3/NFR3: clean household evidence before any case is created."""
+        response = self.post_multipart([jpeg_with_gps()])
+        self.assertEqual(response.status_code, 201, response.content)
+        photo = CasePhoto.objects.get()
+        self.assertNotIn("siti", photo.file_path.name)
+        with photo.file_path.open("rb") as stored, Image.open(stored) as result:
+            self.assertEqual(dict(result.getexif()), {})
+
+    def test_undecodable_photo_returns_a_message_without_creating_a_case(self):
+        response = self.post_multipart([SimpleUploadedFile(
+            "fake.jpg", b"\xff\xd8\xffnot an image", content_type="image/jpeg",
+        )])
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertTrue(response.json()["photos"][0])
+        self.assertEqual(CaseRecord.objects.count(), 0)
+        self.assertEqual(CasePhoto.objects.count(), 0)
+
+    def test_decompression_bomb_returns_400_before_writing(self):
+        upload = jpeg_with_gps()
+        with patch.object(Image, "MAX_IMAGE_PIXELS", 50):
+            response = self.post_multipart([upload])
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(CaseRecord.objects.count(), 0)
 
     def test_several_photos_are_all_stored(self):
         self.post_multipart([self.photo("a.jpg"), self.photo("b.png", "image/png")])

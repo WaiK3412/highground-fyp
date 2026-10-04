@@ -109,18 +109,12 @@ export default function Login({ onLoggedIn, onShowRegister }) {
             </div>
 
             <div className="field">
-              <div className="row--between">
-                <label htmlFor="password">Password</label>
-                <span className="text-sm" style={{ color: 'var(--teal-700)', fontWeight: 600 }}>
-                  Forgot password?
-                </span>
-              </div>
+              <label htmlFor="password">Password</label>
               <input
                 id="password"
                 className="input"
                 type="password"
                 autoComplete="current-password"
-                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

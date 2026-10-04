@@ -15,14 +15,13 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
 # Set DJANGO_DEBUG=0 and deployment host/origin values in the production environment.
 SECRET_KEY = os.environ["SECRET_KEY"]
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
@@ -134,6 +133,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+TEST_RUNNER = "config.test_runner.FastPasswordTestRunner"  # Fast hashing only in tests.
+
 # Custom user model — must be set before the first migrate (Django docs:
 # "Changing AUTH_USER_MODEL after creating the database is significantly harder").
 # Report §3.6 ERD: user_account is the shared base table for all four roles.
@@ -153,6 +154,8 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
+    # Slows password guessing (NFR3). Counted per client IP in the default cache.
+    "DEFAULT_THROTTLE_RATES": {"login": "10/min", "register": "5/min"},
 }
 
 # The SPA runs on its own dev-server origin (Vite :5173, or :5174 when that
@@ -184,8 +187,17 @@ MEDIA_ROOT = BASE_DIR / "media"
 #
 # In development nothing leaves the machine: the console backend prints the
 # message to the terminal, so the flow can be demonstrated with no credentials
-# and no network. Setting EMAIL_HOST in .env switches to real SMTP (Brevo).
+# and no network. Setting EMAIL_HOST in .env switches to real SMTP (Brevo, Gmail or any provider).
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "HighGround <no-reply@hg.my>")
+
+# Placeholder domains are never mailed: the seeded demo accounts use hg.my,
+# which this project does not own, so real SMTP would reach a stranger or
+# bounce. Comma-separated, case-insensitive.
+EMAIL_SKIP_DOMAINS = {
+    domain.strip().lower()
+    for domain in os.environ.get("EMAIL_SKIP_DOMAINS", "hg.my").split(",")
+    if domain.strip()
+}
 
 if os.environ.get("EMAIL_HOST"):
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
@@ -193,6 +205,10 @@ if os.environ.get("EMAIL_HOST"):
     EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
     EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
     EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-    EMAIL_USE_TLS = True
+    # 465 is implicit TLS, 587 is STARTTLS; Django refuses both at once.
+    EMAIL_USE_SSL = EMAIL_PORT == 465
+    EMAIL_USE_TLS = not EMAIL_USE_SSL
+    # Sent synchronously inside the request: a dead server must not hang it.
+    EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", 10))
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

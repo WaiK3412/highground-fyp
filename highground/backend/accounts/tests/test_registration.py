@@ -12,9 +12,12 @@ import shutil
 import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from PIL import Image
 
 from accounts.models import Organization, RegistrationDocument, UserAccount
+from cases.tests.photo_helpers import jpeg_with_gps
+from .throttle_helpers import ThrottleTestCase
 
 S = UserAccount.VerificationStatus
 R = UserAccount.Role
@@ -30,7 +33,7 @@ def a_pdf(name="registration.pdf"):
     return SimpleUploadedFile(name, b"%PDF-1.4 fake", content_type="application/pdf")
 
 
-class ResidentRegistrationTests(TestCase):
+class ResidentRegistrationTests(ThrottleTestCase):
 
     def test_a_resident_registers_without_review(self):
         """The ordinary path: no role asked for, so nothing to verify."""
@@ -54,7 +57,7 @@ class ResidentRegistrationTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
-class RoleApplicationTests(TestCase):
+class RoleApplicationTests(ThrottleTestCase):
 
     @classmethod
     def tearDownClass(cls):
@@ -62,6 +65,7 @@ class RoleApplicationTests(TestCase):
         super().tearDownClass()
 
     def setUp(self):
+        super().setUp()
         self.org = Organization.objects.create(
             name="Mercy Relief", type=Organization.Type.NGO
         )
@@ -96,6 +100,29 @@ class RoleApplicationTests(TestCase):
 
         user = UserAccount.objects.get(email="aisyah@test.my")
         self.assertEqual(RegistrationDocument.objects.filter(user=user).count(), 1)
+
+    def test_document_storage_name_is_generated(self):
+        """NFR3: PDFs retain their content but never their source storage name."""
+        response = self.client.post(URL, self.application(documents=a_pdf("aisyah_address.pdf")))
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertRegex(RegistrationDocument.objects.get().file.name, r"/[0-9a-f]{32}\.pdf$")
+
+    def test_registration_image_is_cleaned(self):
+        """NFR3: role evidence images follow the same cleaning as case photos."""
+        response = self.client.post(URL, self.application(documents=jpeg_with_gps()))
+        self.assertEqual(response.status_code, 201, response.content)
+        document = RegistrationDocument.objects.get()
+        self.assertNotIn("siti", document.file.name)
+        with document.file.open("rb") as stored, Image.open(stored) as result:
+            self.assertEqual(dict(result.getexif()), {})
+
+    def test_undecodable_image_is_refused_before_account_creation(self):
+        response = self.client.post(URL, self.application(documents=SimpleUploadedFile(
+            "fake.jpg", b"\xff\xd8\xffnot an image", content_type="image/jpeg",
+        )))
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertTrue(response.json()["documents"][0])
+        self.assertFalse(UserAccount.objects.filter(email="aisyah@test.my").exists())
 
     def test_an_application_without_documents_is_refused(self):
         """Nothing to check means nothing to approve."""

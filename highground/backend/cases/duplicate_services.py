@@ -1,8 +1,8 @@
 """Duplicate detection and officer review — the database side (report §3.7.8).
 
 The comparison itself lives in cases/duplicate_rules.py (pure, rules-1.0).
-The retired weighted engine, cases/duplicates.py (dup-1.1), still supplies the
-normalisers and DuplicateInput, and is kept for the report's comparison.
+The shared pure module cases/normalise.py supplies normalisers and
+DuplicateInput.
 This module decides which cases are compared, stores flags, tracks whether a
 case's check has finished, and applies an officer's decision.
 
@@ -32,7 +32,7 @@ from django.utils import timezone
 from accounts.models import UserAccount
 
 from .duplicate_rules import RULES_VERSION, compare_by_rules, contradictions, pin_distance_metres
-from .duplicates import DuplicateInput
+from .normalise import DuplicateInput
 from .models import CaseEventLog, CaseJob, CaseRecord, CaseTask, DuplicateCaseMatch, LocationArea
 
 logger = logging.getLogger(__name__)
@@ -78,13 +78,15 @@ class DuplicateConflict(Exception):
 
 
 def description_for_matching(case: CaseRecord) -> str:
-    """The text the comparator reads. The one place a future translation step
-    would plug in; the engine itself stays language-neutral."""
+    """Keep description text in the shared input for offline comparison.
+
+    Rules-1.0 does not read it; a future translation step can plug in here.
+    """
     return case.description
 
 
 def duplicate_input_for_case(case: CaseRecord, submitter: UserAccount | None = None) -> DuplicateInput:
-    """Build the engine's input from a case.
+    """Build the comparator's input from a case.
 
     Name and phone are the submitting account's, not the household's: an
     acknowledged limitation, since a relative filing uses their own account.
@@ -256,7 +258,7 @@ def _compare_pairs(pairs, cases, dry_run, actor=None) -> ScanResult:
     for a, b in pairs:
         result.examined += 1
         if frozenset((a.pk, b.pk)) in existing:
-            # Never re-score or re-open a pair: an officer may have decided it.
+            # Never recompare or reopen a pair: an officer may have decided it.
             result.existing += 1
             continue
         comparison = compare_by_rules(inputs[a.pk], inputs[b.pk])

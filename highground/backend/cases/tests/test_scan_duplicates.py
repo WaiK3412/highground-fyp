@@ -1,6 +1,6 @@
 """The scan_duplicates backfill command.
 
-Traceability: FR14 — existing cases are checked with the same engine and
+Traceability: FR9 — existing cases are checked with the same engine and
 rules as new submissions; output carries counts, never household details.
 """
 

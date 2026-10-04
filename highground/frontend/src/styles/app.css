@@ -1,0 +1,38 @@
+/* App additions stay outside the frozen design CSS (ADR-001).
+   Important declarations preserve the precedence of the inline styles they replace. */
+
+.mb-24 { margin-bottom: 2.4rem !important; }
+.gap-8 { gap: 0.8rem !important; }
+.gap-24 { gap: 2.4rem !important; }
+.text-danger { color: var(--danger-600) !important; }
+.wrap { flex-wrap: wrap !important; }
+.mb-4 { margin-bottom: 0.4rem !important; }
+.mb-12 { margin-bottom: var(--sp-12) !important; }
+.cursor-pointer { cursor: pointer !important; }
+.gap-10 { gap: 1rem !important; }
+.mt-16 { margin-top: var(--sp-16) !important; }
+.block { display: block !important; }
+.pad-24 { padding: 2.4rem !important; }
+.gap-12 { gap: 1.2rem !important; }
+.font-normal { font-weight: 400 !important; }
+
+/* Browsers give <button> its own font; the design only sets it on .btn, so
+   filter chips and choice cards fell back to Arial. */
+button { font-family: inherit; }
+
+/* Read-only fields look read-only, as the prototype's .input--readonly. */
+.input:disabled { background: var(--grey-50); color: var(--grey-500); cursor: not-allowed; }
+
+/* The prototype's "⋮" promises an account menu the app does not have. */
+.sidebar__user::after { content: none; }
+
+.link-button { background: none; border: 0; padding: 0; cursor: pointer; }
+
+.panel-title { font-size: var(--fs-20); margin: 0; }
+
+/* Scrolling panes keep a gutter for their scrollbar. The last pane's gutter
+   sits in the page padding, so its cards line up with the page header. */
+@media (min-width: 1151px) {
+  .scroll-pane { scrollbar-width: thin; scrollbar-color: var(--grey-300) transparent; padding-right: var(--sp-16); }
+  .scroll-pane:last-child { margin-right: calc(-1 * var(--sp-16)); }
+}

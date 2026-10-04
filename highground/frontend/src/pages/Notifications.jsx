@@ -1,21 +1,13 @@
-/**
- * Screen 21 — Notifications.
- *
- * There is no notification table behind this. Every row is a case_event_log
- * row that happens to name this user as its recipient (ADR-004), so the same
- * records serve the case timeline and the audit trail. That is why a
- * notification always points at a case.
- */
+/** ADR-004: recipient case_event_log rows serve notifications, case history and the audit trail (screen 21). */
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { useLoad } from '../useLoad'
 import ResidentShell from './ResidentShell'
 import ResponderShell from './ResponderShell'
 
-// Icon and tone per event. Green for good news, amber when the household has
-// to do something, red for a refusal — matching the frozen design's four
-// notif-icon variants.
+// Match frozen notification tones: green news, amber household actions and red refusals.
 const EVENT_UI = {
   submitted: {
     tone: 'teal',
@@ -63,36 +55,20 @@ function ago(iso) {
 
 export default function Notifications({ user, onLogout, onNavigate, onOpenCase, duplicateCount }) {
   useDocumentTitle('Notifications')
-  const [rows, setRows] = useState([])
-  const [unread, setUnread] = useState(0)
   const [filter, setFilter] = useState('all')
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [busyId, setBusyId] = useState(null)
-  const [attempt, setAttempt] = useState(0)
 
   async function load() {
     const data = await api.notifications()
-    setRows(data.results)
-    setUnread(data.unread)
+    setData(data)
   }
 
-  useEffect(() => {
-    let cancelled = false
-    api
-      .notifications()
-      .then((data) => {
-        if (cancelled) return
-        setRows(data.results)
-        setUnread(data.unread)
-      })
-      .catch((err) => !cancelled && setLoadError(err.message))
-      .finally(() => !cancelled && setLoading(false))
-    return () => {
-      cancelled = true
-    }
-  }, [attempt])
+  const { data, setData, loading, error: loadError, reload } = useLoad(
+    () => api.notifications(), [], { results: [], unread: 0 },
+  )
+  const rows = data.results
+  const unread = data.unread
 
   async function markRead(id) {
     setActionError(null)
@@ -129,7 +105,7 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
       user={user}
       active="notifications"
       unread={unread}
-      duplicateCount={duplicateCount}
+      counts={{ duplicates: duplicateCount }}
       onNavigate={onNavigate}
       onLogout={onLogout}
     >
@@ -159,10 +135,10 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
       </div>
 
       <div className="card" style={{ padding: 0 }}>
-        {loading ? <p role="status" className="text-sm text-muted" style={{ padding: '2.4rem' }}>Loading notifications…</p> : loadError ? (
-          <p role="alert" className="text-sm" style={{ padding: '2.4rem' }}>Could not load notifications: {loadError} <button className="btn btn--ghost btn--sm" onClick={() => { setLoadError(null); setLoading(true); setAttempt((n) => n + 1) }}>Retry</button></p>
+        {loading ? <p role="status" className="text-sm text-muted pad-24">Loading notifications…</p> : loadError ? (
+          <p role="alert" className="text-sm pad-24">Could not load notifications: {loadError} <button className="btn btn--ghost btn--sm" onClick={reload}>Retry</button></p>
         ) : shown.length === 0 ? (
-          <p className="text-sm text-muted" style={{ padding: '2.4rem' }}>
+          <p className="text-sm text-muted pad-24">
             {filter === 'unread'
               ? 'Nothing unread.'
               : user.role === 'community_member'
@@ -191,7 +167,7 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
                     <div className="notif-desc">{row.detail}</div>
                     <div className="notif-meta">
                       <span className="notif-time">{ago(row.created_at)}</span>
-                      <span className="row" style={{ gap: '1.2rem' }}>
+                      <span className="row gap-12">
                         <button
                           className="notif-mark-read"
                           onClick={() => onOpenCase(row.case_id)}

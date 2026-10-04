@@ -5,7 +5,7 @@ boundaries are this project's interpretation of them (ADR-018), not rules the
 sources prescribe. ESI, for example, is clinical emergency triage, not a
 flood-recovery tool.
 
-No Django imports on purpose, like scoring/engine.py. There are no weights or
+No Django imports on purpose: the rules take plain values. There are no weights or
 points: a case belongs to the first class whose condition it meets, and the
 queue orders a class by submission time (first come, first served).
 

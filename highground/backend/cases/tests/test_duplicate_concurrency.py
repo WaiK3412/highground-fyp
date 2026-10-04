@@ -5,13 +5,10 @@ connection, so row locks genuinely contend. A barrier releases both requests
 together; which one wins is up to PostgreSQL, so each test asserts the
 invariant that must hold either way.
 
-Traceability: FR14, NFR6 — one effective decision per flag; a case is never
+Traceability: FR9, NFR6 — one effective decision per flag; a case is never
 both claimed and closed as a duplicate.
 """
 
-import threading
-
-from django.db import connection
 from django.test import Client, TransactionTestCase
 
 from cases import duplicate_services as svc
@@ -19,41 +16,10 @@ from cases.models import CaseEventLog, CaseRecord, DuplicateCaseMatch
 
 from .duplicate_helpers import DuplicateWorld
 from .job_helpers import give_job
+from .race_helpers import GazetteerReloadMixin, race
 
 
-def race(*requests):
-    """Run each zero-argument callable in its own thread, released together."""
-    barrier = threading.Barrier(len(requests))
-    results = [None] * len(requests)
-
-    def run(index, request):
-        try:
-            barrier.wait()
-            results[index] = request()
-        finally:
-            connection.close()  # this thread's own connection
-
-    threads = [threading.Thread(target=run, args=(i, r)) for i, r in enumerate(requests)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=30)
-    return results
-
-
-class DuplicateRaceTests(DuplicateWorld, TransactionTestCase):
-    @classmethod
-    def tearDownClass(cls):
-        # TransactionTestCase empties every table after each test, including
-        # the gazetteer rows migration 0008 loaded. Reload them with that
-        # migration's own loader so other tests, and a --keepdb rerun, find them.
-        from importlib import import_module
-
-        from django.apps import apps
-
-        import_module("cases.migrations.0008_load_kelantan_locations").load(apps, None)
-        super().tearDownClass()
-
+class DuplicateRaceTests(GazetteerReloadMixin, DuplicateWorld, TransactionTestCase):
     def setUp(self):
         self.build_world()
         self.older, self.newer = self.older_and_newer()

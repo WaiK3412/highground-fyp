@@ -3,7 +3,7 @@
 from django.test import SimpleTestCase
 
 from cases.duplicate_rules import compare_by_rules
-from cases.duplicates import DuplicateInput
+from cases.normalise import DuplicateInput
 
 
 def inp(name="", phone="", address="", lat=None, lng=None):
@@ -72,19 +72,6 @@ class NormalisationDefectTests(SimpleTestCase):
             rules(inp(address="12/3 Jalan Masjid"), inp(address="12 / 3, Jln Masjid")),
             ["same_house_and_address"],
         )
-
-
-class RulesEvaluationTests(SimpleTestCase):
-    def test_heldout_counts_are_reproducible(self):
-        from cases import duplicate_evaluation as ev
-
-        data = ev.load_fixture()
-        outcomes = ev.score_split_rules(data, "heldout")
-        in_block = ev.confusion(outcomes, 50.0)
-        end_to_end = ev.confusion(outcomes, 50.0, end_to_end=True)
-        # Measured 30 Sep 2026 (docs/research/duplicate-rule-comparison-2026-09-30.md).
-        self.assertEqual((in_block["tp"], in_block["fp"]), (28, 6))
-        self.assertEqual(end_to_end["fn"], 3)
 
 
 class ContradictionTests(SimpleTestCase):

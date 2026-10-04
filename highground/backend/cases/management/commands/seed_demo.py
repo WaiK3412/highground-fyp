@@ -1,14 +1,11 @@
-"""Seed demo data.
-
-Reuses the prototype's sample content (GAPS C10 item 10) so what appears on
-screen matches the figures in the report — in particular the canonical case
-#FRC-1042, whose priority class is COMPUTED by the classifier here
-(scoring/classes.py, via cases/services.py), not stored as a literal.
+"""GAPS C10 item 10: match report/prototype content; compute FRC-1042's class via cases.services.
 
     python manage.py seed_demo --flush
 """
 
 import random
+import os
+
 from datetime import timedelta
 
 from decimal import Decimal
@@ -21,7 +18,7 @@ from django.utils import timezone
 from accounts.models import Organization, UserAccount
 from cases.services import classify_case_record
 from cases.models import (
-    CaseEventLog, CaseJob, CaseRecord, CaseTask, DropOffPoint, LocationArea, demo_audit_reset,
+    CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask, DropOffPoint, LocationArea, SupplyAppeal, demo_audit_reset,
 )
 from scoring.models import (
     CaseScoreComponent,
@@ -31,19 +28,6 @@ from scoring.models import (
 
 DEMO_PASSWORD = "demo"  # short on purpose: typed live during demos
 
-RUBRIC_V3 = [
-    ("safety", "Safety & medical urgency", 25, 25,
-     "none 0 · health risk 10 · medical needs disrupted 18 · urgent 25"),
-    ("damage", "Damage severity & loss of shelter", 20, 20,
-     "cosmetic 4 · partially unliveable 10–18 by flood depth · fully unliveable 20"),
-    ("vulnerability", "Household vulnerability", 20, 20,
-     "elderly +6 · child <5 +6 · disability +8 · single parent +4 (cap 20)"),
-    ("needs", "Essential needs shortage", 15, 15, "+3 per category ticked (cap 15)"),
-    ("access", "Location accessibility", 10, 10,
-     "normal 0 · 4x4 only 5 · foot only 8 · cut off 10"),
-    ("waiting", "Waiting time", 10, 10, "+2 per day (cap 10)"),
-]
-
 ORGS = [
     ("Mercy Relief Malaysia", "ngo", "03-2166 8400", "Kelantan, Terengganu"),
     ("Jabatan Kebajikan Masyarakat (Kota Bharu)", "agency", "09-748 1957", "Kota Bharu district"),
@@ -51,8 +35,7 @@ ORGS = [
     ("Sukarelawan Kampung Pasir Mas", "volunteer_group", "019-983 4471", "Pasir Mas"),
 ]
 
-# Villages come from the controlled location table (migration 0008), so demo
-# cases land where real submissions do. Street names are demo text.
+# Use controlled villages (migration 0008) to match live submissions; streets are demo text.
 DEMO_STREETS = {
     "MY0304-V001": "Jalan Hospital, Kubang Kerian",
     "MY0304-V002": "Jalan Salor, Kota Bharu",
@@ -70,11 +53,7 @@ DEMO_STREETS = {
 
 
 def near(area, dlat, dlng):
-    """An invented household point offset from a village's centre.
-
-    Demo coordinates only — they stand in for an officer-confirmed location
-    and do not correspond to any real house.
-    """
+    """Offset a village centre with invented demo coordinates, never a real house."""
     return (
         area.latitude + Decimal(str(round(dlat, 6))),
         area.longitude + Decimal(str(round(dlng, 6))),
@@ -107,55 +86,64 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        if not settings.DEBUG:
+            raise CommandError(
+                "seed_demo creates accounts with a known password; it only runs "
+                "in development (DJANGO_DEBUG=1)."
+            )
         random.seed(1042)  # reproducible demo
         now = timezone.now()
 
         if options["flush"]:
-            if not settings.DEBUG:
-                raise CommandError("--flush is only available in development.")
-            self.stdout.write("Flushing existing demo data...")
-            CaseScoreComponent.objects.all().delete()
-            with demo_audit_reset():
-                CaseEventLog.objects.all().delete()
-                CaseTask.objects.all().delete()
-                CaseRecord.objects.all().delete()
-                PriorityRubricCriterion.objects.all().delete()
-                PriorityRubricVersion.objects.all().delete()
-                DropOffPoint.objects.all().delete()
-                UserAccount.objects.filter(is_superuser=False).delete()
-                Organization.objects.all().delete()
+            self._flush()
+        orgs, responding = self._make_organisations()
+        resident, officer, volunteer, volunteer2, residents, lead_for = self._make_users(orgs)
+        self._make_drop_off_points_and_appeal(orgs, volunteer)
+        villages = self._starter_villages()
+        cases, frc, kubang_kerian = self._make_canonical_case(resident, officer, now)
+        self._make_queue_cases(cases, villages, residents, officer, responding, orgs, now)
+        self._classify(cases, officer)
+        self._make_tasks(lead_for, officer, now)
+        self._make_duplicate_case(cases, kubang_kerian, now)
+        self._print_case_summary(cases, frc)
+        flagged = self._scan_duplicates()
+        self._print_summary(flagged, resident, officer, volunteer, volunteer2)
 
-        # ---------------- rubric v3.0 (retired) ----------------
-        # Kept so the admin and the report can show the weighted method that
-        # classes-1.0 replaced. Nothing scores against it any more.
-        version = PriorityRubricVersion.objects.create(
-            label="v3.0",
-            status=PriorityRubricVersion.Status.PUBLISHED,
-            medium_threshold=40,
-            high_threshold=70,
-            published_at=now - timedelta(days=30),
-        )
-        for key, name, weight, max_points, rule in RUBRIC_V3:
-            PriorityRubricCriterion.objects.create(
-                version=version, key=key, name=name,
-                weight=weight, max_points=max_points, rule_text=rule,
-            )
-        self.stdout.write(self.style.SUCCESS(f"  rubric {version.label} — 6 criteria, weight 100"))
+    def _flush(self):
+        self.stdout.write("Flushing existing demo data...")
+        CaseScoreComponent.objects.all().delete()
+        with demo_audit_reset():
+            SupplyAppeal.objects.all().delete()
+            CaseEventLog.objects.all().delete()
+            # Evidence protects its task/uploader; an explicit reset removes it first.
+            CasePhoto.objects.all().delete()
+            CaseTask.objects.all().delete()
+            CaseRecord.objects.all().delete()
+            PriorityRubricCriterion.objects.all().delete()
+            PriorityRubricVersion.objects.all().delete()
+            DropOffPoint.objects.all().delete()
+            UserAccount.objects.filter(is_superuser=False).delete()
+            Organization.objects.all().delete()
 
-        # ---------------- organisations ----------------
+    def _make_organisations(self):
         orgs = [
             Organization.objects.create(name=n, type=t, contact_no=c, service_area=a)
             for n, t, c, a in ORGS
         ]
+        # Agencies have no demo responders, so only responding organisations can claim movable work.
+        responding = [org for org in orgs if org.type != Organization.Type.AGENCY]
 
-        # ---------------- users ----------------
+        return orgs, responding
+
+    def _make_users(self, orgs):
+        # DEMO_*_EMAIL enables real demo inboxes; EMAIL_SKIP_DOMAINS skips fallback placeholders.
         resident = UserAccount.objects.create_user(
-            email="resident@hg.my", full_name="Siti binti Rahman",
+            email=os.environ.get("DEMO_RESIDENT_EMAIL") or "resident@hg.my", full_name="Siti binti Rahman",
             password=DEMO_PASSWORD, phone="012-345 6789",
             role=UserAccount.Role.COMMUNITY_MEMBER,
         )
         officer = UserAccount.objects.create_user(
-            email="officer@hg.my", full_name="Encik Zulkifli bin Hassan",
+            email=os.environ.get("DEMO_OFFICER_EMAIL") or "officer@hg.my", full_name="Encik Zulkifli bin Hassan",
             password=DEMO_PASSWORD, phone="09-748 1957",
             role=UserAccount.Role.DISASTER_OFFICER, organization=orgs[1], is_staff=True,
         )
@@ -164,8 +152,7 @@ class Command(BaseCommand):
             password=DEMO_PASSWORD, phone="016-220 9931",
             role=UserAccount.Role.NGO_VOLUNTEER, organization=orgs[0],
         )
-        # A second organisation, so the demo can show two NGOs taking
-        # different jobs on one household's request (ADR-020).
+        # ADR-020: demonstrate two NGOs taking separate jobs on one household request.
         volunteer2 = UserAccount.objects.create_user(
             email="ngo2@hg.my", full_name="Hafiz bin Omar",
             password=DEMO_PASSWORD, phone="019-983 4471",
@@ -182,14 +169,27 @@ class Command(BaseCommand):
         ]
         self.stdout.write(self.style.SUCCESS(f"  users — {UserAccount.objects.count()} across 3 seeded roles"))
 
-        # ---------------- drop-off points ----------------
-        for name, addr, area in [
-            ("Dewan Serbaguna Kubang Kerian", "Jalan Hospital, Kubang Kerian", "Kota Bharu"),
-            ("Balai Raya Pasir Mas", "Jalan Che Latiff, Pasir Mas", "Pasir Mas"),
-            ("Masjid Kampung Banggu", "Jalan Kuala Krai", "Kuala Krai"),
-        ]:
-            DropOffPoint.objects.create(name=name, address=addr, area=area, active=True)
+        return resident, officer, volunteer, volunteer2, residents, lead_for
 
+    def _make_drop_off_points_and_appeal(self, orgs, volunteer):
+        points = [
+            DropOffPoint.objects.create(name=name, address=addr, area=area, active=True)
+            for name, addr, area in [
+                ("Dewan Serbaguna Kubang Kerian", "Jalan Hospital, Kubang Kerian", "Kota Bharu"),
+                ("Balai Raya Pasir Mas", "Jalan Che Latiff, Pasir Mas", "Pasir Mas"),
+                ("Masjid Kampung Banggu", "Jalan Kuala Krai", "Kuala Krai"),
+            ]
+        ]
+        SupplyAppeal.objects.create(
+            organization=orgs[0],
+            created_by_user=volunteer,
+            drop_off_point=points[1],
+            title="Cleaning supplies for Pasir Mas households",
+            items="Mops, buckets, bleach, rubber boots, heavy-duty rubbish bags",
+            needed_until=timezone.localdate() + timedelta(days=10),
+        )
+
+    def _starter_villages(self):
         villages = list(
             LocationArea.objects.filter(
                 level=LocationArea.Level.VILLAGE, active=True, code__in=DEMO_STREETS
@@ -198,7 +198,9 @@ class Command(BaseCommand):
         if not villages:
             raise CommandError("No starter villages found — run `manage.py migrate` first.")
 
-        # ---------------- the canonical case ----------------
+        return villages
+
+    def _make_canonical_case(self, resident, officer, now):
         cases = []
         kubang_kerian = LocationArea.objects.get(code="MY0304-V001")
         lat, lng = near(kubang_kerian, 0.004, 0.002)
@@ -228,7 +230,9 @@ class Command(BaseCommand):
         )
         cases.append(frc)
 
-        # ---------------- the rest of the queue ----------------
+        return cases, frc, kubang_kerian
+
+    def _make_queue_cases(self, cases, villages, residents, officer, responding, orgs, now):
         statuses = [
             CaseRecord.Status.SUBMITTED, CaseRecord.Status.SUBMITTED,
             CaseRecord.Status.NEEDS_INFO, CaseRecord.Status.VERIFIED,
@@ -263,9 +267,8 @@ class Command(BaseCommand):
                 status=status,
                 created_at=now - timedelta(days=random.randint(0, 9), hours=random.randint(0, 20)),
                 verified_by=officer if status != CaseRecord.Status.SUBMITTED else None,
-                claimed_by=orgs[i % len(orgs)] if claimed else None,
-                # One household mid-recovery with two organisations on it and
-                # a third type of help nobody has taken (the unmet-help report).
+                claimed_by=responding[i % len(responding)] if claimed else None,
+                # Show two NGOs and unclaimed help on one case for the unmet-help report.
                 extra_jobs=(
                     [(CaseRecord.DamageCategory.REPAIR, orgs[0]), (CaseRecord.DamageCategory.AGRICULTURE, None)]
                     if i == 7 else []
@@ -273,22 +276,19 @@ class Command(BaseCommand):
             )
             cases.append(case)
 
-        # ---------------- classify the VERIFIED cases ----------------
-        # Only cases an officer has actually looked at carry a class. Screen 17
-        # has a request checked before it is prioritised and released to the
-        # NGO queue, and the running system does exactly that
-        # (cases/services.py). Classifying a submitted case would contradict
-        # the behaviour the demo is showing.
-        UNCLASSIFIED = {CaseRecord.Status.SUBMITTED, CaseRecord.Status.NEEDS_INFO}
+    def _classify(self, cases, officer):
+        # Match screen 17/cases.services: submitted, needs-info and rejected cases have no class; verify_case clears rejected classes.
+        UNCLASSIFIED = {
+            CaseRecord.Status.SUBMITTED, CaseRecord.Status.NEEDS_INFO, CaseRecord.Status.REJECTED,
+        }
         for case in cases:
             if case.status not in UNCLASSIFIED:
-                # Same service the verify endpoint calls; timestamped just
-                # after the seeded verification so the timeline reads in order.
+                # Classify through the verify service just after verification so the timeline stays ordered.
                 classify_case_record(
                     case, officer, at=case.created_at + timedelta(hours=6, minutes=1)
                 )
 
-        # ---------------- tasks ----------------
+    def _make_tasks(self, lead_for, officer, now):
         for job in CaseJob.objects.filter(
             status__in=[CaseJob.Status.IN_PROGRESS, CaseJob.Status.PENDING_CONFIRM]
         ).select_related("case"):
@@ -309,12 +309,8 @@ class Command(BaseCommand):
                 created_at=now - timedelta(days=1),
             )
 
-        # ---------------- a duplicate for the review screen ----------------
-        # A relative re-reports the FRC-1042 household from her own account, in
-        # Malay, with the address abbreviated. Name, phone, pin (~25 m away) and
-        # description all differ, so rules-1.0 recognises it from the lot number
-        # and the abbreviated address (Jln -> Jalan) — the case duplicate
-        # detection exists for.
+    def _make_duplicate_case(self, cases, kubang_kerian, now):
+        # rules-1.0: lot 4231 and Jln -> Jalan identify a relative's Malay report despite different names, phones, nearby pins and descriptions.
         relative = UserAccount.objects.create_user(
             email="relative@hg.my", full_name="Nurul binti Rahman",
             password=DEMO_PASSWORD, phone="013-778 2140",
@@ -343,13 +339,14 @@ class Command(BaseCommand):
             created_at=now - timedelta(days=3),
         ))
 
+    def _print_case_summary(self, cases, frc):
         classified = [c for c in cases if c.priority_class is not None]
         health_critical = sum(1 for c in classified if c.priority_class == 1)
         self.stdout.write(
             self.style.SUCCESS(
                 f"  cases — {len(cases)} seeded, {len(classified)} classified, "
                 f"{health_critical} health-critical "
-                f"({len(cases) - len(classified)} awaiting verification, so unclassified)"
+                f"({len(cases) - len(classified)} unverified or rejected, so unclassified)"
             )
         )
         frc.refresh_from_db()
@@ -359,9 +356,9 @@ class Command(BaseCommand):
                 f"({frc.get_priority_class_display()})"
             )
         )
-        # Seeded cases skip the submission view, so run the village scan here;
-        # otherwise every demo case would stay "duplicate check pending" and
-        # no officer could verify one.
+
+    def _scan_duplicates(self):
+        # Scan seeded villages because bypassing submission leaves duplicate checks pending and blocks officer verification.
         from cases.duplicate_services import scan_duplicate_area
 
         flagged = 0
@@ -369,6 +366,10 @@ class Command(BaseCommand):
             set(CaseRecord.objects.exclude(location_area=None).values_list("location_area_id", flat=True))
         ):
             flagged += scan_duplicate_area(area_id).created
+
+        return flagged
+
+    def _print_summary(self, flagged, resident, officer, volunteer, volunteer2):
         self.stdout.write(self.style.SUCCESS(f"  duplicate check — {flagged} possible duplicates flagged"))
         self.stdout.write(self.style.SUCCESS(f"  events — {CaseEventLog.objects.count()} audit rows"))
         self.stdout.write("")
@@ -377,8 +378,6 @@ class Command(BaseCommand):
         self.stdout.write(f"    ngo lead  {volunteer.email} ({volunteer.organization.name})")
         self.stdout.write(f"    ngo lead  {volunteer2.email} ({volunteer2.organization.name})")
         self.stdout.write(f"    resident  {resident.email}")
-
-    # ------------------------------------------------------------------
 
     def _make_case(self, *, reference, submitted_by, area, address, lat, lng,
                    description, damage_category, urgency, liveability, flood_depth,
@@ -395,8 +394,7 @@ class Command(BaseCommand):
             verified_by_user=verified_by,
             closed_at=created_at + timedelta(days=3) if status == CaseRecord.Status.CLOSED else None,
         )
-        # The main type of help is a job in the case's own state; any extra
-        # types are further jobs, claimed (in progress) by the given org or open.
+        # Create the primary job in case state; extras are open or in progress with the given organisation.
         main_status = {
             CaseRecord.Status.CLAIMED: CaseJob.Status.CLAIMED,
             CaseRecord.Status.IN_PROGRESS: CaseJob.Status.IN_PROGRESS,
@@ -406,7 +404,12 @@ class Command(BaseCommand):
         CaseJob.objects.create(
             case=case, help_type=damage_category, status=main_status, claimed_by_org=claimed_by,
             claimed_at=created_at + timedelta(hours=12) if claimed_by else None,
-            completed_at=case.closed_at if main_status == CaseJob.Status.DONE else None,
+            completed_at=(
+                case.closed_at if main_status == CaseJob.Status.DONE
+                # Give awaiting-household jobs a past completion time for the officer's waiting count.
+                else min(timezone.now(), max(created_at + timedelta(hours=18), timezone.now() - timedelta(days=2)))
+                if main_status == CaseJob.Status.PENDING_CONFIRM else None
+            ),
         )
         for help_type, org in extra_jobs:
             if help_type == damage_category:
@@ -423,10 +426,24 @@ class Command(BaseCommand):
             created_at=created_at,
         )
         if verified_by:
+            # Mirror officer audit decisions so needs-info replies quote the actual question.
+            event_type, detail = {
+                CaseRecord.Status.NEEDS_INFO: (
+                    CaseEventLog.EventType.NEEDS_INFO,
+                    "Please confirm whether anyone in the household needs regular "
+                    "medical treatment, and whether the road to your house is open.",
+                ),
+                CaseRecord.Status.REJECTED: (
+                    CaseEventLog.EventType.REJECTED,
+                    "This address is outside the flood-affected area recorded for "
+                    "this event. Contact the district office if this is wrong.",
+                ),
+            }.get(status, (
+                CaseEventLog.EventType.VERIFIED,
+                "Household details confirmed against the district register.",
+            ))
             CaseEventLog.objects.create(
-                case=case, actor_user=verified_by,
-                event_type=CaseEventLog.EventType.VERIFIED,
-                detail="Household details confirmed against the district register.",
+                case=case, actor_user=verified_by, event_type=event_type, detail=detail,
                 created_at=created_at + timedelta(hours=6),
             )
         for job in case.jobs.exclude(claimed_by_org=None):

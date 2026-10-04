@@ -1,11 +1,4 @@
-/**
- * Screen 18 — "How priority works", read-only.
- *
- * Renders the classes-1.0 rules from /api/priority-rules/ (scoring/classes.py
- * on the server), so the page and the classifier cannot disagree. There are no
- * weights or points: a verified case takes the first class whose rule it
- * meets, and within a class the earliest submitted case comes first.
- */
+/** Screen 18 uses server classes-1.0 rules: first matching class, then submission order, without weights or points. */
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
@@ -46,7 +39,7 @@ export default function PriorityRules() {
       </div>
 
       {rules.classes.map((item) => (
-        <div className="card" style={{ marginBottom: '2.4rem' }} key={item.priority_class}>
+        <div className="card mb-24" key={item.priority_class}>
           <div className="row" style={{ marginBottom: '0.8rem' }}>
             <span className={`score score--sm ${CHIP[item.priority_class]}`}>{item.priority_class}</span>
             <h3>{item.label}</h3>

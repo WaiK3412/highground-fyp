@@ -2,9 +2,9 @@
 
     manage.py scan_duplicates [--dry-run] [--location-code CODE]
 
-Every unordered pair of live cases in a village is compared once with the
-frozen engine. Existing flags keep their stored score and status, including
-officer decisions, so a rescan never re-opens a dismissed pair. Villages are
+Every unordered pair of live cases in a village is compared once with rules-1.0.
+Existing flags keep their matched rules or legacy score and status, including
+officer decisions, so a rescan never reopens a dismissed pair. Villages are
 independent: one failing leaves the others' results in place, and the command
 exits non-zero. Output is counts only, never household details.
 

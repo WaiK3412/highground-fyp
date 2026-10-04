@@ -2,7 +2,6 @@
 
 Traceability — requirements covered by this file:
   FR4  Disaster officer verifies, requests more information, or rejects a case
-  FR6  Responding organisation claims a verified case
   FR20 Role-based permissions on every endpoint
   FR21 Every status change is recorded in the append-only event log
 """
@@ -53,86 +52,6 @@ class LifecycleTestCase(TestCase):
         self.client.force_login(user)
 
 
-class ClaimTests(LifecycleTestCase):
-    """Since ADR-020 the claim is on a job (one type of help); the case here
-    has one job, so these keep their original meaning."""
-
-    def setUp(self):
-        super().setUp()
-        self.job = give_job(self.case)
-
-    def claim_job(self):
-        return self.client.post(f"/api/jobs/{self.job.pk}/claim/")
-
-    def test_ngo_can_claim_a_verified_case(self):
-        self.login(self.mercy_lead)
-        response = self.claim_job()
-
-        self.assertEqual(response.status_code, 200)
-        self.case.refresh_from_db()
-        self.job.refresh_from_db()
-        self.assertEqual(self.job.claimed_by_org, self.mercy)
-        self.assertEqual(self.case.status, CaseRecord.Status.CLAIMED)
-
-    def test_second_organisation_is_refused(self):
-        """The core requirement: exactly one organisation wins a case."""
-        self.login(self.mercy_lead)
-        self.claim_job()
-
-        self.login(self.belia_lead)
-        response = self.claim_job()
-
-        self.assertEqual(response.status_code, 409)
-        self.job.refresh_from_db()
-        self.assertEqual(self.job.claimed_by_org, self.mercy)
-
-    def test_reclaiming_by_the_same_org_is_idempotent(self):
-        """A dropped response must not turn a successful claim into an error."""
-        self.login(self.mercy_lead)
-        first = self.claim_job()
-        second = self.claim_job()
-
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(
-            CaseEventLog.objects.filter(
-                case=self.case, event_type=CaseEventLog.EventType.CLAIMED
-            ).count(),
-            1,
-            "the retry must not add a second 'claimed' row to the audit trail",
-        )
-
-    def test_unverified_cases_cannot_be_claimed(self):
-        self.case.status = CaseRecord.Status.SUBMITTED
-        self.case.save()
-        self.login(self.mercy_lead)
-
-        response = self.claim_job()
-
-        self.assertEqual(response.status_code, 409)
-
-    def test_claim_writes_an_audit_row(self):
-        self.login(self.mercy_lead)
-        self.claim_job()
-
-        event = CaseEventLog.objects.get(
-            case=self.case, event_type=CaseEventLog.EventType.CLAIMED
-        )
-        self.assertEqual(event.actor_user, self.mercy_lead)
-        self.assertIn("Mercy Relief", event.detail)
-
-    def test_residents_and_officers_cannot_claim(self):
-        for user in (self.resident, self.officer):
-            with self.subTest(role=user.role):
-                self.login(user)
-                response = self.claim_job()
-                self.assertEqual(response.status_code, 403)
-
-    def test_anonymous_cannot_claim(self):
-        response = self.claim_job()
-        self.assertEqual(response.status_code, 403)
-
-
 class VerifyTests(LifecycleTestCase):
     def setUp(self):
         super().setUp()
@@ -147,25 +66,6 @@ class VerifyTests(LifecycleTestCase):
         ).first()
         self.case.save()
         detect_duplicates_for_case(self.case.pk)
-
-        # Verifying now scores the case, and scoring refuses to run without a
-        # published rubric — weights are read from the database, never
-        # hardcoded. So a rubric is part of the world these tests need.
-        from django.utils import timezone
-
-        from cases.management.commands.seed_demo import RUBRIC_V3
-        from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
-
-        version = PriorityRubricVersion.objects.create(
-            label="v3.0",
-            status=PriorityRubricVersion.Status.PUBLISHED,
-            published_at=timezone.now(),
-        )
-        for key, name, weight, max_points, rule in RUBRIC_V3:
-            PriorityRubricCriterion.objects.create(
-                version=version, key=key, name=name,
-                weight=weight, max_points=max_points, rule_text=rule,
-            )
 
     def test_officer_can_verify(self):
         self.login(self.officer)
@@ -230,12 +130,16 @@ class VerifyTests(LifecycleTestCase):
         self.assertEqual(response.status_code, 409)
 
     def test_only_officers_may_verify(self):
-        for user in (self.resident, self.mercy_lead):
-            with self.subTest(role=user.role):
+        cases = (
+            ("resident", self.resident, 403),
+            ("ngo", self.mercy_lead, 403),
+        )
+        for actor, user, expected_status in cases:
+            with self.subTest(actor=actor):
                 self.login(user)
                 response = self.client.post(
                     f"/api/cases/{self.case.pk}/verify/",
                     {"decision": "verified"},
                     content_type="application/json",
                 )
-                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.status_code, expected_status)

@@ -10,6 +10,9 @@ import Notifications from './pages/Notifications'
 import PriorityRules from './pages/PriorityRules'
 import ResponderShell from './pages/ResponderShell'
 import DuplicateReview from './pages/DuplicateReview'
+import SupplyAppeals from './pages/SupplyAppeals'
+import Profile from './pages/Profile'
+import ResidentShell from './pages/ResidentShell'
 
 // Screens 14 and 19 are the Django admin itself (ADR-002), so admins go there
 // rather than to a React shell duplicating it.
@@ -21,7 +24,7 @@ export default function App() {
   const [bootError, setBootError] = useState(null)
   const [screen, setScreen] = useState('login')
   const [justLoggedIn, setJustLoggedIn] = useState(false)
-  // Residents have two screens now; anything more and this wants a router.
+  // A small set of resident screens, switched using the existing state pattern.
   const [residentScreen, setResidentScreen] = useState('recovery')
   // Officers and NGOs have their own small set of screens.
   const [responderScreen, setResponderScreen] = useState('queue')
@@ -88,6 +91,7 @@ export default function App() {
     setUser(null)
     setJustLoggedIn(false)
     setScreen('login')
+    setResidentScreen('recovery')
     setResponderScreen('queue')
     setDuplicateId(null)
     setDuplicateCount(null)
@@ -138,7 +142,20 @@ export default function App() {
           onLogout={handleLogout}
           onCancel={() => setResidentScreen('recovery')}
           onSubmitted={() => setResidentScreen('recovery')}
+          onNavigate={setResidentScreen}
         />
+      )
+    if (residentScreen === 'profile')
+      return (
+        <ResidentShell user={user} active="profile" onNavigate={setResidentScreen} onLogout={handleLogout}>
+          <Profile user={user} onSaved={setUser} />
+        </ResidentShell>
+      )
+    if (residentScreen === 'appeals')
+      return (
+        <ResidentShell user={user} active="appeals" onNavigate={setResidentScreen} onLogout={handleLogout}>
+          <SupplyAppeals user={user} />
+        </ResidentShell>
       )
     if (residentScreen === 'notifications')
       return (
@@ -181,8 +198,14 @@ export default function App() {
     // The rules page has no chrome of its own; it sits in the responder frame.
     if (responderScreen === 'rules')
       return (
-        <ResponderShell user={user} active="rules" onNavigate={navigateResponder} onLogout={handleLogout} duplicateCount={duplicateCount}>
+        <ResponderShell user={user} active="rules" onNavigate={navigateResponder} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
           <PriorityRules />
+        </ResponderShell>
+      )
+    if (responderScreen === 'appeals')
+      return (
+        <ResponderShell user={user} active="appeals" onNavigate={navigateResponder} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
+          <SupplyAppeals user={user} />
         </ResponderShell>
       )
     if (responderScreen === 'duplicates' && user.role === 'disaster_officer')

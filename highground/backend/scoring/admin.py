@@ -8,14 +8,26 @@ from .models import (
 
 
 class PriorityRubricCriterionInline(admin.TabularInline):
+    """Retired rubric (classes-1.0 replaced it); kept read-only for the report."""
+
     model = PriorityRubricCriterion
     extra = 0
     fields = ("key", "name", "weight", "max_points", "rule_text")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PriorityRubricVersion)
 class PriorityRubricVersionAdmin(admin.ModelAdmin):
-    """Rubric weights are governed data, not code constants."""
+    """Retired rubric (classes-1.0 replaced it); kept read-only for the report."""
 
     list_display = (
         "label",
@@ -29,6 +41,15 @@ class PriorityRubricVersionAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     inlines = [PriorityRubricCriterionInline]
 
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     @admin.display(description="Total weight")
     def total_weight(self, obj):
         return obj.total_weight
@@ -36,6 +57,17 @@ class PriorityRubricVersionAdmin(admin.ModelAdmin):
 
 @admin.register(CaseScoreComponent)
 class CaseScoreComponentAdmin(admin.ModelAdmin):
+    """Retired rubric (classes-1.0 replaced it); kept read-only for the report."""
+
     list_display = ("case", "criterion", "points", "reason")
     list_filter = ("criterion__name",)
     search_fields = ("case__reference",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

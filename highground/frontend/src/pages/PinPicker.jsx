@@ -1,16 +1,4 @@
-/**
- * Screen 05a's "Pin your home on the map" — optional, centred on the chosen
- * village.
- *
- * Optional on purpose: the village is the required location, so a map whose
- * tiles fail to load (OpenStreetMap's public server is best-effort) never
- * stops a household from asking for help. Same plain-Leaflet approach as
- * CaseMap.jsx: React owns the page, Leaflet owns only the element behind
- * `container`.
- *
- * Every way of placing the pin (tap, drag, "use my location", keyboard) goes
- * through `place`, which applies the same distance rule as the server.
- */
+/** Screen 05a keeps pins optional despite tile failures; Leaflet owns the container and place() enforces the server distance rule. */
 
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
@@ -69,6 +57,8 @@ export default function PinPicker({ village, value, onChange }) {
       center: [Number(latest.current.village.latitude), Number(latest.current.village.longitude)],
       zoom: VILLAGE_ZOOM,
       fadeAnimation: false,
+      // Let the wheel scroll the long form; map buttons still zoom.
+      scrollWheelZoom: false,
     })
     L.tileLayer(TILE_URL, { attribution: ATTRIBUTION, maxZoom: 19 })
       .on('tileerror', () => setTilesFailed(true))
@@ -171,7 +161,7 @@ export default function PinPicker({ village, value, onChange }) {
         Tap the map to drop the pin on your house, or drag it to adjust. Using a keyboard? Move the map
         with the arrow keys, then choose &ldquo;Pin the centre of the map&rdquo;.
       </span>
-      <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
+      <div className="row wrap gap-8">
         <button type="button" className="btn btn--ghost btn--sm" onClick={pinAtCentre}>
           Pin the centre of the map
         </button>
@@ -189,7 +179,7 @@ export default function PinPicker({ village, value, onChange }) {
         )}
       </div>
       {message && (
-        <p className="help" role="alert" style={{ color: 'var(--danger-600)' }}>
+        <p className="help text-danger" role="alert">
           {message}
         </p>
       )}

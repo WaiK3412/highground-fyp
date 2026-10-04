@@ -5,8 +5,11 @@ Traceability — requirements covered by this file:
   FR20 Role-based permissions; privilege is never self-asserted
 """
 
+from datetime import timedelta
+
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import UserAccount
 
@@ -40,7 +43,6 @@ class ApprovalTests(VerificationTestCase):
         # starting point, so a broken setUp can't make the test pass by luck.
         self.assertEqual(self.applicant.role, R.COMMUNITY_MEMBER)
 
-        # ACT — the one thing under test
         self.applicant.approve_application(admin=self.admin, note="Docs verified.")
 
         # ASSERT — reload from the database, so we test what was SAVED rather
@@ -50,8 +52,6 @@ class ApprovalTests(VerificationTestCase):
         self.assertEqual(self.applicant.verification_status, S.VERIFIED)
         self.assertEqual(self.applicant.verified_by_user, self.admin)
         self.assertIsNotNone(self.applicant.verified_at)
-
-    # ---- yours ----
 
     def test_approving_twice_is_refused(self):
         """A decided application cannot be decided again."""
@@ -257,8 +257,10 @@ class AdminRevocationTests(AdminRejectionTests):
 
     def test_revoking_removes_the_granted_role(self):
         self.applicant.approve_application(admin=self.admin)
-        self.applicant.refresh_from_db()
-        old_verified_at = self.applicant.verified_at
+        # Back-date the approval: approve and revoke can otherwise land on the
+        # same clock tick, which made this assertion fail intermittently.
+        old_verified_at = timezone.now() - timedelta(days=1)
+        UserAccount.objects.filter(pk=self.applicant.pk).update(verified_at=old_verified_at)
 
         response = self.client.post(
             self.change_url(),
@@ -273,4 +275,4 @@ class AdminRevocationTests(AdminRejectionTests):
         self.assertEqual(self.applicant.verification_status, S.REJECTED)
         self.assertEqual(self.applicant.role, R.COMMUNITY_MEMBER)
         self.assertEqual(self.applicant.verified_by_user, self.admin)
-        self.assertNotEqual(self.applicant.verified_at, old_verified_at)
+        self.assertGreater(self.applicant.verified_at, old_verified_at)

@@ -1,10 +1,10 @@
-// Mirrors the server's pin rule in cases/api.py (MAX_PIN_DISTANCE_METRES), so
+// Mirrors the server's pin rule (MAX_PIN_DISTANCE_METRES in cases/serializers/submission.py), so
 // the form can explain a refusal before sending. The server still decides.
 export const MAX_PIN_DISTANCE_METRES = 5000
 
 const EARTH_RADIUS_METRES = 6371000
 
-// Great-circle distance, the same formula as cases/duplicates.haversine_metres.
+// Great-circle distance, the same formula as haversine_metres in cases/normalise.py.
 export function distanceMetres(lat1, lng1, lat2, lng2) {
   const rad = (deg) => (deg * Math.PI) / 180
   const dPhi = rad(lat2 - lat1)

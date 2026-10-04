@@ -6,19 +6,35 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from .models import Organization, RegistrationDocument, UserAccount
+from cases.images import UnreadableImage, clean_photo, generated_name
 from cases.upload_validation import has_expected_signature
+
+
+class LoginRateThrottle(SimpleRateThrottle):
+    scope = "login"
+
+    def get_cache_key(self, request, view):
+        # Function views have no throttle_scope. A fixed class scope also
+        # keeps authenticated and anonymous attempts on the same IP counter.
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
+class RegisterRateThrottle(LoginRateThrottle):
+    scope = "register"
 
 
 class UserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     email = serializers.EmailField(read_only=True)
     full_name = serializers.CharField(read_only=True)
+    phone = serializers.CharField(read_only=True)
     role = serializers.CharField(read_only=True)
     role_display = serializers.CharField(source="get_role_display", read_only=True)
     organization = serializers.CharField(
@@ -42,6 +58,7 @@ def csrf(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([LoginRateThrottle])
 def login_view(request):
     rejection = _public_csrf_rejection(request)
     if rejection is not None:
@@ -75,9 +92,38 @@ def logout_view(request):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@api_view(["GET"])
+class ProfileSerializer(serializers.Serializer):
+    """The only account fields a user may change themselves (FR2).
+
+    Not email (the login identity) and never role (ADR-012: an admin grants it).
+    """
+
+    full_name = serializers.CharField(max_length=100, required=False)
+    phone = serializers.CharField(max_length=20, required=False)
+
+    def validate_full_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Enter your name.")
+        return value
+
+    def validate_phone(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Enter a phone number.")
+        return value
+
+
+@api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def me(request):
+    if request.method == "PATCH":
+        serializer = ProfileSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(request.user, field, value)
+        if serializer.validated_data:
+            request.user.save(update_fields=list(serializer.validated_data))
     return Response(UserSerializer(request.user).data)
 
 
@@ -154,6 +200,7 @@ ALLOWED_DOCUMENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
+@throttle_classes([RegisterRateThrottle])
 def register(request):
     """Create an account, and record a role application if one was made.
 
@@ -196,6 +243,21 @@ def register(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    # Decode every image before creating an account or storing any evidence.
+    # PDF content is retained; only its storage name is generated (ADR-023).
+    prepared_documents = []
+    try:
+        for upload in documents:
+            label = upload.name[:120]
+            if upload.content_type.startswith("image/"):
+                stored_file = clean_photo(upload)
+            else:
+                upload.name = generated_name(upload)
+                stored_file = upload
+            prepared_documents.append((stored_file, label))
+    except UnreadableImage as exc:
+        return Response({"documents": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+
     with transaction.atomic():
         user = UserAccount.objects.create_user(
             email=data["email"],
@@ -215,9 +277,9 @@ def register(request):
             ),
         )
 
-        for upload in documents:
+        for upload, label in prepared_documents:
             RegistrationDocument.objects.create(
-                user=user, file=upload, label=upload.name[:120]
+                user=user, file=upload, label=label
             )
 
     login(request, user)

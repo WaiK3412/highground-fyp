@@ -1,7 +1,7 @@
 """Duplicate review API, verification gate and privacy (screen 12, §3.7.8).
 
 Traceability — requirements covered by this file:
-  FR14 Officers review flagged duplicates; nothing is merged automatically
+  FR9 Officers review flagged duplicates; nothing is merged automatically
   FR20 Every endpoint has an explicit role policy, tested per role
   NFR3 Residents see only their own case; NGOs never see comparison data
 """
@@ -202,6 +202,10 @@ class ListAndDetailTests(ApiWorld, TestCase):
         self.assertEqual(row["method"], "dup-1.1")
         self.assertEqual(row["similarity_score"], "37.05")
         self.assertEqual(row["classification"], "possible")
+        legacy.similarity_score = Decimal("70")
+        legacy.save(update_fields=["similarity_score"])
+        row = self.client.get("/api/duplicates/").json()["results"][0]
+        self.assertEqual(row["classification"], "match")
         self.assertEqual(row["matched_rules"], [])
         self.assertEqual(self.client.get(f"/api/duplicates/{legacy.pk}/").status_code, 200)
 
@@ -211,7 +215,7 @@ class ListAndDetailTests(ApiWorld, TestCase):
 
     def test_comparison_failure_is_a_sanitised_503(self):
         with mock.patch.object(svc, "compare_by_rules", side_effect=RuntimeError("Lot 88 secret")):
-            with self.assertLogs("cases.api", level="WARNING") as logs:
+            with self.assertLogs("cases.views.duplicates", level="WARNING") as logs:
                 response = self.client.get(f"/api/duplicates/{self.match.pk}/")
         self.assertNotIn("Lot 88", logs.output[0])
         self.assertEqual(response.status_code, 503)
@@ -305,17 +309,6 @@ class VerificationGateTests(ApiWorld, TestCase):
     def setUp(self):
         super().setUp()
         self.as_user(self.officer)
-        from cases.management.commands.seed_demo import RUBRIC_V3
-        from django.utils import timezone
-        from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
-
-        version = PriorityRubricVersion.objects.create(
-            label="v3.0", status=PriorityRubricVersion.Status.PUBLISHED, published_at=timezone.now(),
-        )
-        for key, name, weight, max_points, rule in RUBRIC_V3:
-            PriorityRubricCriterion.objects.create(
-                version=version, key=key, name=name, weight=weight, max_points=max_points, rule_text=rule,
-            )
 
     def verify(self, case, decision="verified", note=""):
         return self.client.post(

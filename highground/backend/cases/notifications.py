@@ -25,25 +25,25 @@ from .models import CaseEventLog
 
 
 # ---------------------------------------------------------------------------
-# YOURS — the recipient rules.
+# The recipient rules (who is told what about whose case).
 #
-# This decides who is told what about whose case, which is a permission-shaped
-# question, so it belongs in your column rather than mine. Written out so the
-# build is not blocked; rewrite it in your own words and the explain-back is
-# settled.
-#
-#   event         | goes to                        | why
-#   --------------|--------------------------------|---------------------------
-#   submitted     | every disaster officer          | a case is waiting to be seen
-#   verified      | the household                   | with the priority class, folded in
-#   needs_info    | the household                   | C6: they must notice this one
-#   rejected      | the household                   | with the reason given
-#   claimed       | the household                   | someone is coming
-#   closed        | the household                   | it is finished
-#   escalated     | every disaster officer          | needs a decision above the officer
+#   event                 | goes to                          | why
+#   ----------------------|----------------------------------|---------------------------
+#   submitted             | every disaster officer            | a request is waiting to be checked
+#   info_provided         | every disaster officer            | the household answered; re-check
+#   escalated             | every disaster officer            | (no endpoint creates this yet)
+#   verified              | the household                     | with the priority class folded in
+#   needs_info            | the household                     | GAPS C6: they must notice this one
+#   rejected              | the household                     | with the reason given
+#   claimed / released    | the household                     | who is (or is no longer) helping
+#   completion_requested  | the household                     | they confirm each job
+#   closed / dup. closed  | the household                     | it is finished
+#   closed / reopened     | the organisation that did the job | when the household confirms or
+#                         |                                   | reports incomplete work
 #
 # The rule underneath all of it: never notify somebody about their own action.
-# ---------------------------------------------------------------------------
+# Officers are not tied to a district yet, so "every officer" is the whole
+# platform (stated limitation).
 
 TO_HOUSEHOLD = {
     CaseEventLog.EventType.VERIFIED,
@@ -57,6 +57,7 @@ TO_HOUSEHOLD = {
 }
 
 TO_OFFICERS = {
+    CaseEventLog.EventType.INFO_PROVIDED,
     CaseEventLog.EventType.SUBMITTED,
     CaseEventLog.EventType.ESCALATED,
 }
@@ -109,6 +110,7 @@ def recipients_for(case, event_type, actor, job=None):
 # What the household reads. Deliberately plain: the audience has just been
 # flooded and may be reading on a phone with a poor signal.
 HEADLINES = {
+    CaseEventLog.EventType.INFO_PROVIDED: "A household answered a request for more information",
     CaseEventLog.EventType.SUBMITTED: "A new request is waiting for review",
     CaseEventLog.EventType.VERIFIED: "Your request has been verified",
     CaseEventLog.EventType.NEEDS_INFO: "More information needed on your request",
@@ -184,6 +186,11 @@ def _send_email(user, case, event_type, detail):
     """
     if not user.email:
         return "no_address"
+
+    domain = user.email.rsplit("@", 1)[-1].lower()
+    if domain in getattr(settings, "EMAIL_SKIP_DOMAINS", set()):
+        # A seeded demo address on a domain we do not own: record, never send.
+        return "skipped_placeholder_address"
 
     subject = f"[HighGround] {headline(case, event_type)} — {case.reference}"
     body = (

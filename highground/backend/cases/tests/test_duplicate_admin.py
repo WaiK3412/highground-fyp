@@ -1,6 +1,6 @@
 """Admin cannot bypass the duplicate workflow (ADR-002: admin is screens 14/19).
 
-Traceability: FR14, FR21 — links and decisions are made only through the
+Traceability: FR9, FR21 — links and decisions are made only through the
 audited service; the admin shows them read-only.
 """
 
@@ -31,7 +31,8 @@ class DuplicateAdminTests(DuplicateWorld, TestCase):
     def test_duplicate_link_is_read_only_and_linked_cases_cannot_be_reopened(self):
         admin = site._registry[CaseRecord]
         self.assertIn("duplicate_of_case", admin.get_readonly_fields(self.request, self.older))
-        self.assertNotIn("status", admin.get_readonly_fields(self.request, self.older))
+        # Since the 3 Oct gap fix, status is read-only for every case, linked or not.
+        self.assertIn("status", admin.get_readonly_fields(self.request, self.older))
 
         svc.decide_duplicate_match(self.match.pk, self.officer, "confirm")
         self.newer.refresh_from_db()

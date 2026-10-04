@@ -1,7 +1,7 @@
 """Duplicate detection and review services (report §3.7.8).
 
 Traceability — requirements covered by this file:
-  FR14 Possible duplicates are flagged for officer review, never auto-merged
+  FR9 Possible duplicates are flagged for officer review, never auto-merged
   FR21 Every detection and decision is recorded in the append-only event log
 """
 

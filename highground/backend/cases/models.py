@@ -17,7 +17,7 @@ from accounts.models import Organization, UserAccount
 
 
 class DropOffPoint(models.Model):
-    """Fixed list of official collection points for pledged relief items."""
+    """Official collection points for supply appeals (ADR-021)."""
 
     name = models.CharField(max_length=120)
     address = models.CharField(max_length=255)
@@ -244,35 +244,34 @@ class CaseRecord(models.Model):
     def __str__(self):
         return f"{self.reference} — {self.village}"
 
-    @property
-    def priority_band(self):
-        """The band defined by the rubric version that produced this score."""
-        if self.score_total is None:
-            return "unscored"
-        from scoring.engine import band_for
-
-        if self.rubric_version_id:
-            return band_for(
-                self.score_total,
-                self.rubric_version.high_threshold,
-                self.rubric_version.medium_threshold,
-            )
-        return band_for(self.score_total)
-
-
 class CasePhoto(models.Model):
+    class Stage(models.TextChoices):
+        RESIDENT = "resident", "From the household"
+        BEFORE = "before", "Before"
+        AFTER = "after", "After"
+
     case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="photos")
     # Still file_path VARCHAR(255) in the database, as the report's ERD specifies —
     # a FileField is a varchar column that also knows how to save the upload.
     file_path = models.FileField(upload_to="cases/%Y/%m/", max_length=255)
     caption = models.CharField(max_length=255, null=True, blank=True)
+    stage = models.CharField(max_length=10, choices=Stage, default=Stage.RESIDENT)
+    # Preserve who supplied evidence and which work it documents.
+    uploaded_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        null=True, blank=True, related_name="uploaded_case_photos",
+    )
+    task = models.ForeignKey(
+        "CaseTask", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="photos",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "case_photo"
 
     def __str__(self):
-        return self.caption or self.file_path
+        return self.caption or str(self.file_path)
 
 
 class CaseJob(models.Model):
@@ -291,9 +290,12 @@ class CaseJob(models.Model):
         IN_PROGRESS = "in_progress", "In progress"
         PENDING_CONFIRM = "pending_confirm", "Awaiting resident confirmation"
         DONE = "done", "Done"
+        CLOSED_UNCONFIRMED = "closed_unconfirmed", "Closed without household confirmation"
 
     # An organisation holding a job in one of these may see the exact address.
     ACTIVE = (Status.CLAIMED, Status.IN_PROGRESS, Status.PENDING_CONFIRM)
+    # Both end operational access, but only DONE records household confirmation.
+    FINISHED = (Status.DONE, Status.CLOSED_UNCONFIRMED)
 
     case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="jobs")
     help_type = models.CharField(max_length=20, choices=CaseRecord.DamageCategory)
@@ -453,6 +455,8 @@ class CaseEventLog(models.Model):
         SUBMITTED = "submitted", "Submitted"
         VERIFIED = "verified", "Verified"
         NEEDS_INFO = "needs_info", "Needs info requested"
+        INFO_PROVIDED = "info_provided", "More information provided"
+        ADMIN_CORRECTED = "admin_corrected", "Corrected by an administrator"
         REJECTED = "rejected", "Rejected"
         SCORE_COMPUTED = "score_computed", "Score computed"
         CLAIMED = "claimed", "Claimed"
@@ -465,7 +469,7 @@ class CaseEventLog(models.Model):
         CLOSED = "closed", "Closed"
         REOPENED = "reopened", "Reopened"
         PLEDGE_UPDATED = "pledge_updated", "Pledge updated"
-        SCORE_OVERRIDDEN = "score_overridden", "Score overridden"
+        SCORE_OVERRIDDEN = "score_overridden", "Priority class changed by an officer"
         RUBRIC_PUBLISHED = "rubric_published", "Rubric published"
         # Duplicate detection (report §3.7.8). All but DUPLICATE_CLOSED are
         # internal: they name the other household's case and stay with officers.
@@ -552,7 +556,7 @@ def protect_audit_task(sender, instance, **kwargs):
 
 
 class CommunityPledge(models.Model):
-    """Two states only (ERD §1): Pledged, then the NGO marks Received."""
+    """Reserved pledge table (ERD §1); supply appeals replaced this workflow (ADR-021)."""
 
     class Status(models.TextChoices):
         PLEDGED = "pledged", "Pledged"
@@ -577,3 +581,39 @@ class CommunityPledge(models.Model):
 
     def __str__(self):
         return f"{self.item_category} x{self.quantity}"
+
+
+class SupplyAppeal(models.Model):
+    """An NGO's notice of the relief items it needs (ADR-021).
+
+    Replaces the pledge flow. Residents read it and take items to the
+    drop-off point; nothing is pledged or tracked in the app, so there is no
+    pledge lifecycle to verify. `community_pledge` stays as a reserved table.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name="appeals"
+    )
+    created_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="appeals_created"
+    )
+    drop_off_point = models.ForeignKey(
+        DropOffPoint, on_delete=models.PROTECT, related_name="appeals"
+    )
+    title = models.CharField(max_length=120)
+    items = models.TextField(max_length=1000)
+    needed_until = models.DateField()
+    status = models.CharField(max_length=10, choices=Status, default=Status.OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "supply_appeal"
+        ordering = ["needed_until", "pk"]
+
+    def __str__(self):
+        return f"{self.organization.name}: {self.title}"

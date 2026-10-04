@@ -12,12 +12,11 @@ Adaptations, stated in the report: the village block replaces the city/
 county/zip condition, and names are compared exactly after Malay
 normalisation because English Metaphone suits Malay names poorly.
 
-The vocabularies and phone normaliser are reused from cases/duplicates.py
-(the retired dup-1.1 engine), so "Jln" and "Jalan", or "+60 12…" and "012…",
-compare equal here as they did there. Name and address tokenising is done
-here instead, fixing three defects the 2 Oct audits reproduced (Tamil vowel
-signs, "88A" vs "88 A", "12/3" vs "3/12") without changing the retired
-engine's recorded evaluation.
+The vocabularies and phone normaliser are shared through cases/normalise.py,
+so "Jln" and "Jalan", or "+60 12…" and "012…", compare equal across both methods.
+Name and address tokenising here fixes three defects from the 2 Oct audits
+(Tamil vowel signs, "88A" vs "88 A", "12/3" vs "3/12") without changing
+the retired engine's recorded evaluation.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from .duplicates import (
+from .normalise import (
     ADDRESS_STOPWORDS,
     ADDRESS_SYNONYMS,
     NAME_PARTICLES,

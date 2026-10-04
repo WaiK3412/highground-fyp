@@ -14,6 +14,7 @@ const TICK = 'M4.5 12.75l6 6 9-13.5'
 // ("Needs info requested"); a household reading about their own home deserves
 // the sentence, not the status name.
 const TITLES = {
+  info_provided: 'More information sent to the district office',
   submitted: 'Request received',
   needs_info: 'More information requested',
   verified: 'Verified & prioritised by the district disaster office',
@@ -25,7 +26,7 @@ const TITLES = {
   escalated: 'Escalated for a decision',
   closed: 'Case closed',
   reopened: 'Case reopened',
-  score_overridden: 'Priority score adjusted by an officer',
+  score_overridden: 'Priority class changed by an officer',
 }
 
 function when(iso) {
@@ -34,12 +35,13 @@ function when(iso) {
     + ' · ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function CaseTimeline({ events = [] }) {
+// Staff read the operational event names; the household reads TITLES.
+export default function CaseTimeline({ events = [], plainTitles = true }) {
   if (events.length === 0) return null
 
   return (
     <div className="meta-rail__section">
-      <div className="card__header">Case history</div>
+      <div className="card__header"><h3>Case history</h3></div>
       <div className="timeline">
         {events.map((event, index) => (
           <div className="timeline__item" key={`${event.created_at}-${index}`}>
@@ -49,7 +51,7 @@ export default function CaseTimeline({ events = [] }) {
               </svg>
             </div>
             <div className="timeline__body">
-              <div className="title">{TITLES[event.event_type] || event.event_display}</div>
+              <div className="title">{(plainTitles && TITLES[event.event_type]) || event.event_display}</div>
               <div className="meta">
                 {when(event.created_at)}
                 {event.actor_org

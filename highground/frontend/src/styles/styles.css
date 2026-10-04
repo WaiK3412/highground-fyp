@@ -1173,7 +1173,7 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 .duplicate-review__pairs { display: flex; flex-wrap: wrap; gap: var(--sp-8); margin: var(--sp-16) 0; }
 .duplicate-review__pair { font: inherit; font-size: var(--fs-12); padding: var(--sp-8) var(--sp-12); background: var(--white); color: var(--grey-700); border: 1px solid var(--grey-300); border-radius: var(--radius-sm); cursor: pointer; }
 .duplicate-review__pair--selected { border-color: var(--teal-700); color: var(--teal-800); background: var(--teal-50); }
-.duplicate-review__evidence, .duplicate-review__reasons, .duplicate-review__cases { margin-bottom: var(--sp-20); }
+.duplicate-review__evidence, .duplicate-review__reasons, .duplicate-review__cases { margin-bottom: var(--sp-24); }
 .duplicate-review__reasons h2, .duplicate-review__decision h2 { font-size: var(--fs-20); margin-bottom: var(--sp-8); }
 .duplicate-review__reasons ul { list-style: disc; padding-left: var(--sp-24); margin-top: var(--sp-8); }
 .duplicate-review__reasons li { margin-bottom: var(--sp-4); }

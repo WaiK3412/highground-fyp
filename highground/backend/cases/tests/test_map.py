@@ -24,9 +24,11 @@ URL = "/api/cases/map/"
 
 
 class CaseMapTests(TestCase):
-    def setUp(self):
-        self.org_a = Organization.objects.create(name="Map NGO A", type=Organization.Type.NGO)
-        self.org_b = Organization.objects.create(name="Map NGO B", type=Organization.Type.NGO)
+    # Django deep-copies these model fixtures; each test's DB writes roll back.
+    @classmethod
+    def setUpTestData(cls):
+        cls.org_a = Organization.objects.create(name="Map NGO A", type=Organization.Type.NGO)
+        cls.org_b = Organization.objects.create(name="Map NGO B", type=Organization.Type.NGO)
 
         def user(email, role=UserAccount.Role.COMMUNITY_MEMBER, org=None):
             return UserAccount.objects.create_user(
@@ -34,18 +36,18 @@ class CaseMapTests(TestCase):
                 role=role, organization=org,
             )
 
-        self.resident = user("map-resident@example.my")
-        self.officer = user("map-officer@example.my", UserAccount.Role.DISASTER_OFFICER)
-        self.admin = user("map-admin@example.my", UserAccount.Role.SYSTEM_ADMIN)
-        self.ngo_a = user("map-ngo-a@example.my", UserAccount.Role.NGO_VOLUNTEER, self.org_a)
-        self.ngo_b = user("map-ngo-b@example.my", UserAccount.Role.NGO_VOLUNTEER, self.org_b)
+        cls.resident = user("map-resident@example.my")
+        cls.officer = user("map-officer@example.my", UserAccount.Role.DISASTER_OFFICER)
+        cls.admin = user("map-admin@example.my", UserAccount.Role.SYSTEM_ADMIN)
+        cls.ngo_a = user("map-ngo-a@example.my", UserAccount.Role.NGO_VOLUNTEER, cls.org_a)
+        cls.ngo_b = user("map-ngo-b@example.my", UserAccount.Role.NGO_VOLUNTEER, cls.org_b)
 
-        self.tendong = LocationArea.objects.get(code="MY0307-V001")
-        self.salor = LocationArea.objects.get(code="MY0304-V002")
+        cls.tendong = LocationArea.objects.get(code="MY0307-V001")
+        cls.salor = LocationArea.objects.get(code="MY0304-V002")
 
         def case(ref, status, area, lat, lng, address, priority_class, org=None):
             case = CaseRecord.objects.create(
-                reference=ref, submitted_by_user=self.resident,
+                reference=ref, submitted_by_user=cls.resident,
                 damage_category=CaseRecord.DamageCategory.CLEANUP,
                 description="Private household description.",
                 location_area=area, village=area.name if area else "Kg. Unknown",
@@ -58,12 +60,12 @@ class CaseMapTests(TestCase):
             return case
 
         S = CaseRecord.Status
-        self.a_claimed = case("FRC-9101", S.IN_PROGRESS, self.tendong, "6.071111", "102.211111", "Lot 1 Secret Lane", 1, self.org_a)
-        self.open_exact = case("FRC-9102", S.VERIFIED, self.tendong, "6.072222", "102.212222", "Lot 2 Hidden Road", 2)
-        self.b_claimed = case("FRC-9103", S.CLAIMED, self.salor, "6.028888", "102.183333", "Lot 3 Quiet Path", 3, self.org_b)
-        self.open_no_pin = case("FRC-9104", S.VERIFIED, self.tendong, None, None, "Lot 4 No Pin", 1)
-        self.no_location = case("FRC-9105", S.VERIFIED, None, None, None, "Lot 5 Nowhere", 2)
-        self.submitted = case("FRC-9106", S.SUBMITTED, self.salor, "6.029999", "102.184444", "Lot 6 New Case", None)
+        cls.a_claimed = case("FRC-9101", S.IN_PROGRESS, cls.tendong, "6.071111", "102.211111", "Lot 1 Secret Lane", 1, cls.org_a)
+        cls.open_exact = case("FRC-9102", S.VERIFIED, cls.tendong, "6.072222", "102.212222", "Lot 2 Hidden Road", 2)
+        cls.b_claimed = case("FRC-9103", S.CLAIMED, cls.salor, "6.028888", "102.183333", "Lot 3 Quiet Path", 3, cls.org_b)
+        cls.open_no_pin = case("FRC-9104", S.VERIFIED, cls.tendong, None, None, "Lot 4 No Pin", 1)
+        cls.no_location = case("FRC-9105", S.VERIFIED, None, None, None, "Lot 5 Nowhere", 2)
+        cls.submitted = case("FRC-9106", S.SUBMITTED, cls.salor, "6.029999", "102.184444", "Lot 6 New Case", None)
 
     def get(self, user, **params):
         self.client.force_login(user)

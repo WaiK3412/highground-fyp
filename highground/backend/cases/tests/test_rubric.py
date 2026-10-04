@@ -7,12 +7,26 @@ Traceability:
        report's comparison, not used by the app)
 """
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.management.commands.seed_demo import RUBRIC_V3
 from scoring.models import PriorityRubricCriterion, PriorityRubricVersion
+
+
+# Reserved rubric model validation uses a local historical fixture.
+RUBRIC_V3 = [
+    ("safety", "Safety & medical urgency", 25, 25,
+     "none 0 · health risk 10 · medical needs disrupted 18 · urgent 25"),
+    ("damage", "Damage severity & loss of shelter", 20, 20,
+     "cosmetic 4 · partially unliveable 10–18 by flood depth · fully unliveable 20"),
+    ("vulnerability", "Household vulnerability", 20, 20,
+     "elderly +6 · child <5 +6 · disability +8 · single parent +4 (cap 20)"),
+    ("needs", "Essential needs shortage", 15, 15, "+3 per category ticked (cap 15)"),
+    ("access", "Location accessibility", 10, 10,
+     "normal 0 · 4x4 only 5 · foot only 8 · cut off 10"),
+    ("waiting", "Waiting time", 10, 10, "+2 per day (cap 10)"),
+]
 
 
 class PriorityRulesEndpointTests(TestCase):
@@ -69,24 +83,35 @@ class PriorityRulesEndpointTests(TestCase):
                 rule_text=rule,
             )
 
-    def test_anonymous_resident_and_unattached_responder_are_refused(self):
-        self.assertEqual(self.client.get("/api/priority-rules/").status_code, 403)
-        for user in (self.resident, self.unattached_responder):
-            with self.subTest(role=user.role, email=user.email):
-                self.client.force_login(user)
-                self.assertEqual(self.client.get("/api/priority-rules/").status_code, 403)
-
-    def test_authorised_coordinator_roles_can_read_the_rules(self):
-        for user in (self.officer, self.responder, self.admin):
-            with self.subTest(role=user.role):
-                self.client.force_login(user)
-                self.assertEqual(self.client.get("/api/priority-rules/").status_code, 200)
+    def test_only_authorised_coordinator_roles_can_read_priority_rules(self):
+        resident_client = Client()
+        resident_client.force_login(self.resident)
+        unattached_client = Client()
+        unattached_client.force_login(self.unattached_responder)
+        officer_client = Client()
+        officer_client.force_login(self.officer)
+        responder_client = Client()
+        responder_client.force_login(self.responder)
+        admin_client = Client()
+        admin_client.force_login(self.admin)
+        cases = (
+            ("anonymous", self.client, 403),
+            ("resident", resident_client, 403),
+            ("unattached responder", unattached_client, 403),
+            ("officer", officer_client, 200),
+            ("organisation responder", responder_client, 200),
+            ("administrator", admin_client, 200),
+        )
+        for actor, client, expected_status in cases:
+            with self.subTest(actor=actor):
+                self.assertEqual(client.get("/api/priority-rules/").status_code, expected_status)
 
     def test_response_lists_each_class_with_its_rule_and_sources(self):
         self.client.force_login(self.officer)
         data = self.client.get("/api/priority-rules/").json()
 
         self.assertEqual(data["version"], "classes-1.0")
+        self.assertEqual([c["priority_class"] for c in data["classes"]], [1, 2, 3])
         first = data["classes"][0]
         self.assertEqual(first["label"], "Health-critical")
         self.assertTrue(first["rule"])

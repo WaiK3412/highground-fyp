@@ -1,416 +1,15 @@
-/**
- * Screen 07 — Case queue, the List tab of its Map/List/Board toggle.
- * Cases arrive from /api/cases/ already narrowed by role on the server.
- */
+/** Screen 07: /api/cases/ enforces role visibility before the queue renders. */
 
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import ResponderShell from './ResponderShell'
 import { useDocumentTitle } from '../useDocumentTitle'
 import CaseMap from './CaseMap'
-
-const STATUS_FILTERS = [
-  { value: '', label: 'All' },
-  { value: 'verified', label: 'Verified' },
-  { value: 'claimed', label: 'Claimed' },
-  { value: 'in_progress', label: 'In progress' },
-  { value: 'submitted', label: 'Submitted' },
-]
-const HELP_FILTERS = [
-  { value: '', label: 'All' },
-  { value: 'cleanup', label: 'Cleanup' },
-  { value: 'repair', label: 'Repair' },
-  { value: 'essential_items', label: 'Essential items' },
-  { value: 'agriculture', label: 'Agriculture' },
-  { value: 'other', label: 'Other' },
-]
-
-// An NGO may claim an open job once the household request is verified.
-const CLAIMABLE_CASE = new Set(['verified', 'claimed', 'in_progress', 'pending_confirm'])
-
-function openJobsFor(user, item) {
-  if (user.role !== 'ngo_volunteer' || !CLAIMABLE_CASE.has(item.status)) return []
-  return (item.jobs || []).filter((job) => job.status === 'open')
-}
-
-// One line per type of help: who holds it, or that it is still waiting.
-function JobChips({ jobs }) {
-  return (
-    <div className="row" style={{ flexWrap: 'wrap', gap: '0.6rem' }}>
-      {(jobs || []).map((job) => (
-        <span key={job.id} className="filter-chip" title={job.status_display}>
-          {job.help_type_display} ·{' '}
-          {job.claimed_by ? (job.claimed_by_you ? 'your organisation' : job.claimed_by) : 'waiting'}
-          {job.status === 'done' ? ' · done' : ''}
-        </span>
-      ))}
-    </div>
-  )
-}
-
-// classes-1.0 (scoring/classes.py): the class number is the filter value.
-const PRIORITY_FILTERS = [
-  { value: '', label: 'All' },
-  { value: '1', label: '1 Health-critical' },
-  { value: '2', label: '2 At risk' },
-  { value: '3', label: '3 Standard' },
-]
-
-// Slim, warm-toned scrollbars on the panels that scroll, plus a gutter so the
-// cards are not pressed up against the bar. Set here rather than in styles.css:
-// the design contract is frozen and never styles scrollbars, so this stays a
-// code-level choice instead of a change to the design.
-const SCROLL_PANE = {
-  scrollbarWidth: 'thin',
-  scrollbarColor: 'var(--grey-300) transparent',
-  paddingRight: 'var(--sp-16)',
-}
-
-// Class 1 uses the "high" tone, 2 "medium", 3 "low"; unclassified is neutral.
-function priorityChipClass(priorityClass) {
-  if (priorityClass === 1) return 'score score--high score--sm'
-  if (priorityClass === 2) return 'score score--medium score--sm'
-  if (priorityClass === 3) return 'score score--low score--sm'
-  return 'score score--neutral score--sm'
-}
-
-function PriorityChip({ item }) {
-  return (
-    <span
-      className={priorityChipClass(item.priority_class)}
-      title={item.priority_label || 'Not yet classified'}
-      aria-label={
-        item.priority_class
-          ? `Priority class ${item.priority_class}: ${item.priority_label}`
-          : 'Not yet classified'
-      }
-    >
-      {item.priority_class ?? '—'}
-    </span>
-  )
-}
-
-function CaseCard({ item, onOpen, onClaim, selected, user, busy }) {
-  // Screen 07 puts the claim on the card, not behind the detail panel; with
-  // help jobs there is one claim button per type of help still waiting.
-  const openJobs = openJobsFor(user, item)
-  const canClaim = openJobs.length > 0
-  const canDecide = user.role === 'disaster_officer' && item.status === 'submitted'
-
-  return (
-    <div className={`ops-card${selected ? ' ops-card--selected' : ''}`}>
-      <div className="row--between">
-        <span className="title">#{item.reference}</span>
-        <PriorityChip item={item} />
-      </div>
-      <span className="meta">
-        {item.damage_category_display} · {item.village} · household of {item.household_size} ·
-        waiting {item.days_waiting} {item.days_waiting === 1 ? 'day' : 'days'}
-      </span>
-      <div className="row" style={{ flexWrap: 'wrap', gap: '0.8rem' }}>
-        <span className="badge badge--verified">{item.status_display}</span>
-        {user.role === 'disaster_officer' && item.has_open_duplicate && (
-          <span className="badge badge--duplicate">Possible duplicate</span>
-        )}
-      </div>
-      <JobChips jobs={item.jobs} />
-      <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
-        {openJobs.map((job) => (
-          <button
-            key={job.id}
-            className="btn btn--primary btn--sm"
-            disabled={busy}
-            onClick={() => onClaim(job.id)}
-          >
-            {busy ? 'Claiming…' : `Claim ${job.help_type_display.toLowerCase()}`}
-          </button>
-        ))}
-        <button
-          className={`btn btn--sm ${canClaim ? 'btn--ghost' : 'btn--primary'}`}
-          onClick={() => onOpen(item.id)}
-        >
-          {canDecide ? 'Review & decide' : 'View details'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function CaseActions({ detail, user, onDone, onOpenDuplicate }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-  const [note, setNote] = useState('')
-
-  const openJobs = openJobsFor(user, detail)
-  const canClaim = openJobs.length > 0
-  const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
-
-  if (!canClaim && !canDecide) return null
-
-  async function run(action) {
-    setError(null)
-    setBusy(true)
-    try {
-      await action()
-      await onDone()
-    } catch (err) {
-      setError({ message: err.message, code: err.code, matchIds: err.data?.duplicate_match_ids || [] })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div style={{ marginTop: 'var(--sp-16)', borderTop: '1px solid var(--grey-200)', paddingTop: 'var(--sp-16)' }}>
-      {error && (
-        <div
-          role="alert"
-          style={{
-            background: 'var(--danger-100)',
-            color: 'var(--danger-600)',
-            padding: '0.8rem 1rem',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 'var(--fs-12)',
-            fontWeight: 600,
-            marginBottom: 'var(--sp-12)',
-          }}
-        >
-          {error.code === 'duplicate_check_pending'
-            ? 'The duplicate check has not finished. Refresh this case before trying to verify it.'
-            : error.code === 'duplicate_review_required'
-              ? 'A possible duplicate needs officer review before this case can be verified.'
-              : error.code === 'case_linked_duplicate'
-                ? 'This case was closed as a confirmed duplicate and cannot be verified again.'
-                : error.message}
-          {error.code === 'duplicate_check_pending' && (
-            <button className="btn btn--ghost btn--sm" onClick={async () => {
-              setError(null)
-              try { await onDone() } catch (err) { setError({ message: err.message, matchIds: [] }) }
-            }}>Refresh case</button>
-          )}
-          {error.matchIds.map((id) => (
-            <button key={id} className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(id, detail.id)}>
-              Open duplicate review #{id}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {canClaim && (
-        <div className="stack" style={{ gap: '0.8rem' }}>
-          {openJobs.map((job) => (
-            <button
-              key={job.id}
-              className="btn btn--primary btn--full"
-              disabled={busy}
-              onClick={() => run(() => api.claimJob(job.id))}
-            >
-              {busy ? 'Claiming…' : `Claim the ${job.help_type_display.toLowerCase()} job for my organisation`}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {canDecide && (
-        <div className="stack" style={{ gap: '1rem' }}>
-          <div className="field">
-            <label htmlFor="note">Note to the household</label>
-            <input
-              id="note"
-              className="input"
-              placeholder="Required when asking for more or rejecting"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-          <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
-            <button
-              className="btn btn--primary btn--sm"
-              disabled={busy}
-              onClick={() => run(() => api.verifyCase(detail.id, 'verified', note))}
-            >
-              Verify
-            </button>
-            <button
-              className="btn btn--ghost btn--sm"
-              disabled={busy}
-              onClick={() => run(() => api.verifyCase(detail.id, 'needs_info', note))}
-            >
-              Ask for more
-            </button>
-            <button
-              className="btn btn--ghost btn--sm"
-              disabled={busy}
-              onClick={() => run(() => api.verifyCase(detail.id, 'rejected', note))}
-            >
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * The case's priority class and the reasons recorded at verification
- * (classes-1.0). Reasons name household vulnerabilities, so the server sends
- * them only with the full detail; an NGO's summary shows the class alone.
- */
-function PriorityPanel({ detail }) {
-  if (detail.priority_class == null) {
-    return (
-      <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-16)' }}>
-        Not yet classified — priority is assigned when an officer verifies the request.
-      </p>
-    )
-  }
-  const reasons = detail.priority_reasons || []
-  return (
-    <section style={{ marginTop: 'var(--sp-16)' }} aria-label="Priority">
-      <div className="row--between">
-        <span className="text-strong">Priority</span>
-        <span className="row" style={{ gap: '0.8rem' }}>
-          <strong>{detail.priority_label}</strong>
-          <PriorityChip item={detail} />
-        </span>
-      </div>
-      {reasons.length > 0 && (
-        <ul className="text-sm" style={{ margin: 'var(--sp-12) 0 0', paddingLeft: '1.6rem' }}>
-          {reasons.map((reason) => (
-            <li key={reason}>{reason}</li>
-          ))}
-        </ul>
-      )}
-      <hr className="divider" style={{ margin: '1.2rem 0' }} />
-      <span className="text-xs text-muted">
-        Cases are served by class, then in the order they were submitted (classes-1.0).
-      </span>
-    </section>
-  )
-}
-
-/**
- * The case card that opens over the map when a pin is clicked (screen 10's
- * popover), so the map stays in view. It reads the same detail response as
- * the side panel, so it shows nothing the viewer's role may not see.
- */
-function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
-  const canDecide = user.role === 'disaster_officer' && detail.status === 'submitted'
-  const firstReason = detail.priority_reasons?.[0]
-  return (
-    <div className="ops-popover case-map__popover" role="dialog" aria-label={`Case ${detail.reference}`}>
-      <div className="row--between" style={{ alignItems: 'flex-start' }}>
-        <div>
-          <div className="text-strong" style={{ fontSize: 'var(--fs-16)' }}>#{detail.reference}</div>
-          <div className="text-xs text-muted">
-            {detail.damage_category_display} · {detail.village}
-          </div>
-        </div>
-        <PriorityChip item={detail} />
-      </div>
-      <div className="row" style={{ gap: '0.8rem', flexWrap: 'wrap' }}>
-        <span className="badge badge--verified">{detail.status_display}</span>
-        {user.role === 'disaster_officer' && detail.has_open_duplicate && (
-          <span className="badge badge--duplicate">Possible duplicate</span>
-        )}
-        <span className="text-xs text-muted">
-          waiting {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
-        </span>
-      </div>
-      <JobChips jobs={detail.jobs} />
-      <div className="text-xs text-muted">
-        {detail.priority_class == null
-          ? 'Not yet classified — classified when an officer verifies it.'
-          : `${detail.priority_label}${firstReason ? ` — ${firstReason}` : ''}`}
-      </div>
-      <div className="text-xs text-muted">
-        {detail.location.precision === 'exact'
-          ? detail.location.address
-          : 'Village-level location only'}
-      </div>
-      <div className="row" style={{ gap: '0.8rem' }}>
-        <button className="btn btn--primary btn--sm" onClick={onOpen}>
-          {canDecide ? 'Review & decide' : 'Open full details'}
-        </button>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>
-          Close
-        </button>
-      </div>
-      {user.role === 'disaster_officer' && detail.duplicate_review?.open_match_ids?.length > 0 && (
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.open_match_ids[0], detail.id)}>
-          Open duplicate review
-        </button>
-      )}
-      {user.role === 'disaster_officer' && detail.duplicate_review?.confirmed_match_id && (
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.confirmed_match_id, detail.id)}>
-          Open confirmed duplicate review
-        </button>
-      )}
-    </div>
-  )
-}
-
-function CasePanel({ detail, onClose, user, onDone, onOpenDuplicate }) {
-  if (!detail) return null
-  const summaryOnly = detail.detail_access === 'summary'
-  return (
-    <aside className="card" style={{ padding: 'var(--sp-20)' }}>
-      <div className="row--between">
-        <h2 style={{ margin: 0 }}>#{detail.reference}</h2>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>
-          Close
-        </button>
-      </div>
-
-      {summaryOnly ? (
-        <div className="banner banner--info" style={{ marginTop: 'var(--sp-12)' }}>
-          <span className="body">
-            <span className="title">Household details are protected.</span>
-            <br />
-            This coordination summary is enough to assess capacity. Photos, vulnerability details,
-            case history and the exact address are released only to the claiming organisation.
-          </span>
-        </div>
-      ) : (
-        <p className="text-sm text-muted" style={{ marginTop: 'var(--sp-8)' }}>
-          {detail.description}
-        </p>
-      )}
-
-      <PriorityPanel detail={detail} />
-
-      {user.role === 'disaster_officer' && detail.duplicate_review?.open_match_ids?.length > 0 && (
-        <div className="row" style={{ flexWrap: 'wrap', marginTop: 'var(--sp-12)' }}>
-          <span className="badge badge--duplicate">Possible duplicate</span>
-          {detail.duplicate_review.open_match_ids.map((id) => (
-            <button key={id} className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(id, detail.id)}>
-              Review pair #{id}
-            </button>
-          ))}
-        </div>
-      )}
-      {user.role === 'disaster_officer' && detail.duplicate_review?.confirmed_match_id && (
-        <button className="btn btn--ghost btn--sm" onClick={() => onOpenDuplicate(detail.duplicate_review.confirmed_match_id, detail.id)}>
-          Open confirmed duplicate review
-        </button>
-      )}
-
-      <div style={{ marginTop: 'var(--sp-16)' }}>
-        <span className="text-xs text-muted">
-          {detail.location.precision === 'exact' ? 'Exact location' : 'Approximate location'}
-        </span>
-        <div className="text-sm">{detail.location.address}</div>
-        {detail.location.precision === 'village' && (
-          <div className="text-xs text-muted" style={{ marginTop: '0.4rem' }}>
-            Exact coordinates are released to the district office and the claiming organisation only.
-          </div>
-        )}
-      </div>
-
-      <CaseActions detail={detail} user={user} onDone={onDone} onOpenDuplicate={onOpenDuplicate} />
-    </aside>
-  )
-}
+import CaseCard from '../components/queue/CaseCard'
+import CasePanel from '../components/queue/CasePanel'
+import MapCaseCard from '../components/queue/MapCaseCard'
+import QueueFilters from '../components/queue/QueueFilters'
+import QueueSummary from '../components/queue/QueueSummary'
 
 export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate, duplicateCount }) {
   const [unread, setUnread] = useState(0)
@@ -542,8 +141,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     return () => window.removeEventListener('keydown', onKey)
   }, [mapCase])
 
-  // Re-fetch after an action so the screen shows what the server recorded,
-  // not what we assumed it would record.
+  // Refresh from the server after actions so the UI reflects recorded outcomes.
   async function refresh() {
     invalidateQueue({ keepDetail: true })
     const version = selectionVersion.current
@@ -565,8 +163,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     try {
       const claimed = await api.claimJob(jobId)
       const job = claimed.jobs.find((item) => item.id === jobId)
-      // The button vanishes once the job is held; without a message that
-      // reads as nothing having happened.
+      // Show claim confirmation because removing the claim button alone looks like no change.
       setNotice(
         `The ${job.help_type_display.toLowerCase()} job on #${claimed.reference} is now your organisation's. ` +
           `It is locked to other organisations and the change is in the audit log.`,
@@ -579,138 +176,13 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     }
   }
 
-  const initials = user.full_name
-    .split(' ')
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join('')
-
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <a className="logo" href="#queue" onClick={(e) => e.preventDefault()}>
-          <span className="logo__mark">
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.5 12.5L4 11.5 12 5 20 11.5 21.5 12.5 M3 16q3-2 6 0t6 0t6 0 M3 19.5q3-2 6 0t6 0t6 0"
-              />
-            </svg>
-          </span>
-          <span>
-            <span className="logo__name">HighGround</span>
-            <br />
-            <span className="logo__role">
-              {user.role === 'ngo_volunteer' ? 'NGO responder' : user.role_display}
-            </span>
-          </span>
-        </a>
-
-        <nav className="side-nav">
-          <a href="#queue" className="active" onClick={(e) => e.preventDefault()}>
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
-              />
-            </svg>
-            Case queue
-            {stats && <span className="side-nav__count">{stats.total}</span>}
-          </a>
-
-          {user.role === 'disaster_officer' && (
-            <a href="#duplicates" onClick={(e) => { e.preventDefault(); onNavigate('duplicates') }}>
-              <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 8.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v8.25A2.25 2.25 0 006 16.5h2.25m8.25-8.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-7.5A2.25 2.25 0 018.25 18v-7.5a2.25 2.25 0 012.25-2.25h6z" />
-              </svg>
-              Duplicate review
-              {duplicateCount !== null && <span className="side-nav__count">{duplicateCount}</span>}
-            </a>
-          )}
-
-          {user.role === 'ngo_volunteer' && <a
-            href="#tasks"
-            onClick={(e) => {
-              e.preventDefault()
-              onNavigate('tasks')
-            }}
-          >
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"
-              />
-            </svg>
-            Task board
-          </a>}
-
-          <a
-            href="#notifications"
-            onClick={(e) => {
-              e.preventDefault()
-              onNavigate('notifications')
-            }}
-          >
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
-              />
-            </svg>
-            Notifications
-            {unread > 0 && <span className="side-nav__count">{unread}</span>}
-          </a>
-
-          <a
-            href="#rules"
-            onClick={(e) => {
-              e.preventDefault()
-              onNavigate('rules')
-            }}
-          >
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 6.75A2.25 2.25 0 015.25 4.5h13.5A2.25 2.25 0 0121 6.75v10.5A2.25 2.25 0 0118.75 19.5H5.25A2.25 2.25 0 013 17.25V6.75zM7.5 9h9M7.5 12h9M7.5 15h5.25"
-              />
-            </svg>
-            How priority works
-          </a>
-
-          <span className="side-nav__label">Organisation</span>
-          <span className="side-nav__item side-nav__item--static">
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.75c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
-              />
-            </svg>
-            {user.organization || 'No organisation'}
-          </span>
-        </nav>
-
-        <div className="sidebar__user">
-          <span className="avatar avatar--info">{initials}</span>
-          <div>
-            <div className="text-sm text-strong">{user.full_name}</div>
-            <button
-              className="text-xs text-muted"
-              onClick={onLogout}
-              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer' }}
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="main main--vp">
+    <ResponderShell
+      user={user} active="queue" unread={unread}
+      counts={{ queue: stats?.total, duplicates: duplicateCount }}
+      onNavigate={onNavigate} onLogout={onLogout}
+      mainClassName="main main--vp" mainStyle={null}
+    >
         <div className="page-header">
           <div>
             <h1>Case queue</h1>
@@ -746,117 +218,15 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           </div>
         </div>
 
-        {stats && (
-          <div className="row" style={{ gap: 'var(--sp-12)', flexWrap: 'wrap' }}>
-            <span className="map-kpi">
-              <span className="map-kpi__value">{stats.total}</span> visible to you
-            </span>
-            <span className="map-kpi">
-              <span className="map-kpi__value" style={{ color: 'var(--danger-600)' }}>
-                {stats.health_critical}
-              </span>{' '}
-              health-critical
-            </span>
-            <span className="map-kpi">
-              <span className="map-kpi__value" style={{ color: 'var(--teal-700)' }}>
-                {stats.unclaimed}
-              </span>{' '}
-              with help waiting
-            </span>
-            <span className="map-kpi">
-              <span className="map-kpi__value">{stats.in_progress}</span> in progress
-            </span>
-          </div>
-        )}
+        <QueueSummary stats={stats} unmet={unmet} />
 
-        {unmet && unmet.length > 0 && (
-          <div className="banner banner--warning" role="status">
-            <span className="body text-sm">
-              <span className="title">Help no organisation has taken yet</span>
-              <br />
-              {unmet.map((row) => (
-                <span key={row.help_type} style={{ display: 'block' }}>
-                  {row.help_type_display}: {row.open_jobs} {row.open_jobs === 1 ? 'job' : 'jobs'}
-                  {row.health_critical > 0 ? `, ${row.health_critical} health-critical` : ''}, oldest
-                  waiting {row.oldest_waiting_days} {row.oldest_waiting_days === 1 ? 'day' : 'days'}
-                </span>
-              ))}
-            </span>
-          </div>
-        )}
+        <QueueFilters
+          user={user} status={status} priority={priority} help={help} search={search}
+          invalidateQueue={invalidateQueue} setStatus={setStatus}
+          setPriority={setPriority} setHelp={setHelp} setSearch={setSearch}
+        />
 
-        <div className="case-queue__filters">
-          <div className="case-queue__filter-group" role="group" aria-label="Case status">
-            <span className="case-queue__filter-label" aria-hidden="true">Status</span>
-            {STATUS_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${status === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={status === filter.value}
-                onClick={() => {
-                  if (status === filter.value) return
-                  invalidateQueue()
-                  setStatus(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <div className="case-queue__filter-group" role="group" aria-label="Priority class">
-            <span className="case-queue__filter-label" aria-hidden="true">Priority</span>
-            {PRIORITY_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${priority === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={priority === filter.value}
-                onClick={() => {
-                  if (priority === filter.value) return
-                  invalidateQueue()
-                  setPriority(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <div className="case-queue__filter-group" role="group" aria-label="Type of help">
-            <span className="case-queue__filter-label" aria-hidden="true">Help</span>
-            {HELP_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${help === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={help === filter.value}
-                onClick={() => {
-                  if (help === filter.value) return
-                  invalidateQueue()
-                  setHelp(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="input"
-            style={{ maxWidth: '24rem' }}
-            aria-label="Search cases by reference or village"
-            placeholder="Search reference, village…"
-            value={search}
-            onChange={(e) => {
-              invalidateQueue()
-              setSearch(e.target.value)
-            }}
-          />
-        </div>
-        {priority && <p className="case-queue__filter-note">Cases awaiting verification appear under Priority: All.</p>}
-
-        {/* vp-fill claims the rest of the viewport and each column scrolls on
-            its own, so the filter bar and stat strip stay pinned while a long
-            queue or a long case panel scrolls independently. */}
+        {/* Keep header/filters pinned while queue/detail columns scroll independently. */}
         <div
           className={`vp-fill case-queue__workspace${detail ? ' case-queue__workspace--split' : ''}`}
           style={{
@@ -868,7 +238,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             <div className="stack" style={{ gap: 'var(--sp-12)', minHeight: 0 }}>
               {mapLoading && <p role="status" className="text-sm text-muted">Updating map…</p>}
               {mapError && (
-                <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>
+                <p role="alert" className="text-sm text-danger">
                   {mapError}
                 </p>
               )}
@@ -918,7 +288,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
               )}
             </div>
           ) : (
-          <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
+          <div className="stack vp-scroll scroll-pane gap-12">
             {notice && (
               <div className="banner banner--info">
                 <svg fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
@@ -951,7 +321,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
               </div>
             )}
             {loading && <p className="text-muted">Loading cases…</p>}
-            {listError && <p role="alert" className="text-sm" style={{ color: 'var(--danger-600)' }}>Could not load the queue: {listError} <button className="btn btn--ghost btn--sm" onClick={() => { invalidateQueue(); setReloadKey((n) => n + 1) }}>Retry</button></p>}
+            {listError && <p role="alert" className="text-sm text-danger">Could not load the queue: {listError} <button className="btn btn--ghost btn--sm" onClick={() => { invalidateQueue(); setReloadKey((n) => n + 1) }}>Retry</button></p>}
             {detailLoadingId && <p role="status" className="text-sm text-muted">Loading case detail…</p>}
             {detailError && <p role="alert" className="text-sm">Could not open case: {detailError.message} <button className="btn btn--ghost btn--sm" onClick={() => openCase(detailError.id)}>Retry</button></p>}
             {!loading && !listError && cases.length === 0 && (
@@ -972,7 +342,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           )}
 
           {detail && (
-            <div className="stack vp-scroll" style={{ gap: 'var(--sp-12)', ...SCROLL_PANE }}>
+            <div className="stack vp-scroll scroll-pane gap-12">
               <CasePanel
                 detail={detail}
                 user={user}
@@ -983,7 +353,6 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </ResponderShell>
   )
 }

@@ -2,14 +2,17 @@
 
 Traceability:
   FR6  NGOs claim work atomically — now one job (type of help) at a time
-  FR20 Exact location only for district staff and an organisation holding an
-       active job on the case
+  FR20 Claim role permissions; exact location only for district staff and an
+       organisation holding an active job on the case
+  FR21 Claim changes retain actor and organisation in the append-only audit log
   FR11 Resident confirms completed work — per job
 """
 
+from django.test import Client
 from django.utils import timezone
 
 from cases.models import CaseEventLog, CaseJob, CaseRecord, CaseTask
+from cases.tests.job_helpers import give_job
 from cases.tests.test_lifecycle import LifecycleTestCase
 
 
@@ -37,7 +40,90 @@ class JobTestCase(LifecycleTestCase):
         self.repair.refresh_from_db()
 
 
+class SingleJobClaimTests(LifecycleTestCase):
+    """Since ADR-020 the claim is on a job (one type of help); the case here
+    has one job, so these keep their original meaning."""
+
+    def setUp(self):
+        super().setUp()
+        self.job = give_job(self.case)
+
+    def claim_job(self):
+        return self.client.post(f"/api/jobs/{self.job.pk}/claim/")
+
+    def test_ngo_claims_a_verified_job_and_writes_an_audit_row(self):
+        self.login(self.mercy_lead)
+        response = self.claim_job()
+
+        self.assertEqual(response.status_code, 200)
+        self.case.refresh_from_db()
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.claimed_by_org, self.mercy)
+        self.assertEqual(self.case.status, CaseRecord.Status.CLAIMED)
+
+        # FR21: the successful claim attributes the organisation and actor.
+        event = CaseEventLog.objects.get(
+            case=self.case, event_type=CaseEventLog.EventType.CLAIMED
+        )
+        self.assertEqual(event.actor_user, self.mercy_lead)
+        self.assertIn("Mercy Relief", event.detail)
+
+    def test_second_organisation_is_refused(self):
+        """The core requirement: exactly one organisation wins a case."""
+        self.login(self.mercy_lead)
+        self.claim_job()
+
+        self.login(self.belia_lead)
+        response = self.claim_job()
+
+        self.assertEqual(response.status_code, 409)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.claimed_by_org, self.mercy)
+
+    def test_reclaiming_by_the_same_org_is_idempotent(self):
+        """A dropped response must not turn a successful claim into an error."""
+        self.login(self.mercy_lead)
+        first = self.claim_job()
+        second = self.claim_job()
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(
+            CaseEventLog.objects.filter(
+                case=self.case, event_type=CaseEventLog.EventType.CLAIMED
+            ).count(),
+            1,
+            "the retry must not add a second 'claimed' row to the audit trail",
+        )
+
+    def test_unverified_cases_cannot_be_claimed(self):
+        self.case.status = CaseRecord.Status.SUBMITTED
+        self.case.save()
+        self.login(self.mercy_lead)
+
+        response = self.claim_job()
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_non_responders_cannot_claim_a_single_job(self):
+        resident_client = Client()
+        resident_client.force_login(self.resident)
+        officer_client = Client()
+        officer_client.force_login(self.officer)
+        cases = (
+            ("resident", resident_client, 403),
+            ("officer", officer_client, 403),
+            ("anonymous", self.client, 403),
+        )
+        for actor, client, expected_status in cases:
+            with self.subTest(actor=actor):
+                response = client.post(f"/api/jobs/{self.job.pk}/claim/")
+                self.assertEqual(response.status_code, expected_status)
+
+
 class ClaimTests(JobTestCase):
+    """Claims on a case with two jobs; single-job claim rules are in SingleJobClaimTests."""
+
     def test_two_organisations_claim_different_jobs_on_one_case(self):
         self.assertEqual(self.claim(self.mercy_lead, self.cleanup).status_code, 200)
         self.assertEqual(self.claim(self.belia_lead, self.repair).status_code, 200)
@@ -45,27 +131,6 @@ class ClaimTests(JobTestCase):
         self.assertEqual(self.cleanup.claimed_by_org, self.mercy)
         self.assertEqual(self.repair.claimed_by_org, self.belia)
         self.assertEqual(self.case.status, CaseRecord.Status.CLAIMED)
-
-    def test_a_claimed_job_cannot_be_taken_by_another_organisation(self):
-        self.claim(self.mercy_lead, self.cleanup)
-        self.assertEqual(self.claim(self.belia_lead, self.cleanup).status_code, 409)
-        self.cleanup.refresh_from_db()
-        self.assertEqual(self.cleanup.claimed_by_org, self.mercy)
-
-    def test_a_retry_by_the_same_organisation_writes_nothing_more(self):
-        self.claim(self.mercy_lead, self.cleanup)
-        before = CaseEventLog.objects.filter(event_type=CaseEventLog.EventType.CLAIMED).count()
-        self.assertEqual(self.claim(self.mercy_lead, self.cleanup).status_code, 200)
-        after = CaseEventLog.objects.filter(event_type=CaseEventLog.EventType.CLAIMED).count()
-        self.assertEqual(before, after)
-
-    def test_jobs_on_an_unverified_case_cannot_be_claimed(self):
-        CaseRecord.objects.filter(pk=self.case.pk).update(status=CaseRecord.Status.SUBMITTED)
-        self.assertEqual(self.claim(self.mercy_lead, self.cleanup).status_code, 409)
-
-    def test_only_ngo_responders_claim(self):
-        self.assertEqual(self.claim(self.officer, self.cleanup).status_code, 403)
-        self.assertEqual(self.claim(self.resident, self.cleanup).status_code, 403)
 
     def test_release_returns_an_unstarted_job_to_the_queue(self):
         self.claim(self.mercy_lead, self.cleanup)
@@ -240,6 +305,11 @@ class UnmetHelpTests(JobTestCase):
         self.assertEqual(rows["repair"]["oldest_waiting_days"], 0)
 
     def test_ngos_and_residents_cannot_see_the_report(self):
-        for user in (self.mercy_lead, self.resident):
-            self.login(user)
-            self.assertEqual(self.client.get("/api/jobs/unmet/").status_code, 403)
+        cases = (
+            ("ngo", self.mercy_lead, 403),
+            ("resident", self.resident, 403),
+        )
+        for actor, user, expected_status in cases:
+            with self.subTest(actor=actor):
+                self.login(user)
+                self.assertEqual(self.client.get("/api/jobs/unmet/").status_code, expected_status)

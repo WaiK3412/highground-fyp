@@ -8,7 +8,7 @@ from django.contrib import admin
 from django.urls import path
 
 from accounts import api as accounts_api
-from cases import api as cases_api
+from cases import views as case_views
 from cases import private_files
 
 urlpatterns = [
@@ -22,31 +22,39 @@ urlpatterns = [
     path("api/auth/logout/", accounts_api.logout_view),
     path("api/auth/me/", accounts_api.me),
     # cases
-    path("api/cases/", cases_api.CaseListView.as_view()),
-    path("api/cases/stats/", cases_api.queue_stats),
-    path("api/cases/map/", cases_api.case_map),
-    path("api/locations/", cases_api.locations),
-    path("api/cases/<int:pk>/", cases_api.case_detail),
+    path("api/cases/", case_views.CaseListView.as_view()),
+    path("api/cases/stats/", case_views.queue_stats),
+    path("api/cases/map/", case_views.case_map),
+    path("api/locations/", case_views.locations),
+    path("api/cases/<int:pk>/", case_views.case_detail),
     path("api/case-photos/<int:pk>/file/", private_files.case_photo, name="case-photo"),
-    path("api/cases/<int:pk>/verify/", cases_api.verify_case),
-    path("api/cases/<int:pk>/tasks/", cases_api.case_tasks),
+    path("api/cases/<int:pk>/verify/", case_views.verify_case),
+    path("api/cases/<int:pk>/reply/", case_views.reply_to_case),
+    path("api/cases/<int:pk>/priority-override/", case_views.override_priority),
+    path("api/cases/<int:pk>/close/", case_views.close_on_behalf),
+    path("api/cases/<int:pk>/tasks/", case_views.case_tasks),
     # Duplicate review, screen 12 — district officers only.
-    path("api/duplicates/", cases_api.duplicate_list),
-    path("api/duplicates/<int:pk>/", cases_api.duplicate_detail),
-    path("api/duplicates/<int:pk>/decide/", cases_api.decide_duplicate),
+    path("api/duplicates/", case_views.duplicate_list),
+    path("api/duplicates/<int:pk>/", case_views.duplicate_detail),
+    path("api/duplicates/<int:pk>/decide/", case_views.decide_duplicate),
     # Help jobs (ADR-020): each type of help is claimed, finished and
     # confirmed on its own, so several organisations can help one household.
-    path("api/jobs/unmet/", cases_api.unmet_help),
-    path("api/jobs/<int:pk>/claim/", cases_api.claim_job),
-    path("api/jobs/<int:pk>/release/", cases_api.release_job),
-    path("api/jobs/<int:pk>/complete/", cases_api.complete_job),
-    path("api/jobs/<int:pk>/confirm/", cases_api.confirm_job),
-    path("api/tasks/", cases_api.task_board),
-    path("api/tasks/<int:pk>/", cases_api.update_task),
+    path("api/jobs/unmet/", case_views.unmet_help),
+    path("api/jobs/<int:pk>/claim/", case_views.claim_job),
+    path("api/jobs/<int:pk>/release/", case_views.release_job),
+    path("api/jobs/<int:pk>/complete/", case_views.complete_job),
+    path("api/jobs/<int:pk>/confirm/", case_views.confirm_job),
+    path("api/tasks/", case_views.task_board),
+    path("api/tasks/<int:pk>/", case_views.update_task),
+    path("api/tasks/<int:pk>/photos/", case_views.task_photos),
     # Notifications are the same event-log rows, filtered by recipient (ADR-004).
     # Screen 18 — how priority works (classes-1.0), read-only.
-    path("api/priority-rules/", cases_api.priority_rules),
-    path("api/notifications/", cases_api.notifications),
-    path("api/notifications/read-all/", cases_api.mark_all_notifications_read),
-    path("api/notifications/<int:pk>/read/", cases_api.mark_notification_read),
+    path("api/priority-rules/", case_views.priority_rules),
+    path("api/notifications/", case_views.notifications),
+    path("api/notifications/read-all/", case_views.mark_all_notifications_read),
+    path("api/notifications/<int:pk>/read/", case_views.mark_notification_read),
+    # Supply appeals (ADR-021) — replaces the pledge flow.
+    path("api/appeals/", case_views.appeals),
+    path("api/appeals/<int:pk>/", case_views.appeal_detail),
+    path("api/drop-off-points/", case_views.drop_off_points),
 ]

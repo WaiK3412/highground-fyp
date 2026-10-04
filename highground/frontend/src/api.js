@@ -106,6 +106,12 @@ export const api = {
     request(`/api/cases/${caseId}/tasks/`, { method: 'POST', body: payload }),
   updateTask: (id, payload) =>
     request(`/api/tasks/${id}/`, { method: 'PATCH', body: payload }),
+  addTaskPhotos: (taskId, stage, files, caption = '') =>
+    request(`/api/tasks/${taskId}/photos/`, {
+      method: 'POST', body: { stage, caption }, files, fileField: 'photos',
+    }),
+  closeOnBehalf: (caseId, reason) =>
+    request(`/api/cases/${caseId}/close/`, { method: 'POST', body: reason }),
   completeJob: (id) => request(`/api/jobs/${id}/complete/`, { method: 'POST' }),
   confirmJob: (id, decision, note = '') =>
     request(`/api/jobs/${id}/confirm/`, { method: 'POST', body: { decision, note } }),
@@ -122,4 +128,19 @@ export const api = {
   notifications: () => request('/api/notifications/'),
   markNotificationRead: (id) => request(`/api/notifications/${id}/read/`, { method: 'POST' }),
   markAllNotificationsRead: () => request('/api/notifications/read-all/', { method: 'POST' }),
+  appeals: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return request(`/api/appeals/${query ? `?${query}` : ''}`)
+  },
+  createAppeal: (payload) => request('/api/appeals/', { method: 'POST', body: payload }),
+  updateAppeal: (id, payload) =>
+    request(`/api/appeals/${id}/`, { method: 'PATCH', body: payload }),
+  dropOffPoints: () => request('/api/drop-off-points/'),
+  replyToCase: (id, payload) =>
+    request(`/api/cases/${id}/reply/`, { method: 'POST', body: payload }),
+  overridePriority: (id, priorityClass, reason) =>
+    request(`/api/cases/${id}/priority-override/`, {
+      method: 'POST', body: { priority_class: priorityClass, reason },
+    }),
+  updateProfile: (payload) => request('/api/auth/me/', { method: 'PATCH', body: payload }),
 }

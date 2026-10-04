@@ -1,7 +1,7 @@
-"""Rubric governance and stored scores — report §2.4.1 / §3.6.
+"""Reserved retired-rubric tables — report §2.4.1 / §3.6.
 
-Weights live in versioned rows, not code constants, so every score is
-attributable to a published rubric version and changing them is an audited act.
+Classes-1.0 replaced the weighted rubric (ADR-018). These tables retain
+historical results and the report ERD; their admin interface is read-only.
 """
 
 from django.conf import settings
@@ -48,7 +48,7 @@ class PriorityRubricVersion(models.Model):
 
 
 class PriorityRubricCriterion(models.Model):
-    """One weighted factor of a rubric version. Six of these make up v3.0.
+    """One weighted factor of the retired rubric. Six made up v3.0.
 
     ``max_points`` is the top of the raw severity scale used by the point
     bands. ``weight`` is the criterion's maximum contribution after scaling.
@@ -76,10 +76,10 @@ class PriorityRubricCriterion(models.Model):
 
 
 class CaseScoreComponent(models.Model):
-    """Points and the reason behind them.
+    """Historical points and reasons from the retired weighted rubric.
 
-    The reason is what an officer reads in the breakdown panel; without it the
-    score is a black box.
+    Retaining each component keeps past results explainable for the report;
+    classes-1.0 does not write these rows.
     """
 
     case = models.ForeignKey(

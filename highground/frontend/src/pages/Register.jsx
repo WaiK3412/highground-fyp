@@ -1,19 +1,10 @@
-/**
- * Screen 03 — Create an account.
- *
- * Two paths. A resident registers outright. An organisation *applies*: it names
- * a requested_role and attaches evidence, but the account is still created as
- * community_member. Only an admin approving the application grants the role
- * (ADR-012), so nothing on this screen can hand anyone privilege.
- */
+/** ADR-012: residents register directly; organisation applicants remain community members until admin approval (screen 03). */
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 
-// system_admin is deliberately not offered, and the backend refuses it too. An
-// approval flow that can mint admins is one bad click from handing over the
-// platform.
+// The server rejects admin applications to prevent registration from granting platform control.
 const APPLICABLE_ROLES = [
   { value: 'ngo_volunteer', label: 'NGO responder' },
   { value: 'disaster_officer', label: 'District disaster officer' },
@@ -43,10 +34,7 @@ function BuildingIcon() {
   )
 }
 
-/**
- * Name, phone, email and password — identical on both paths, so they live in
- * one place. Only one branch is on screen at a time, so the ids cannot collide.
- */
+/** Share identity fields across resident/application forms; one visible branch prevents ID collisions. */
 function IdentityFields({ form, update, fieldError, errors }) {
   return (
     <>
@@ -146,8 +134,7 @@ export default function Register({ onRegistered, onShowLogin }) {
   const [organizationsAttempt, setOrganizationsAttempt] = useState(0)
   const [requestedRole, setRequestedRole] = useState('')
   const [organizationId, setOrganizationId] = useState('')
-  // e.target.files is a FileList, converted here to a real array so .map and
-  // .length work below.
+  // Convert FileList to an array for the file operations below.
   const [documents, setDocuments] = useState([])
 
   // Load the organisation list once, when this screen first appears.
@@ -184,8 +171,7 @@ export default function Register({ onRegistered, onShowLogin }) {
       return
     }
 
-    // Re-checked on the server, which is the check that counts — this one only
-    // saves the applicant a round trip.
+    // Validate locally to save a round trip; server validation remains authoritative.
     if (applying && documents.length === 0) {
       setErrors({ documents: 'Attach at least one supporting document.' })
       return
@@ -194,8 +180,7 @@ export default function Register({ onRegistered, onShowLogin }) {
     setBusy(true)
     try {
       await api.primeCsrf()
-      // Only an application carries a role, an organisation and files; a
-      // resident registration stays plain JSON.
+      // Applications need role/organisation/evidence; resident registration stays plain JSON.
       const payload = applying
         ? { ...form, requested_role: requestedRole, organization: organizationId }
         : form
@@ -209,7 +194,7 @@ export default function Register({ onRegistered, onShowLogin }) {
 
   const fieldError = (name) =>
     errors[name] ? (
-      <span className="help" style={{ color: 'var(--danger-600)', fontWeight: 600 }}>
+      <span className="help" role="alert" style={{ color: 'var(--danger-600)', fontWeight: 600 }}>
         {Array.isArray(errors[name]) ? errors[name].join(' ') : errors[name]}
       </span>
     ) : null
@@ -230,9 +215,7 @@ export default function Register({ onRegistered, onShowLogin }) {
     </div>
   ) : null
 
-  // The frozen styles.css carries no disabled state for .btn, and a
-  // full-strength primary button that does nothing when clicked reads as
-  // broken. Dimmed inline rather than editing the design contract.
+  // Dim disabled buttons inline because frozen styles.css has no disabled state.
   const submitDisabled = busy || !agreed
   const submitStyle = submitDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined
 
@@ -302,7 +285,7 @@ export default function Register({ onRegistered, onShowLogin }) {
           </div>
 
           {applying ? (
-            <form className="stack" style={{ gap: '2.4rem' }} onSubmit={handleSubmit}>
+            <form className="stack gap-24" onSubmit={handleSubmit}>
               {errorBanner}
 
               <div className="input-group">
@@ -405,7 +388,7 @@ export default function Register({ onRegistered, onShowLogin }) {
               </button>
             </form>
           ) : (
-            <form className="stack" style={{ gap: '2.4rem' }} onSubmit={handleSubmit}>
+            <form className="stack gap-24" onSubmit={handleSubmit}>
               {errorBanner}
 
               <IdentityFields
