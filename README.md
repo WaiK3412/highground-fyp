@@ -64,7 +64,7 @@ Paths are relative to `highground/backend` unless noted.
 
 | Responsibility | Start here |
 |---|---|
-| Priority classes and their reasons | `scoring/classes.py` |
+| Priority classes and their reasons | `priority/classes.py` |
 | Duplicate rules | `cases/duplicate_rules.py`; shared normalisation in `cases/normalise.py` |
 | Database changes (transactions, audit rows) | `cases/services.py`; duplicate scan and review in `cases/duplicate_services.py` |
 | Role and household privacy rules | `accounts/permissions.py` |
@@ -84,7 +84,7 @@ Follow one case from start to finish:
    `cases/serializers/submission.py`.
 2. **Verify:** `components/queue/CaseActions.jsx` → `cases/views/verification.py`
    → `classify_case_record` in `cases/services.py` → `classify` in
-   `scoring/classes.py` (priority is set only when an officer verifies).
+   `priority/classes.py` (priority is set only when an officer verifies).
 3. **Claim:** `claim_job` in `cases/views/jobs.py` (the locking claim).
 4. **Do the work:** `cases/views/tasks.py`, `pages/TaskBoard.jsx`.
 5. **Confirm or close:** `components/resident/CompletionDecision.jsx`, then

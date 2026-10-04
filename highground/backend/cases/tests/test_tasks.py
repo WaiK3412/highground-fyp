@@ -77,7 +77,6 @@ class TaskWorkflowTests(TestCase):
             village="Kg. Task Test",
             address="Lot 8",
             status=CaseRecord.Status.CLAIMED,
-            score_total=72,
             created_at=timezone.now(),
         )
         self.job = CaseJob.objects.create(
@@ -489,7 +488,6 @@ class CaseDetailPrivacyTests(TestCase):
             vulnerability_flags=["disability"],
             needs_flags=["medicine"],
             status=CaseRecord.Status.CLAIMED,
-            score_total=81,
             created_at=timezone.now(),
         )
         CaseJob.objects.create(
@@ -518,7 +516,7 @@ class CaseDetailPrivacyTests(TestCase):
             "events",
             "vulnerability_flags",
             "needs_flags",
-            "score_components",
+            "priority_reasons",
             "tasks",
         ):
             self.assertNotIn(private_field, payload)

@@ -88,9 +88,9 @@ class FieldWhitelistTests(SubmissionTestCase):
         super().setUp()
         self.client.force_login(self.resident)
 
-    def test_a_household_cannot_set_its_own_score(self):
-        self.post(score_total=100)
-        self.assertIsNone(CaseRecord.objects.get().score_total)
+    def test_a_household_cannot_set_its_own_priority_class(self):
+        self.post(priority_class=1)
+        self.assertIsNone(CaseRecord.objects.get().priority_class)
 
     def test_a_household_cannot_submit_an_already_verified_case(self):
         self.post(status=CaseRecord.Status.VERIFIED)
@@ -188,8 +188,8 @@ class SubmittedStateTests(SubmissionTestCase):
         case = CaseRecord.objects.get()
 
         self.assertEqual(case.status, CaseRecord.Status.SUBMITTED)
-        self.assertIsNone(case.score_total)
-        self.assertEqual(case.score_components.count(), 0)
+        self.assertIsNone(case.priority_class)
+        self.assertEqual(case.priority_reasons, [])
 
     def test_submission_is_written_to_the_event_log(self):
         self.post()

@@ -194,34 +194,6 @@ class RegistrationDocument(models.Model):
         return f"{self.label} — {self.user.email}"
 
 
-class VolunteerProfile(models.Model):
-    """A community member who has also registered to volunteer.
-
-    Report §3.6 ERD: volunteer_profile. IC documents are verified by an admin
-    during registration review (GAPS A5), hence `verified_by_user`.
-    Dormant: the channel was withdrawn on 23 Sep 2026; the table stays as migration history.
-    """
-
-    user = models.OneToOneField(
-        "UserAccount", on_delete=models.CASCADE, primary_key=True,
-        related_name="volunteer_profile",
-    )
-    skills = models.TextField(blank=True)
-    availability = models.CharField(max_length=100, blank=True)
-    vehicle_access = models.BooleanField(default=False)
-    ic_document_ref = models.CharField(max_length=50, null=True, blank=True)
-    verified_by_user = models.ForeignKey(
-        "UserAccount", on_delete=models.PROTECT, null=True, blank=True,
-        related_name="verified_volunteers",
-    )
-
-    class Meta:
-        db_table = "volunteer_profile"
-
-    def __str__(self):
-        return f"Volunteer: {self.user.full_name}"
-
-
 class RoleApplication(UserAccount):
     """The same rows as UserAccount, shown as a review queue.
 

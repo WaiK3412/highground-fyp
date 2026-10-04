@@ -20,11 +20,6 @@ from cases.services import classify_case_record
 from cases.models import (
     CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask, DropOffPoint, LocationArea, SupplyAppeal, demo_audit_reset,
 )
-from scoring.models import (
-    CaseScoreComponent,
-    PriorityRubricCriterion,
-    PriorityRubricVersion,
-)
 
 DEMO_PASSWORD = "demo"  # short on purpose: typed live during demos
 
@@ -111,7 +106,6 @@ class Command(BaseCommand):
 
     def _flush(self):
         self.stdout.write("Flushing existing demo data...")
-        CaseScoreComponent.objects.all().delete()
         with demo_audit_reset():
             SupplyAppeal.objects.all().delete()
             CaseEventLog.objects.all().delete()
@@ -119,8 +113,6 @@ class Command(BaseCommand):
             CasePhoto.objects.all().delete()
             CaseTask.objects.all().delete()
             CaseRecord.objects.all().delete()
-            PriorityRubricCriterion.objects.all().delete()
-            PriorityRubricVersion.objects.all().delete()
             DropOffPoint.objects.all().delete()
             UserAccount.objects.filter(is_superuser=False).delete()
             Organization.objects.all().delete()

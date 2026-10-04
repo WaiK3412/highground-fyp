@@ -16,7 +16,7 @@ const HELP_FILTERS = [
   { value: 'other', label: 'Other' },
 ]
 
-// classes-1.0 (scoring/classes.py): the class number is the filter value.
+// classes-1.0 (priority/classes.py): the class number is the filter value.
 const PRIORITY_FILTERS = [
   { value: '', label: 'All' },
   { value: '1', label: '1 Health-critical' },

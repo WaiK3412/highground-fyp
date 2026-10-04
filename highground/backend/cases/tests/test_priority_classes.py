@@ -47,13 +47,11 @@ class VerificationClassifiesTests(LifecycleTestCase):
         self.assertIn("class 2 (At risk)", event.detail)
         self.assertIn("classes-1.0", event.detail)
 
-    def test_verification_does_not_need_a_rubric(self):
-        # The retired weighted score refused to run without a published rubric.
+    def test_a_case_with_no_risk_answers_is_standard(self):
         self.set_answers(urgency="none", vulnerability_flags=[], access_level="normal")
         self.assertEqual(self.verify().status_code, 200)
         self.case.refresh_from_db()
         self.assertEqual(self.case.priority_class, 3)
-        self.assertIsNone(self.case.score_total)
 
     def test_reverification_recomputes_from_corrected_answers(self):
         self.set_answers(urgency="urgent")
@@ -118,7 +116,6 @@ class QueueOrderAndFilterTests(LifecycleTestCase):
         row = self.rows()[0]
         self.assertEqual(row["priority_class"], 1)
         self.assertEqual(row["priority_label"], "Health-critical")
-        self.assertNotIn("score_total", row)
 
     def test_unverified_row_has_no_label(self):
         row = self.rows()[-1]

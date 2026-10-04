@@ -48,7 +48,7 @@ class CaseCreateSerializer(serializers.ModelSerializer):
 
     The field list IS the security boundary, and it is deliberately short.
     Everything a resident must not control — status, priority_class,
-    verified_by_user, jobs and who claims them, rubric_version, reference,
+    verified_by_user, jobs and who claims them, reference,
     submitted_by_user — is simply absent, so DRF drops it instead of trusting
     it. Posting priority_class=1 is not an error; it is ignored.
 

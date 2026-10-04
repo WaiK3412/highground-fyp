@@ -184,13 +184,6 @@ class CaseRecord(models.Model):
         blank=True,
         related_name="duplicates",
     )
-    rubric_version = models.ForeignKey(
-        "scoring.PriorityRubricVersion",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="scored_cases",
-    )
     # The controlled place. `village` below stays as the name at the time of
     # filing, so older free-text cases and the report's ERD column still read.
     location_area = models.ForeignKey(
@@ -218,11 +211,8 @@ class CaseRecord(models.Model):
     vulnerability_flags = models.JSONField(default=list, blank=True)
 
     status = models.CharField(max_length=20, choices=Status, default=Status.SUBMITTED)
-    score_total = models.IntegerField(null=True, blank=True)
 
-    # classes-1.0 (scoring/classes.py). Set at verification; NULL until then.
-    # score_total above is the retired weighted score, kept for the report's
-    # comparison and no longer written for new cases.
+    # classes-1.0 (priority/classes.py). Set at verification; NULL until then.
     class PriorityClass(models.IntegerChoices):
         HEALTH_CRITICAL = 1, "Health-critical"
         AT_RISK = 2, "At risk"
@@ -468,9 +458,7 @@ class CaseEventLog(models.Model):
         ESCALATED = "escalated", "Escalated"
         CLOSED = "closed", "Closed"
         REOPENED = "reopened", "Reopened"
-        PLEDGE_UPDATED = "pledge_updated", "Pledge updated"
         SCORE_OVERRIDDEN = "score_overridden", "Priority class changed by an officer"
-        RUBRIC_PUBLISHED = "rubric_published", "Rubric published"
         # Duplicate detection (report §3.7.8). All but DUPLICATE_CLOSED are
         # internal: they name the other household's case and stay with officers.
         DUPLICATE_CHECK_PENDING = "duplicate_check_pending", "Duplicate check pending"
@@ -555,40 +543,12 @@ def protect_audit_task(sender, instance, **kwargs):
         raise ValueError("Tasks with audit actions cannot be deleted.")
 
 
-class CommunityPledge(models.Model):
-    """Reserved pledge table (ERD §1); supply appeals replaced this workflow (ADR-021)."""
-
-    class Status(models.TextChoices):
-        PLEDGED = "pledged", "Pledged"
-        RECEIVED = "received", "Received"
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="pledges"
-    )
-    allocated_case = models.ForeignKey(
-        CaseRecord, on_delete=models.SET_NULL, null=True, blank=True, related_name="pledges"
-    )
-    drop_off_point = models.ForeignKey(
-        DropOffPoint, on_delete=models.PROTECT, related_name="pledges"
-    )
-    item_category = models.CharField(max_length=80)
-    quantity = models.CharField(max_length=80)
-    status = models.CharField(max_length=20, choices=Status, default=Status.PLEDGED)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "community_pledge"
-
-    def __str__(self):
-        return f"{self.item_category} x{self.quantity}"
-
-
 class SupplyAppeal(models.Model):
     """An NGO's notice of the relief items it needs (ADR-021).
 
     Replaces the pledge flow. Residents read it and take items to the
     drop-off point; nothing is pledged or tracked in the app, so there is no
-    pledge lifecycle to verify. `community_pledge` stays as a reserved table.
+    pledge lifecycle to verify.
     """
 
     class Status(models.TextChoices):

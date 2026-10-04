@@ -2,7 +2,7 @@
 
 from django.test import SimpleTestCase
 
-from scoring.classes import ClassInput, classify
+from priority.classes import ClassInput, classify
 
 
 def case(urgency="none", access="normal", flags=()):

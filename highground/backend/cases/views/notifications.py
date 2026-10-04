@@ -65,7 +65,7 @@ def mark_all_notifications_read(request):
 @permission_classes([IsCoordinator])
 def priority_rules(request):
     """Screen 18, "how priority works": the classes-1.0 rules and their sources."""
-    from scoring.classes import CLASS_RULES_VERSION, RULES
+    from priority.classes import CLASS_RULES_VERSION, RULES
 
     return Response(
         {

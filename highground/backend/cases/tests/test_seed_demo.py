@@ -34,8 +34,6 @@ class SeedDemoTests(TestCase):
         canonical = CaseRecord.objects.get(reference="FRC-1042")
         self.assertEqual(canonical.priority_class, 1)  # medical_disrupted
         self.assertTrue(canonical.priority_reasons[0].startswith("Health-critical"))
-        # The retired weighted score is no longer written for new cases.
-        self.assertIsNone(canonical.score_total)
         self.assertLessEqual(set(canonical.needs_flags), NEEDS_VOCAB)
 
         # Rejected cases have no class either: verify_case clears it (3 Oct).
@@ -46,7 +44,6 @@ class SeedDemoTests(TestCase):
         self.assertTrue(unclassified.exists())
         for case in unclassified:
             self.assertIsNone(case.priority_class)
-            self.assertIsNone(case.score_total)
         self.assertFalse(
             CaseRecord.objects.exclude(status__in=no_class)
             .filter(priority_class__isnull=True)

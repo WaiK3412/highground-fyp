@@ -12,7 +12,6 @@ from .models import (
     CasePhoto,
     CaseRecord,
     CaseTask,
-    CommunityPledge,
     DropOffPoint,
     DuplicateCaseMatch,
     LocationArea,
@@ -80,7 +79,7 @@ class CaseRecordAdmin(admin.ModelAdmin):
     # no-village duplicate path (scan_duplicates), and that edit is audited.
     readonly_fields = (
         "reference", "status", "description", "priority_class", "priority_reasons",
-        "score_total", "rubric_version", "damage_category", "urgency", "flood_depth",
+        "damage_category", "urgency", "flood_depth",
         "liveability", "access_level", "needs_flags", "vulnerability_flags",
         "household_size", "address", "latitude", "longitude", "submitted_by_user",
         "verified_by_user", "duplicate_of_case", "created_at", "closed_at",
@@ -201,12 +200,6 @@ class DuplicateCaseMatchAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-
-@admin.register(CommunityPledge)
-class CommunityPledgeAdmin(admin.ModelAdmin):
-    list_display = ("item_category", "quantity", "status", "drop_off_point", "user")
-    list_filter = ("status", "drop_off_point")
 
 
 @admin.register(DropOffPoint)

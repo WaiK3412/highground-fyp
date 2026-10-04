@@ -323,7 +323,7 @@ class VerificationGateTests(ApiWorld, TestCase):
         self.assertEqual(response.json()["duplicate_match_ids"], [self.match.pk])
         self.newer.refresh_from_db()
         self.assertEqual(self.newer.status, CaseRecord.Status.SUBMITTED)
-        self.assertIsNone(self.newer.score_total)
+        self.assertIsNone(self.newer.priority_class)
 
     def test_needs_info_and_reject_stay_available(self):
         self.assertEqual(self.verify(self.newer, "needs_info", "Which lot?").status_code, 200)

@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 from accounts.models import UserAccount
 from accounts.permissions import may_see_exact_location, may_see_private_case_details
-from scoring.classes import HEALTH_CRITICAL_URGENCY
+from priority.classes import HEALTH_CRITICAL_URGENCY
 
 from ..models import CaseEventLog, CaseJob, CaseRecord, CaseTask
 from ..privacy import safe_case_text

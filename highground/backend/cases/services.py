@@ -7,7 +7,7 @@ back through classify_case_record (classes-1.0).
 
 from django.utils import timezone
 
-from scoring.classes import CLASS_RULES_VERSION, ClassInput, classify
+from priority.classes import CLASS_RULES_VERSION, ClassInput, classify
 
 from .models import CaseEventLog
 
