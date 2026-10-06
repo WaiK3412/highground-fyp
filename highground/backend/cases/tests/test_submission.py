@@ -207,6 +207,18 @@ class SubmittedStateTests(SubmissionTestCase):
         references = set(CaseRecord.objects.values_list("reference", flat=True))
         self.assertEqual(len(references), 2)
 
+    def test_numbering_continues_past_four_digits(self):
+        # As text, "FRC-9999" sorts after "FRC-10000"; numbering must follow the number.
+        self.post()
+        CaseRecord.objects.update(reference="FRC-9999")
+        self.post(description="A second, separate request.")
+        self.post(description="A third, separate request.")
+
+        self.assertEqual(
+            set(CaseRecord.objects.values_list("reference", flat=True)),
+            {"FRC-9999", "FRC-10000", "FRC-10001"},
+        )
+
     def test_the_submitter_can_see_their_own_new_case(self):
         self.post()
         listing = self.client.get(URL)

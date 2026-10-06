@@ -2,6 +2,7 @@
 
 from django.db import transaction
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
+from django.db.models.functions import Cast, Substr
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import api_view, permission_classes
@@ -38,21 +39,22 @@ from ..serializers.submission import (
 def _next_reference():
     """Next FRC- number, continuing the seed data's series.
 
+    The highest number is found as a number, not as text: as text "FRC-9999"
+    sorts after "FRC-10000", which would stop the series at 10000.
+
     Known limitation: two simultaneous submissions can read the same maximum.
     `reference` is unique, so the loser gets an IntegrityError rather than a
     duplicate reference — noisy, but never wrong. A database sequence is the
     real fix and is not worth building before submissions are concurrent.
     """
     last = (
-        CaseRecord.objects.filter(reference__startswith="FRC-")
-        .order_by("-reference")
-        .values_list("reference", flat=True)
+        CaseRecord.objects.filter(reference__regex=r"^FRC-[0-9]+$")
+        .annotate(number=Cast(Substr("reference", 5), IntegerField()))
+        .order_by("-number")
+        .values_list("number", flat=True)
         .first()
     )
-    try:
-        return f"FRC-{int(last.split('-')[1]) + 1}"
-    except (AttributeError, IndexError, ValueError):
-        return "FRC-1042"
+    return "FRC-1042" if last is None else f"FRC-{last + 1}"
 
 
 def _filter_priority_class(queryset, value):
