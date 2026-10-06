@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from django.contrib.auth.forms import UserChangeForm
+from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm
 from django.utils.html import format_html, format_html_join
 from django.urls import reverse
 
@@ -34,8 +34,16 @@ class RegistrationDocumentInline(admin.TabularInline):
 
 @admin.action(description="Approve selected role applications")
 def approve_applications(modeladmin, request, queryset):
-    approved, skipped = 0, 0
+    approved, skipped, no_district = 0, 0, 0
     for user in queryset:
+        if (
+            user.verification_status == UserAccount.VerificationStatus.PENDING
+            and user.requested_role == UserAccount.Role.DISASTER_OFFICER
+            and user.district_id is None
+        ):
+            # ADR-024: open the application and pick a district first.
+            no_district += 1
+            continue
         try:
             user.approve_application(admin=request.user)
             approved += 1
@@ -46,8 +54,41 @@ def approve_applications(modeladmin, request, queryset):
     modeladmin.message_user(
         request,
         f"{approved} approved."
-        + (f" {skipped} skipped (not awaiting a decision)." if skipped else ""),
+        + (f" {skipped} skipped (not awaiting a decision)." if skipped else "")
+        + (
+            f" {no_district} officer application(s) need a district before approval."
+            if no_district else ""
+        ),
     )
+
+
+def check_officer_district(form, cleaned, *, role, requested_role, approving_officer):
+    """ADR-024: an officer acts for one district.
+
+    Required on an officer account and when approving an officer application.
+    Allowed on anyone whose application asks for the officer role, so it can be
+    set before a bulk approval. Refused on everyone else.
+    """
+    if "district" not in form.fields:
+        return
+    Role = UserAccount.Role
+    district = cleaned.get("district")
+    officer = role == Role.DISASTER_OFFICER or approving_officer
+    if officer and district is None:
+        form.add_error("district", "A disaster officer needs a district.")
+    elif district is not None and not officer and requested_role != Role.DISASTER_OFFICER:
+        form.add_error("district", "Only disaster officers and officer applicants have a district.")
+
+
+class UserAccountCreationForm(AdminUserCreationForm):
+    """The add-account form, with the same district rule as the change form."""
+
+    def clean(self):
+        cleaned = super().clean()
+        check_officer_district(
+            self, cleaned, role=cleaned.get("role"), requested_role=None, approving_officer=False,
+        )
+        return cleaned
 
 
 class UserAccountChangeForm(UserChangeForm):
@@ -77,6 +118,19 @@ class UserAccountChangeForm(UserChangeForm):
                 "verification_note",
                 "A rejected applicant is owed a reason (ADR-012).",
             )
+
+        # ADR-024. Use the values being saved where the form can edit them: the
+        # account form edits role and requested_role, the application form neither.
+        Role = UserAccount.Role
+        requested = cleaned.get("requested_role", self.instance.requested_role)
+        check_officer_district(
+            self, cleaned,
+            role=cleaned.get("role", self.instance.role),
+            requested_role=requested,
+            approving_officer=(
+                was == S.PENDING and now == S.VERIFIED and requested == Role.DISASTER_OFFICER
+            ),
+        )
         return cleaned
 
 
@@ -88,7 +142,7 @@ class UserAccountAdmin(UserAdmin):
     ordering = ("email",)
     list_display = (
         "email", "full_name", "role", "requested_role",
-        "verification_status", "organization", "is_active",
+        "verification_status", "organization", "district", "is_active",
     )
     list_filter = ("verification_status", "role", "organization", "is_active", "is_staff")
 
@@ -98,11 +152,12 @@ class UserAccountAdmin(UserAdmin):
     actions = [approve_applications]
     inlines = [RegistrationDocumentInline]
     form = UserAccountChangeForm
+    add_form = UserAccountCreationForm
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         ("Personal", {"fields": ("full_name", "phone")}),
-        ("Role & organisation", {"fields": ("role", "organization")}),
+        ("Role & organisation", {"fields": ("role", "organization", "district")}),
         (
             "Role application (ADR-012)",
             {
@@ -130,7 +185,9 @@ class UserAccountAdmin(UserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "full_name", "role", "organization", "password1", "password2"),
+                "fields": (
+                    "email", "full_name", "role", "organization", "district", "password1", "password2",
+                ),
             },
         ),
     )
@@ -235,10 +292,11 @@ class RoleApplicationAdmin(UserAccountAdmin):
         (
             "Decision",
             {
-                "fields": ("requested_role", "verification_status", "verification_note",
+                "fields": ("requested_role", "district", "verification_status", "verification_note",
                            "verified_by_user", "verified_at"),
                 "description": (
-                    "Approving copies the requested role into the account. To reject, set "
+                    "Approving copies the requested role into the account. An officer "
+                    "application needs a district first. To reject, set "
                     "the status to Rejected and give a reason — the reason is required and "
                     "the role is left untouched."
                 ),
@@ -271,3 +329,18 @@ class RoleApplicationAdmin(UserAccountAdmin):
     def has_add_permission(self, request):
         # Applications arrive by registering, never by being typed in here.
         return False
+
+
+# ---------------------------------------------------------------------------
+# ADR-024: Django Admin is the platform administrator's console. Its case and
+# account screens are not district-scoped, so an officer must not get in even
+# if someone grants them is_staff or model permissions.
+# ---------------------------------------------------------------------------
+_staff_has_permission = admin.site.has_permission
+
+
+def _platform_admins_only(request):
+    return _staff_has_permission(request) and request.user.role == UserAccount.Role.SYSTEM_ADMIN
+
+
+admin.site.has_permission = _platform_admins_only

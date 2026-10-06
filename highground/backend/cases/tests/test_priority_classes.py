@@ -70,7 +70,7 @@ class QueueOrderAndFilterTests(LifecycleTestCase):
         return CaseRecord.objects.create(
             reference=ref, submitted_by_user=self.resident,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
-            description="Mud.", village="Kg. Test", address="Lot 1",
+            description="Mud.", village="Kg. Test", address="Lot 1", location_area=self.village,
             status=status, priority_class=priority_class,
             created_at=timezone.now() - timedelta(days=days_ago),
         )
@@ -128,6 +128,9 @@ class QueueOrderAndFilterTests(LifecycleTestCase):
     def test_map_area_takes_the_highest_class(self):
         village = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).first()
         CaseRecord.objects.filter(pk__in=[self.c3_old.pk, self.c2.pk]).update(location_area=village)
+        # Every other case sits in another village, so this area holds just these two.
+        other = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).exclude(pk=village.pk).first()
+        CaseRecord.objects.exclude(pk__in=[self.c3_old.pk, self.c2.pk]).update(location_area=other)
         self.login(self.mercy_lead)  # an unclaimed NGO sees village groups, not points
         data = self.client.get("/api/cases/map/").json()
         area = next(a for a in data["areas"] if a["code"] == village.code)

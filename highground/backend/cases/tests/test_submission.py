@@ -409,6 +409,7 @@ class PinTests(SubmissionTestCase):
         officer = UserAccount.objects.create_user(
             email="pin-officer@example.my", full_name="Pin Officer", password="Recovery2026",
             role=UserAccount.Role.DISASTER_OFFICER,
+            district_id=case.location_area.parent_id,  # ADR-024: the case's district
         )
         self.client.force_login(officer)
         point = self.client.get("/api/cases/map/").json()["points"][0]

@@ -29,9 +29,9 @@ from .models import CaseEventLog
 #
 #   event                 | goes to                          | why
 #   ----------------------|----------------------------------|---------------------------
-#   submitted             | every disaster officer            | a request is waiting to be checked
-#   info_provided         | every disaster officer            | the household answered; re-check
-#   escalated             | every disaster officer            | (no endpoint creates this yet)
+#   submitted             | the case's district officers      | a request is waiting to be checked
+#   info_provided         | the case's district officers      | the household answered; re-check
+#   escalated             | the case's district officers      | (no endpoint creates this yet)
 #   verified              | the household                     | with the priority class folded in
 #   needs_info            | the household                     | GAPS C6: they must notice this one
 #   rejected              | the household                     | with the reason given
@@ -42,8 +42,7 @@ from .models import CaseEventLog
 #                         |                                   | reports incomplete work
 #
 # The rule underneath all of it: never notify somebody about their own action.
-# Officers are not tied to a district yet, so "every officer" is the whole
-# platform (stated limitation).
+# Officers act for one district (ADR-024): the district of the case's village.
 
 TO_HOUSEHOLD = {
     CaseEventLog.EventType.VERIFIED,
@@ -94,9 +93,15 @@ def recipients_for(case, event_type, actor, job=None):
         return [household] if household and household != actor else []
 
     if event_type in TO_OFFICERS:
+        # Only the officers of the district the case is filed in (ADR-024).
+        # A case with no village, or a district with no officer, tells nobody;
+        # administrators still see the case in Django Admin.
+        district_id = case.location_area.parent_id if case.location_area_id else None
+        if district_id is None:
+            return []
         return list(
             UserAccount.objects.filter(
-                role=UserAccount.Role.DISASTER_OFFICER, is_active=True
+                role=UserAccount.Role.DISASTER_OFFICER, is_active=True, district_id=district_id
             ).exclude(pk=getattr(actor, "pk", None))
         )
 

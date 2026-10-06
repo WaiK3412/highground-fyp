@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from accounts.models import RegistrationDocument, UserAccount
-from accounts.permissions import may_see_private_case_details, visible_cases
+from accounts.permissions import may_see_private_case_details, visible_cases, HasDistrictIfOfficer
 
 from .models import CasePhoto, CaseRecord
 
@@ -32,7 +32,7 @@ def _file_response(field, *, attachment, inline_image=False):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasDistrictIfOfficer])
 def case_photo(request, pk):
     photo = CasePhoto.objects.select_related("case").filter(pk=pk).first()
     if photo is None:

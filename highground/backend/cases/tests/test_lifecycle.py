@@ -27,9 +27,14 @@ class LifecycleTestCase(TestCase):
         self.resident = UserAccount.objects.create_user(
             email="r@example.my", full_name="Resident", password="Recovery2026",
         )
+        # ADR-024: an officer acts for one district, so the case is filed under
+        # a gazetteer village and the officer is that village's district officer.
+        from cases.models import LocationArea
+
+        self.village = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).first()
         self.officer = UserAccount.objects.create_user(
             email="o@example.my", full_name="Officer", password="Recovery2026",
-            role=UserAccount.Role.DISASTER_OFFICER,
+            role=UserAccount.Role.DISASTER_OFFICER, district_id=self.village.parent_id,
         )
         self.mercy_lead = UserAccount.objects.create_user(
             email="m@example.my", full_name="Mercy Lead", password="Recovery2026",
@@ -43,7 +48,7 @@ class LifecycleTestCase(TestCase):
             reference="FRC-9001", submitted_by_user=self.resident,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Mud through the ground floor.",
-            village="Kg. Test", address="Lot 1",
+            village="Kg. Test", address="Lot 1", location_area=self.village,
             status=CaseRecord.Status.VERIFIED,
             created_at=timezone.now(),
         )

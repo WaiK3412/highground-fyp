@@ -1,7 +1,9 @@
 """Django admin as the case-management interface (ADR-002: admin = screens 14/19)."""
 
+from django import forms
 from django.contrib import admin
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.urls import reverse
 from django.utils.html import format_html
@@ -59,8 +61,62 @@ class CaseTaskInline(admin.TabularInline):
         return False
 
 
+class CaseRecordAdminForm(forms.ModelForm):
+    """Keeps every duplicate pair inside one district (ADR-024).
+
+    Duplicate flags are raised within one village, and duplicate events name
+    both cases. Moving one case of a pair to another district would show the
+    other district's officers a case they may not see, so a case with any
+    duplicate history keeps its district; its village can still change within it.
+    """
+
+    class Meta:
+        model = CaseRecord
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.instance.pk or "location_area" not in cleaned:
+            return cleaned
+        new_area = cleaned["location_area"]
+        with transaction.atomic():
+            # Judge from locked rows, not the copy the form was opened with.
+            # Lock in the duplicate service's order, villages (by id) then the
+            # case: detection and decisions lock every case they pair or link,
+            # so no new history can appear while the case is held, and holding
+            # the new village too means the move's own foreign-key check cannot
+            # queue behind a decision that is waiting for this case. Django
+            # Admin runs the whole POST in one transaction, so these locks are
+            # held until save_model has written the move.
+            current = (
+                CaseRecord.objects.filter(pk=self.instance.pk)
+                .values_list("location_area_id", flat=True).first()
+            )
+            for area_id in sorted({current, new_area.pk if new_area else None} - {None}):
+                LocationArea.objects.select_for_update().filter(pk=area_id).first()
+            case = CaseRecord.objects.select_for_update().get(pk=self.instance.pk)
+            if case.location_area_id != current:
+                self.add_error(None, "This case was corrected by someone else just now. Reload it and try again.")
+                return cleaned
+            has_history = (
+                DuplicateCaseMatch.objects.filter(Q(case_a=case) | Q(case_b=case)).exists()
+                or case.duplicate_of_case_id
+                or CaseRecord.objects.filter(duplicate_of_case=case).exists()
+            )
+        old = case.location_area.parent_id if case.location_area_id else None
+        new = new_area.parent_id if new_area else None
+        if has_history and new != old:
+            self.add_error(
+                "location_area",
+                "This case has duplicate-review history with cases in its district, so it "
+                "cannot move to another district. Choose a village in the same district.",
+            )
+        return cleaned
+
+
 @admin.register(CaseRecord)
 class CaseRecordAdmin(admin.ModelAdmin):
+    form = CaseRecordAdminForm
     list_display = (
         "reference",
         "village",

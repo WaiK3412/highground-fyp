@@ -40,6 +40,8 @@ class UserSerializer(serializers.Serializer):
     organization = serializers.CharField(
         source="organization.name", read_only=True, default=None
     )
+    # An officer's district (ADR-024), so the sidebar can show whose cases these are.
+    district = serializers.CharField(source="district.name", read_only=True, default=None)
     # The SPA needs these to show an applicant where their application stands.
     verification_status = serializers.CharField(read_only=True)
     requested_role = serializers.CharField(read_only=True, default=None)

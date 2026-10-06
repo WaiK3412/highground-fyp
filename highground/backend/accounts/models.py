@@ -102,6 +102,18 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
         blank=True,
         related_name="members",
     )
+    # A disaster officer acts for one district (ADR-024): exact locations and
+    # household details are need-to-know, so an officer sees only cases filed
+    # under that district's villages. Also set on an officer applicant awaiting
+    # approval, so a bulk approval can go ahead; unused for every other role.
+    district = models.ForeignKey(
+        "cases.LocationArea",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="officers",
+        limit_choices_to={"level": "district"},
+    )
 
     email = models.EmailField(max_length=150, unique=True)
     full_name = models.CharField(max_length=100)
@@ -126,6 +138,10 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
 
         if self.verification_status != self.VerificationStatus.PENDING:
             raise ValueError('only a pending application can be approved')
+
+        # ADR-024: an officer without a district would see nothing, so give one first.
+        if self.requested_role == self.Role.DISASTER_OFFICER and self.district_id is None:
+            raise ValueError('assign a district before approving an officer')
 
         self.role = self.requested_role
         self.verification_status = self.VerificationStatus.VERIFIED

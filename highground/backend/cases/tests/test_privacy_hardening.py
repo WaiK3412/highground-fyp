@@ -9,7 +9,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from accounts.models import Organization, RegistrationDocument, UserAccount
-from cases.models import CaseEventLog, CasePhoto, CaseRecord
+from cases.models import CaseEventLog, CasePhoto, CaseRecord, LocationArea
 from cases.tests.job_helpers import give_job
 from cases.redaction import redact_personal_data
 
@@ -46,10 +46,14 @@ class PrivacyBoundaryTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name="Relief A", type=Organization.Type.NGO)
         self.other_org = Organization.objects.create(name="Relief B", type=Organization.Type.NGO)
+        # ADR-024: the case sits in a village of the officer's district.
+        self.village = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).first()
+
         def user(name, role=UserAccount.Role.COMMUNITY_MEMBER, org=None, staff=False):
             return UserAccount.objects.create_user(
                 email=f"{name}@example.test", full_name=name, password="ValidTestPass2026",
                 role=role, organization=org, is_staff=staff,
+                district_id=self.village.parent_id if role == UserAccount.Role.DISASTER_OFFICER else None,
             )
         self.owner = user("Resident One")
         self.other = user("Resident Two")
@@ -62,7 +66,7 @@ class PrivacyBoundaryTests(TestCase):
             reference="FRC-9901", submitted_by_user=self.owner,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Resident One can be reached at 012-345 6789. Bring water.",
-            village="Kg. Test", address="Lot 14, Jalan Hospital",
+            village="Kg. Test", address="Lot 14, Jalan Hospital", location_area=self.village,
             status=CaseRecord.Status.CLAIMED, created_at=timezone.now(),
         )
         self.job = give_job(self.case, self.org)

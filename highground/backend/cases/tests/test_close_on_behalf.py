@@ -329,6 +329,16 @@ class ConfirmationWaitingTests(LifecycleTestCase):
 
 class OfficerCloseRaceTests(GazetteerReloadMixin, TransactionTestCase):
     def setUp(self):
+        # TransactionTestCase empties every table between tests, and the
+        # lifecycle fixture files its case under a gazetteer village (ADR-024).
+        from importlib import import_module
+
+        from django.apps import apps
+
+        from cases.models import LocationArea
+
+        if not LocationArea.objects.exists():
+            import_module("cases.migrations.0008_load_kelantan_locations").load(apps, None)
         LifecycleTestCase.setUp(self)
         self.case.status = CaseRecord.Status.PENDING_CONFIRM
         self.case.save(update_fields=["status"])

@@ -11,6 +11,7 @@ from accounts.permissions import (
     IsDisasterOfficer,
     IsNgoVolunteer,
     may_see_private_case_details,
+    officer_district_q,
 )
 from ..models import CaseEventLog, CaseJob, CaseRecord, CaseTask
 from ..serializers.cases import CaseDetailSerializer, CaseSummaryDetailSerializer
@@ -255,6 +256,8 @@ def unmet_help(request):
 
     rows = (
         CaseJob.objects.filter(
+            # Only this officer's district (ADR-024).
+            officer_district_q(request.user, "case__"),
             status=CaseJob.Status.OPEN,
             case__status__in=[
                 CaseRecord.Status.VERIFIED, CaseRecord.Status.CLAIMED,

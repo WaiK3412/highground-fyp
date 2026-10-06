@@ -15,7 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseJob, CaseRecord, CaseTask
+from cases.models import CaseEventLog, CaseJob, CaseRecord, CaseTask, LocationArea
 
 
 class TaskWorkflowTests(TestCase):
@@ -63,11 +63,14 @@ class TaskWorkflowTests(TestCase):
             role=UserAccount.Role.NGO_VOLUNTEER,
             organization=self.other_org,
         )
+        # ADR-024: the case sits in a village of the officer's district.
+        self.village = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).first()
         self.officer = UserAccount.objects.create_user(
             email="officer-tasks@example.my",
             full_name="District Officer",
             password="Recovery2026",
             role=UserAccount.Role.DISASTER_OFFICER,
+            district_id=self.village.parent_id,
         )
         self.case = CaseRecord.objects.create(
             reference="FRC-8101",
@@ -76,6 +79,7 @@ class TaskWorkflowTests(TestCase):
             description="Mud and damaged furniture throughout the house.",
             village="Kg. Task Test",
             address="Lot 8",
+            location_area=self.village,
             status=CaseRecord.Status.CLAIMED,
             created_at=timezone.now(),
         )

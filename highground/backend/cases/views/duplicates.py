@@ -2,7 +2,7 @@
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from accounts.permissions import IsDisasterOfficer
+from accounts.permissions import IsDisasterOfficer, officer_district_q
 from ..models import CaseEventLog
 from ..serializers.duplicates import (
     DuplicateCaseSerializer,
@@ -26,6 +26,15 @@ def _decided_by(match):
     return match.decided_by_user.full_name if match.decided_by_user_id else None
 
 
+def _in_district(user, queryset):
+    """Pairs whose two cases are both in the officer's district (ADR-024).
+
+    Flags are only raised within one village, so a pair never spans two
+    districts; requiring both still keeps a stray pair out of either queue.
+    """
+    return queryset.filter(officer_district_q(user, "case_a__"), officer_district_q(user, "case_b__"))
+
+
 @api_view(["GET"])
 @permission_classes([IsDisasterOfficer])
 def duplicate_list(request):
@@ -42,7 +51,7 @@ def duplicate_list(request):
             400,
         )
     queryset = (
-        DuplicateCaseMatch.objects.filter(status=status_filter)
+        _in_district(request.user, DuplicateCaseMatch.objects.filter(status=status_filter))
         .select_related("case_a", "case_b")
         # rules-1.0 flags have no score to sort by, so the oldest flag comes first.
         .order_by("pk")
@@ -66,7 +75,7 @@ def duplicate_detail(request, pk):
     from ..models import DuplicateCaseMatch
 
     match = (
-        DuplicateCaseMatch.objects.select_related(
+        _in_district(request.user, DuplicateCaseMatch.objects).select_related(
             "case_a__submitted_by_user", "case_a__location_area",
             "case_b__submitted_by_user", "case_b__location_area",
             "decided_by_user",
@@ -115,6 +124,12 @@ def decide_duplicate(request, pk):
         return _error("invalid_decision", "decision must be confirm or dismiss.", 400)
     decision = serializer.validated_data["decision"]
     note = serializer.validated_data.get("note", "")
+
+    from ..models import DuplicateCaseMatch
+
+    # Another district's pair answers 404 like a missing one.
+    if not _in_district(request.user, DuplicateCaseMatch.objects.filter(pk=pk)).exists():
+        return _error("not_found", "Not found.", 404)
 
     try:
         outcome = decide_duplicate_match(pk, request.user, decision, note)

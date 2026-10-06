@@ -15,7 +15,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
-from cases.models import CaseEventLog, CaseRecord
+from cases.models import CaseEventLog, CaseRecord, LocationArea
 
 
 class NotificationTestCase(TestCase):
@@ -27,9 +27,11 @@ class NotificationTestCase(TestCase):
         self.resident = UserAccount.objects.create_user(
             email="siti@example.my", full_name="Siti binti Rahman", password="Recovery2026",
         )
+        # ADR-024: the case is filed in a gazetteer village of the officer's district.
+        self.village = LocationArea.objects.filter(level=LocationArea.Level.VILLAGE).first()
         self.officer = UserAccount.objects.create_user(
             email="officer@example.my", full_name="Encik Zulkifli", password="Recovery2026",
-            role=UserAccount.Role.DISASTER_OFFICER,
+            role=UserAccount.Role.DISASTER_OFFICER, district_id=self.village.parent_id,
         )
         self.ngo = UserAccount.objects.create_user(
             email="aisyah@example.my", full_name="Aisyah Tan", password="Recovery2026",
@@ -39,7 +41,7 @@ class NotificationTestCase(TestCase):
             reference="FRC-8001", submitted_by_user=self.resident,
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Mud through the ground floor.",
-            village="Kg. Bechah Laut", address="No. 14",
+            village="Kg. Bechah Laut", address="No. 14", location_area=self.village,
             household_size=4, status=CaseRecord.Status.SUBMITTED,
             created_at=timezone.now(),
         )
@@ -62,10 +64,18 @@ class AddressingTests(NotificationTestCase):
         rows = notify(self.case, CaseEventLog.EventType.CLAIMED, self.resident)
         self.assertEqual(rows, [])
 
-    def test_a_new_case_notifies_every_officer(self):
+    def test_a_new_case_notifies_every_officer_of_its_district_only(self):
+        """ADR-024: another district's officer is not told about this household."""
         second = UserAccount.objects.create_user(
             email="officer2@example.my", full_name="Officer Two", password="Recovery2026",
-            role=UserAccount.Role.DISASTER_OFFICER,
+            role=UserAccount.Role.DISASTER_OFFICER, district_id=self.village.parent_id,
+        )
+        elsewhere = LocationArea.objects.filter(level=LocationArea.Level.DISTRICT).exclude(
+            pk=self.village.parent_id
+        ).first()
+        UserAccount.objects.create_user(
+            email="officer3@example.my", full_name="Officer Elsewhere", password="Recovery2026",
+            role=UserAccount.Role.DISASTER_OFFICER, district=elsewhere,
         )
         from cases.notifications import notify
 
@@ -76,6 +86,15 @@ class AddressingTests(NotificationTestCase):
             .values_list("recipient_user", flat=True)
         )
         self.assertEqual(recipients, {self.officer.pk, second.pk})
+
+    def test_a_case_with_no_village_notifies_no_officer(self):
+        from cases.notifications import notify
+
+        CaseRecord.objects.filter(pk=self.case.pk).update(location_area=None)
+        self.case.refresh_from_db()
+        notify(self.case, CaseEventLog.EventType.SUBMITTED, self.resident)
+
+        self.assertFalse(CaseEventLog.objects.filter(recipient_user__isnull=False).exists())
 
     def test_an_ngo_is_not_told_about_a_household_event(self):
         from cases.notifications import notify

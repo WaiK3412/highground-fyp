@@ -20,11 +20,15 @@ class PriorityRulesEndpointTests(TestCase):
         self.resident = UserAccount.objects.create_user(
             email="resident@example.my", full_name="Resident", password="Recovery2026"
         )
+        from cases.models import LocationArea
+
         self.officer = UserAccount.objects.create_user(
             email="officer@example.my",
             full_name="Officer",
             password="Recovery2026",
             role=UserAccount.Role.DISASTER_OFFICER,
+            # ADR-024: an officer without a district is refused.
+            district=LocationArea.objects.filter(level=LocationArea.Level.DISTRICT).first(),
         )
         self.responder = UserAccount.objects.create_user(
             email="responder@example.my",

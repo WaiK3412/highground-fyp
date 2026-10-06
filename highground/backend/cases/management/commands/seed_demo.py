@@ -134,11 +134,22 @@ class Command(BaseCommand):
             password=DEMO_PASSWORD, phone="012-345 6789",
             role=UserAccount.Role.COMMUNITY_MEMBER,
         )
+        # ADR-024: each officer acts for one district, so the demo has one per
+        # seeded district; logging in as each shows the other district's cases hidden.
+        kota_bharu = LocationArea.objects.get(code="MY0304")
+        pasir_mas = LocationArea.objects.get(code="MY0307")
         officer = UserAccount.objects.create_user(
             email=os.environ.get("DEMO_OFFICER_EMAIL") or "officer@hg.my", full_name="Encik Zulkifli bin Hassan",
             password=DEMO_PASSWORD, phone="09-748 1957",
             role=UserAccount.Role.DISASTER_OFFICER, organization=orgs[1], is_staff=True,
+            district=kota_bharu,
         )
+        officer2 = UserAccount.objects.create_user(
+            email="officer2@hg.my", full_name="Puan Noraini binti Ismail",
+            password=DEMO_PASSWORD, phone="09-790 2210",
+            role=UserAccount.Role.DISASTER_OFFICER, district=pasir_mas,
+        )
+        self.officers_by_district = {kota_bharu.pk: officer, pasir_mas.pk: officer2}
         volunteer = UserAccount.objects.create_user(
             email="ngo@hg.my", full_name="Aisyah Tan",
             password=DEMO_PASSWORD, phone="016-220 9931",
@@ -224,6 +235,10 @@ class Command(BaseCommand):
 
         return cases, frc, kubang_kerian
 
+    def _officer_for(self, area, default):
+        """The seeded officer of the district this village is in (ADR-024)."""
+        return self.officers_by_district.get(area.parent_id, default) if area else default
+
     def _make_queue_cases(self, cases, villages, residents, officer, responding, orgs, now):
         statuses = [
             CaseRecord.Status.SUBMITTED, CaseRecord.Status.SUBMITTED,
@@ -258,7 +273,7 @@ class Command(BaseCommand):
                 household_size=random.randint(1, 8),
                 status=status,
                 created_at=now - timedelta(days=random.randint(0, 9), hours=random.randint(0, 20)),
-                verified_by=officer if status != CaseRecord.Status.SUBMITTED else None,
+                verified_by=self._officer_for(area, officer) if status != CaseRecord.Status.SUBMITTED else None,
                 claimed_by=responding[i % len(responding)] if claimed else None,
                 # Show two NGOs and unclaimed help on one case for the unmet-help report.
                 extra_jobs=(
@@ -277,7 +292,8 @@ class Command(BaseCommand):
             if case.status not in UNCLASSIFIED:
                 # Classify through the verify service just after verification so the timeline stays ordered.
                 classify_case_record(
-                    case, officer, at=case.created_at + timedelta(hours=6, minutes=1)
+                    case, self._officer_for(case.location_area, officer),
+                    at=case.created_at + timedelta(hours=6, minutes=1),
                 )
 
     def _make_tasks(self, lead_for, officer, now):
@@ -295,7 +311,7 @@ class Command(BaseCommand):
                 completed_at=now - timedelta(hours=3) if done else None,
             )
             CaseEventLog.objects.create(
-                case=job.case, actor_user=lead or officer,
+                case=job.case, actor_user=lead or self._officer_for(job.case.location_area, officer),
                 event_type=CaseEventLog.EventType.TASK_ASSIGNED,
                 detail=f"{job.get_help_type_display()} task created by {job.claimed_by_org.name}.",
                 created_at=now - timedelta(days=1),
@@ -366,7 +382,8 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"  events — {CaseEventLog.objects.count()} audit rows"))
         self.stdout.write("")
         self.stdout.write("  Demo logins (credentials are defined in seed_demo.py)")
-        self.stdout.write(f"    officer   {officer.email}")
+        for district_officer in self.officers_by_district.values():
+            self.stdout.write(f"    officer   {district_officer.email} ({district_officer.district.name})")
         self.stdout.write(f"    ngo lead  {volunteer.email} ({volunteer.organization.name})")
         self.stdout.write(f"    ngo lead  {volunteer2.email} ({volunteer2.organization.name})")
         self.stdout.write(f"    resident  {resident.email}")

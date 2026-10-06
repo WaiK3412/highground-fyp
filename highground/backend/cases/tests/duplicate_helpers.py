@@ -32,10 +32,10 @@ def make_area(code="TST-V001", name="Kampung Sireh"):
     )
 
 
-def make_user(email, name="Ahmad bin Ismail", phone="012-555 0142", role=None, organization=None):
+def make_user(email, name="Ahmad bin Ismail", phone="012-555 0142", role=None, organization=None, district=None):
     return UserAccount.objects.create_user(
         email=email, full_name=name, password=PASSWORD, phone=phone,
-        role=role or UserAccount.Role.COMMUNITY_MEMBER, organization=organization,
+        role=role or UserAccount.Role.COMMUNITY_MEMBER, organization=organization, district=district,
     )
 
 
@@ -66,9 +66,10 @@ class DuplicateWorld:
         self.resident = make_user("ahmad@example.my")
         self.relative = make_user("ahmad2@example.my", name="Ahmad Ismail", phone="+60125550142")
         self.neighbour = make_user("aminah@example.my", name="Aminah binti Yusof", phone="013-555 0911")
+        # ADR-024: the test villages' district officer.
         self.officer = make_user(
             "officer@example.my", name="Encik Zulkifli", phone="09-748 1957",
-            role=UserAccount.Role.DISASTER_OFFICER,
+            role=UserAccount.Role.DISASTER_OFFICER, district=self.area.parent,
         )
         self.admin_user = make_user(
             "admin@example.my", name="Admin", phone="", role=UserAccount.Role.SYSTEM_ADMIN,

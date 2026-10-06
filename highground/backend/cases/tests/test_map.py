@@ -30,14 +30,22 @@ class CaseMapTests(TestCase):
         cls.org_a = Organization.objects.create(name="Map NGO A", type=Organization.Type.NGO)
         cls.org_b = Organization.objects.create(name="Map NGO B", type=Organization.Type.NGO)
 
-        def user(email, role=UserAccount.Role.COMMUNITY_MEMBER, org=None):
+        def user(email, role=UserAccount.Role.COMMUNITY_MEMBER, org=None, district=None):
             return UserAccount.objects.create_user(
                 email=email, full_name=email.split("@")[0], password="Recovery2026",
-                role=role, organization=org,
+                role=role, organization=org, district=district,
             )
 
         cls.resident = user("map-resident@example.my")
-        cls.officer = user("map-officer@example.my", UserAccount.Role.DISASTER_OFFICER)
+        # ADR-024: the cases span two districts; each officer sees only theirs.
+        cls.officer = user(
+            "map-officer@example.my", UserAccount.Role.DISASTER_OFFICER,
+            district=LocationArea.objects.get(code="MY0307"),  # Pasir Mas: Tendong
+        )
+        cls.kb_officer = user(
+            "map-kb-officer@example.my", UserAccount.Role.DISASTER_OFFICER,
+            district=LocationArea.objects.get(code="MY0304"),  # Kota Bharu: Salor
+        )
         cls.admin = user("map-admin@example.my", UserAccount.Role.SYSTEM_ADMIN)
         cls.ngo_a = user("map-ngo-a@example.my", UserAccount.Role.NGO_VOLUNTEER, cls.org_a)
         cls.ngo_b = user("map-ngo-b@example.my", UserAccount.Role.NGO_VOLUNTEER, cls.org_b)
@@ -77,13 +85,22 @@ class CaseMapTests(TestCase):
     def refs(payload):
         return {point["reference"] for point in payload["points"]}
 
-    def test_district_staff_see_every_visible_case_as_a_point(self):
-        for user in (self.officer, self.admin):
-            payload = self.get(user).json()
+    def test_district_staff_see_their_districts_cases_as_points_and_admins_see_all(self):
+        payload = self.get(self.admin).json()
+        self.assertEqual(self.refs(payload), {"FRC-9101", "FRC-9102", "FRC-9103", "FRC-9104", "FRC-9106"})
+        self.assertEqual(payload["areas"], [])
+        self.assertEqual(payload["unmapped"], 1)
 
-            self.assertEqual(self.refs(payload), {"FRC-9101", "FRC-9102", "FRC-9103", "FRC-9104", "FRC-9106"})
+        # ADR-024: another district's households are not even counted, and a
+        # case with no village is in no officer's district.
+        for officer, refs in (
+            (self.officer, {"FRC-9101", "FRC-9102", "FRC-9104"}),
+            (self.kb_officer, {"FRC-9103", "FRC-9106"}),
+        ):
+            payload = self.get(officer).json()
+            self.assertEqual(self.refs(payload), refs, officer.email)
             self.assertEqual(payload["areas"], [])
-            self.assertEqual(payload["unmapped"], 1)
+            self.assertEqual(payload["unmapped"], 0)
 
     def test_duplicate_markers_are_officer_only_even_for_a_claiming_ngo(self):
         DuplicateCaseMatch.objects.create(
@@ -92,7 +109,8 @@ class CaseMapTests(TestCase):
         points = {row["reference"]: row for row in self.get(self.officer).json()["points"]}
         self.assertTrue(points["FRC-9101"]["has_open_duplicate"])
         self.assertTrue(points["FRC-9102"]["has_open_duplicate"])
-        self.assertFalse(points["FRC-9103"]["has_open_duplicate"])
+        kb_points = {row["reference"]: row for row in self.get(self.kb_officer).json()["points"]}
+        self.assertFalse(kb_points["FRC-9103"]["has_open_duplicate"])
 
         ngo_response = self.get(self.ngo_a)
         self.assertNotIn("has_open_duplicate", ngo_response.json()["points"][0])
@@ -161,7 +179,7 @@ class CaseMapTests(TestCase):
         self.assertIn("FRC-9102", {row["reference"] for row in listed["results"]})
 
     def test_the_map_accounts_for_exactly_the_cases_the_list_shows(self):
-        for user in (self.officer, self.ngo_a, self.ngo_b):
+        for user in (self.officer, self.kb_officer, self.ngo_a, self.ngo_b):
             for params in ({}, {"status": "verified"}, {"q": "Tendong"}):
                 payload = self.get(user, **params).json()
                 listed = self.client.get("/api/cases/", params).json()["count"]
@@ -181,7 +199,7 @@ class CaseMapTests(TestCase):
             priority_class=3, created_at=timezone.now(),
         )
 
-        for user in (self.officer, self.admin, self.ngo_a, self.ngo_b):
+        for user in (self.officer, self.kb_officer, self.admin, self.ngo_a, self.ngo_b):
             for params in (
                 {}, {"priority": "1"}, {"priority": "2"}, {"priority": "3"},
                 {"priority": "1", "status": "verified"},
@@ -214,7 +232,8 @@ class CaseMapTests(TestCase):
                             row["priority_class"] == int(params["priority"]) for row in rows
                         ))
 
-        self.client.force_login(self.officer)
+        # Every case, whichever district: the administrator's view.
+        self.client.force_login(self.admin)
         one = self.client.get("/api/cases/", {"priority": "1"}).json()["results"]
         self.assertEqual({row["reference"] for row in one}, {"FRC-9101", "FRC-9104"})
         two = self.client.get("/api/cases/", {"priority": "2"}).json()["results"]
@@ -229,7 +248,7 @@ class CaseMapTests(TestCase):
 
     def test_unclassified_needs_info_is_only_in_all_and_invalid_class_is_rejected(self):
         CaseRecord.objects.filter(pk=self.submitted.pk).update(status=CaseRecord.Status.NEEDS_INFO)
-        self.client.force_login(self.officer)
+        self.client.force_login(self.kb_officer)  # FRC-9106 is in Kota Bharu
         self.assertEqual(self.client.get("/api/cases/", {"status": "needs_info"}).json()["count"], 1)
         for priority in ("1", "2", "3"):
             params = {"status": "needs_info", "priority": priority}

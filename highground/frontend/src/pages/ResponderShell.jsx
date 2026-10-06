@@ -73,11 +73,24 @@ export default function ResponderShell({
             How priority works
           </a>
 
-          <span className="side-nav__label">Organisation</span>
-          <span className="side-nav__item side-nav__item--static">
-            <Icon path={PATHS.org} />
-            {user.organization || 'No organisation'}
-          </span>
+          {user.role === 'disaster_officer' ? (
+            <>
+              {/* Officers act for one district (ADR-024); this is whose cases they see. */}
+              <span className="side-nav__label">District</span>
+              <span className="side-nav__item side-nav__item--static">
+                <Icon path={PATHS.org} />
+                {user.district || 'No district assigned'}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="side-nav__label">Organisation</span>
+              <span className="side-nav__item side-nav__item--static">
+                <Icon path={PATHS.org} />
+                {user.organization || 'No organisation'}
+              </span>
+            </>
+          )}
         </nav>
 
         <div className="sidebar__user">

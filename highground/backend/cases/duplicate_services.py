@@ -416,6 +416,13 @@ def decide_duplicate_match(match_id, actor, decision, note="") -> DecisionOutcom
         for area_id in area_ids:
             _lock_village(area_id)
         cases = {case.pk: case for case in CaseRecord.objects.select_for_update().filter(pk__in=ids).order_by("pk")}
+        # ADR-024: an officer decides only pairs in their district. Checked under
+        # the case locks, so a concurrent village correction cannot slip in.
+        if actor.role == actor.Role.DISASTER_OFFICER and not all(
+            case.location_area_id is not None and case.location_area.parent_id == actor.district_id
+            for case in cases.values()
+        ):
+            return None
         match_ids = sorted(
             set(
                 DuplicateCaseMatch.objects.filter(

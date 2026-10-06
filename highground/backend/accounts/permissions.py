@@ -1,25 +1,70 @@
 """Role-based access rules.
 
 Report §3.5: residents see only their own cases; exact coordinates are released
-to the district office and the claiming organisation only.
+to the district office and the claiming organisation only. A disaster officer
+acts for one district (ADR-024): a case belongs to the district of the village
+it was filed under.
 
 The visibility rule is written as a plain queryset function so it can be tested
 per role without going through HTTP.
 """
 
+from django.db.models import Q
 from rest_framework.permissions import BasePermission
 
 from .models import UserAccount
+
+NO_DISTRICT = "No district is assigned to your account. Ask an administrator to assign one."
+
+
+def officer_district_q(user, prefix=""):
+    """Cases (reached through `prefix`) filed under a village in the officer's district."""
+    return Q(**{f"{prefix}location_area__parent_id": user.district_id})
+
+
+def in_officer_district(user, case) -> bool:
+    """Is this case filed under a village in the officer's district? (ADR-024)
+
+    A case with no village is in no district, so no officer sees it;
+    administrators do, and so do its resident and any organisation the usual
+    rules allow. Villages sit directly under districts, so the village's
+    parent is the district.
+    """
+    if user.district_id is None or case.location_area_id is None:
+        return False
+    return case.location_area.parent_id == user.district_id
+
+
+class HasDistrictIfOfficer(BasePermission):
+    """Endpoints shared by every role still refuse an officer with no district.
+
+    Without this, such an officer would get an empty list here and a 404 there;
+    the 403 and its message say what is actually wrong (ADR-024).
+    """
+
+    message = NO_DISTRICT
+
+    def has_permission(self, request, view):
+        user = request.user
+        return not (
+            user.is_authenticated
+            and user.role == UserAccount.Role.DISASTER_OFFICER
+            and user.district_id is None
+        )
 
 
 class IsDisasterOfficer(BasePermission):
     message = "Only district disaster officers may do this."
 
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
-            and request.user.role == UserAccount.Role.DISASTER_OFFICER
-        )
+        user = request.user
+        if not (user.is_authenticated and user.role == UserAccount.Role.DISASTER_OFFICER):
+            return False
+        if user.district_id is None:
+            # Fail closed, and say why: an officer without a district has no remit.
+            self.message = NO_DISTRICT
+            return False
+        return True
 
 
 class IsNgoVolunteer(BasePermission):
@@ -49,16 +94,19 @@ class IsCoordinator(BasePermission):
     message = "Only authorised coordinators may view this resource."
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        user = request.user
+        if not user.is_authenticated:
             return False
-        if request.user.role in {
-            UserAccount.Role.DISASTER_OFFICER,
-            UserAccount.Role.SYSTEM_ADMIN,
-        }:
+        if user.role == UserAccount.Role.SYSTEM_ADMIN:
+            return True
+        if user.role == UserAccount.Role.DISASTER_OFFICER:
+            if user.district_id is None:
+                self.message = NO_DISTRICT
+                return False
             return True
         return (
-            request.user.role == UserAccount.Role.NGO_VOLUNTEER
-            and request.user.organization_id is not None
+            user.role == UserAccount.Role.NGO_VOLUNTEER
+            and user.organization_id is not None
         )
 
 
@@ -67,7 +115,7 @@ def visible_cases(user, queryset):
 
     community_member  -> only cases they submitted
     ngo_volunteer     -> cases available to claim, plus their org's own cases
-    disaster_officer  -> everything in their remit
+    disaster_officer  -> cases filed under their district's villages (ADR-024)
     system_admin      -> everything
     """
     Role = UserAccount.Role
@@ -76,8 +124,6 @@ def visible_cases(user, queryset):
         return queryset.filter(submitted_by_user=user)
 
     if user.role == Role.NGO_VOLUNTEER:
-        from django.db.models import Q
-
         if user.organization_id is None:
             return queryset.none()
         return queryset.filter(
@@ -85,7 +131,12 @@ def visible_cases(user, queryset):
             | Q(status__in=["verified", "claimed", "in_progress", "pending_confirm"])
         ).distinct()
 
-    if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
+    if user.role == Role.DISASTER_OFFICER:
+        if user.district_id is None:
+            return queryset.none()
+        return queryset.filter(officer_district_q(user))
+
+    if user.role == Role.SYSTEM_ADMIN:
         return queryset
     return queryset.none()
 
@@ -111,15 +162,16 @@ def holds_active_job(user, case) -> bool:
 def may_see_exact_location(user, case) -> bool:
     """Exact coordinates are restricted; everyone else gets village-level only.
 
-    Released to the district office (officers, admins) and to an organisation
-    holding an active job on the case — not to every NGO browsing the queue.
-    Known limit: officers are not yet tied to a district, so every officer
-    sees every district (stated in the report).
+    Released to the district office (that district's officers, and admins)
+    and to an organisation holding an active job on the case — not to every
+    NGO browsing the queue, nor to officers of other districts.
     """
     Role = UserAccount.Role
 
-    if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
+    if user.role == Role.SYSTEM_ADMIN:
         return True
+    if user.role == Role.DISASTER_OFFICER:
+        return in_officer_district(user, case)
     if user.role == Role.NGO_VOLUNTEER:
         return holds_active_job(user, case)
     if user.role == Role.COMMUNITY_MEMBER:
@@ -136,8 +188,10 @@ def may_see_private_case_details(user, case) -> bool:
     """
     Role = UserAccount.Role
 
-    if user.role in {Role.DISASTER_OFFICER, Role.SYSTEM_ADMIN}:
+    if user.role == Role.SYSTEM_ADMIN:
         return True
+    if user.role == Role.DISASTER_OFFICER:
+        return in_officer_district(user, case)
     if user.role == Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
     return holds_active_job(user, case)

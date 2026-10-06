@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from accounts.permissions import IsNgoVolunteer
+from accounts.permissions import IsNgoVolunteer, in_officer_district, HasDistrictIfOfficer
 from accounts.models import UserAccount
 from ..images import UnreadableImage, clean_photo
 from ..models import CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask
@@ -33,8 +33,10 @@ def _lead_for_organisation(lead_id, organisation):
 
 
 def _may_read_tasks(user, case):
-    if user.role in {UserAccount.Role.DISASTER_OFFICER, UserAccount.Role.SYSTEM_ADMIN}:
+    if user.role == UserAccount.Role.SYSTEM_ADMIN:
         return True
+    if user.role == UserAccount.Role.DISASTER_OFFICER:
+        return in_officer_district(user, case)
     if user.role == UserAccount.Role.COMMUNITY_MEMBER:
         return case.submitted_by_user_id == user.id
     # Read cases this organisation worked on; update_task restricts changes to its own jobs.
@@ -46,7 +48,8 @@ def _may_read_tasks(user, case):
 
 
 def _task_queryset():
-    return CaseTask.objects.select_related("case", "job", "lead_user").prefetch_related(
+    # case__location_area: the officer's district check reads it for every task.
+    return CaseTask.objects.select_related("case__location_area", "job", "lead_user").prefetch_related(
         "events__actor_user", "case__jobs", "photos__task", "photos__uploaded_by_user__organization",
     )
 
@@ -149,7 +152,7 @@ def task_board(request):
 
 
 @api_view(["GET", "POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasDistrictIfOfficer])
 def case_tasks(request, pk):
     case = CaseRecord.objects.filter(pk=pk).first()
     if case is None or not _may_read_tasks(request.user, case):

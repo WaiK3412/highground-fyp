@@ -4,12 +4,27 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from accounts.permissions import IsCommunityMember, IsDisasterOfficer
+from accounts.permissions import IsCommunityMember, IsDisasterOfficer, in_officer_district
 from ..models import CaseEventLog, CaseJob, CaseRecord
 from ..serializers.cases import CaseDetailSerializer
 from ..serializers.decisions import (
     CLOSE_OUTCOMES, CaseReplySerializer, CloseOnBehalfSerializer, PriorityOverrideSerializer,
 )
+
+
+def _lock_case_in_district(user, pk):
+    """Lock the case for an officer action, or None if it is not theirs (ADR-024).
+
+    Another district's case answers 404 like a missing one. The district is
+    checked after the lock: a village correction must update this same row, so
+    it waits until the action finishes and cannot move the case underneath it.
+    Callers build their response before the transaction ends, for the same
+    reason. The lock stays on case_record alone, not the village row.
+    """
+    case = CaseRecord.objects.select_for_update().filter(pk=pk).first()
+    if case is None or not in_officer_district(user, case):
+        return None
+    return case
 
 
 @api_view(["POST"])
@@ -24,7 +39,7 @@ def close_on_behalf(request, pk):
 
     with transaction.atomic():
         # Same lock order as job confirmation; never close around unfinished help.
-        case = CaseRecord.objects.select_for_update().filter(pk=pk).first()
+        case = _lock_case_in_district(request.user, pk)
         if case is None:
             return Response({"detail": "Not found."}, status=404)
         jobs = list(CaseJob.objects.select_for_update().filter(case=case).order_by("pk"))
@@ -51,8 +66,9 @@ def close_on_behalf(request, pk):
         )
         # The canonical audit row also carries the household's notification text.
         transaction.on_commit(lambda: notify(case, CaseEventLog.EventType.CLOSED, request.user, detail))
+        data = CaseDetailSerializer(case, context={"request": request}).data
 
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+    return Response(data)
 
 
 DECISIONS = {
@@ -84,7 +100,7 @@ def verify_case(request, pk):
         )
 
     with transaction.atomic():
-        case = CaseRecord.objects.select_for_update().filter(pk=pk).first()
+        case = _lock_case_in_district(request.user, pk)
         if case is None:
             return Response({"detail": "Not found."}, status=404)
 
@@ -147,12 +163,14 @@ def verify_case(request, pk):
 
             classify_case_record(case, request.user)
 
+        case.refresh_from_db()  # so the response and notification carry the class
+        data = CaseDetailSerializer(case, context={"request": request}).data
+
     from ..notifications import notify
 
-    case.refresh_from_db()  # so a verification notification carries the class
     notify(case, event_type, request.user, note)
 
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+    return Response(data)
 
 
 REPLY_FIELDS = ("urgency", "access_level", "vulnerability_flags")
@@ -235,7 +253,7 @@ def override_priority(request, pk):
     reason = serializer.validated_data["reason"]
 
     with transaction.atomic():
-        case = CaseRecord.objects.select_for_update().filter(pk=pk).first()
+        case = _lock_case_in_district(request.user, pk)
         if case is None:
             return Response({"detail": "Not found."}, status=404)
         if case.status not in OVERRIDABLE_STATUSES or case.priority_class is None:
@@ -263,5 +281,6 @@ def override_priority(request, pk):
             ),
             created_at=timezone.now(),
         )
+        data = CaseDetailSerializer(case, context={"request": request}).data
 
-    return Response(CaseDetailSerializer(case, context={"request": request}).data)
+    return Response(data)

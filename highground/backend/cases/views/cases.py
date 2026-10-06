@@ -15,6 +15,7 @@ from accounts.permissions import (
     holds_active_job,
     may_see_private_case_details,
     visible_cases,
+    HasDistrictIfOfficer,
 )
 from accounts.models import UserAccount
 from ..models import CaseEventLog, CaseJob, CasePhoto, CaseRecord, LocationArea
@@ -127,7 +128,7 @@ def _queue_queryset(request):
 
 
 class CaseListView(ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasDistrictIfOfficer]
     # A photo cannot travel inside JSON, so a submission with images arrives as
     # multipart. JSON is kept for submissions without any.
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -235,7 +236,7 @@ class CaseListView(ListCreateAPIView):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasDistrictIfOfficer])
 def case_detail(request, pk):
     events = CaseEventLog.objects.filter(notification_copy_of__isnull=True)
     if request.user.role == UserAccount.Role.COMMUNITY_MEMBER:
@@ -267,7 +268,7 @@ def case_detail(request, pk):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasDistrictIfOfficer])
 def queue_stats(request):
     """Header strip counts. Plain COUNTs — no chart library (ADR C10.8)."""
     queryset = _queue_queryset(request)
