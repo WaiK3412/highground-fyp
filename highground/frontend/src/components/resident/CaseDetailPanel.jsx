@@ -15,20 +15,23 @@ function priorityChipClass(priorityClass) {
 const NOT_YET_VERIFIED = new Set(['submitted', 'needs_info'])
 
 /** FR10: show priority reasons to the household so it can understand its position in the queue. */
-export default function CaseDetailPanel({ detail, onClose, onCompletionDecision, onReply }) {
+export default function CaseDetailPanel({ detail, onClose, onCompletionDecision, onReply, backButtonRef }) {
   const ui = STATUS_UI[detail.status] || STATUS_UI.submitted
 
   return (
-    <aside className="stack meta-rail gap-24">
+    <aside className="stack meta-rail gap-24 resident-case-detail">
+      <button ref={backButtonRef} type="button" className="btn btn--secondary resident-case-back" onClick={onClose}>
+        ← Back to my cases
+      </button>
       <div className="meta-rail__section">
         <div className="row--between" style={{ marginBottom: 'var(--sp-8)' }}>
           <div className="row" style={{ gap: 'var(--sp-8)' }}>
-            <span className="text-strong" style={{ fontSize: 'var(--fs-20)' }}>
+            <span className="text-strong case-reference" style={{ fontSize: 'var(--fs-20)' }}>
               #{detail.reference}
             </span>
             <span className={`badge ${ui.badge}`}>{detail.status_display}</span>
           </div>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>
+          <button className="btn btn--ghost btn--sm resident-case-close" onClick={onClose}>
             Close
           </button>
         </div>
@@ -52,7 +55,7 @@ export default function CaseDetailPanel({ detail, onClose, onCompletionDecision,
               {detail.priority_class}
             </span>
           </div>
-          <p className="text-strong">{detail.priority_label}</p>
+          <p className="text-strong priority-label">{detail.priority_label}</p>
           <ul className="text-sm" style={{ margin: 'var(--sp-8) 0 0', paddingLeft: '1.6rem' }}>
             {(detail.priority_reasons || []).map((reason) => (
               <li key={reason}>{reason}</li>

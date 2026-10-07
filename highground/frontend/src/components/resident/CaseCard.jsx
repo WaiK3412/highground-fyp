@@ -8,7 +8,8 @@ export default function CaseCard({ item, onOpen, isOpen }) {
   return (
     <button
       type="button"
-      className="card card--flat"
+      className="card card--flat resident-case-card"
+      data-case-id={item.id}
       onClick={() => onOpen(item.id)}
       style={{
         display: 'block',
@@ -20,7 +21,7 @@ export default function CaseCard({ item, onOpen, isOpen }) {
         outline: isOpen ? '2px solid var(--teal-700)' : undefined,
       }}
     >
-      <div className="row--between" style={{ marginBottom: '1.2rem' }}>
+      <div className="row--between resident-case-card__header" style={{ marginBottom: '1.2rem' }}>
         <div className="row">
           <span
             className={`stat-card__icon ${settled ? 'icon-bg--success' : 'icon-bg--info'}`}
@@ -30,8 +31,8 @@ export default function CaseCard({ item, onOpen, isOpen }) {
           </span>
           <div>
             <div className="text-strong">{item.damage_category_display}</div>
-            <div className="text-xs text-muted">
-              #{item.reference} · {item.village} ·{' '}
+            <div className="text-xs text-muted resident-case-card__meta">
+              <span className="case-reference">#{item.reference}</span> · {item.village} ·{' '}
               {item.days_waiting === 0
                 ? 'submitted today'
                 : `submitted ${item.days_waiting} ${item.days_waiting === 1 ? 'day' : 'days'} ago`}
@@ -41,11 +42,11 @@ export default function CaseCard({ item, onOpen, isOpen }) {
         <span className={`badge ${ui.badge}`}>{item.status_display}</span>
       </div>
 
-      <div className="row--between" style={{ marginBottom: '0.6rem' }}>
+      <div className="row--between resident-case-card__footer" style={{ marginBottom: '0.6rem' }}>
         <span className="text-xs text-muted">{ui.next}</span>
         {item.priority_class != null && (
           <span className="text-xs text-strong">
-            Priority {item.priority_label}
+            Priority <span className="priority-label">{item.priority_label}</span>
           </span>
         )}
       </div>

@@ -16,7 +16,20 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
   const [detailError, setDetailError] = useState(null)
   const [detailLoadingId, setDetailLoadingId] = useState(null)
   const detailVersion = useRef(0)
+  const backButton = useRef(null)
+  const caseList = useRef(null)
+  const lastSelectedId = useRef(null)
   const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 600px)').matches) {
+      if (detail && detail.id !== lastSelectedId.current) backButton.current?.focus()
+      else if (!detail && lastSelectedId.current != null) {
+        caseList.current?.querySelector(`[data-case-id="${lastSelectedId.current}"]`)?.focus()
+      }
+    }
+    lastSelectedId.current = detail?.id ?? null
+  }, [detail])
 
   // Fetch private detail separately because summary lists omit reasons, needs and location.
   async function openCase(id) {
@@ -73,7 +86,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
       onNavigate={(screen) => screen === 'submit' ? onSubmitRequest() : onNavigate(screen)}
       onLogout={onLogout} mainClassName="main main--vp" mainStyle={null}
     >
-        <div className="page-header">
+        <div className="page-header resident-home-header">
           <div>
             <h1>Selamat datang, {firstName}</h1>
             <p>Here is the latest on your household&apos;s recovery.</p>
@@ -91,13 +104,13 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
 
         {/* Scroll case/detail columns independently so long panels do not stretch the page. */}
         <div
-          className="grid-2 vp-fill"
+          className={`grid-2 vp-fill resident-workspace${detail ? ' resident-workspace--selected' : ''}`}
           style={{
             gridTemplateColumns: detail ? '1.5fr 1fr' : '1fr',
             gap: '1.6rem',
           }}
         >
-          <div className="stack vp-scroll scroll-pane" style={{ gap: '1.6rem' }}>
+          <div ref={caseList} className="stack vp-scroll scroll-pane resident-case-list" style={{ gap: '1.6rem' }}>
           <div className="card">
             <div className="card__header">
               <h3>My cases</h3>
@@ -161,6 +174,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
           {detail && (
             <div className="stack vp-scroll scroll-pane" style={{ gap: '1.6rem' }}>
               <CaseDetailPanel
+                backButtonRef={backButton}
                 detail={detail}
                 onClose={() => setDetail(null)}
                 onCompletionDecision={decideCompletion}

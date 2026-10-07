@@ -2,6 +2,8 @@
 
 import { Icon, PATHS } from '../icons'
 import { initials } from '../initials'
+import MobileAccount from '../components/MobileAccount'
+import ShellNavigation from '../components/ShellNavigation'
 
 export default function ResidentShell({
   user, active, unread = 0, casesCount = 0, onNavigate, onLogout,
@@ -33,7 +35,9 @@ export default function ResidentShell({
           </span>
         </a>
 
-        <nav className="side-nav">
+        <MobileAccount user={user} onLogout={onLogout} />
+
+        <ShellNavigation active={active}>
           {/* "My Recovery", not "Dashboard": the design contract and report §2.2.4
               use household language; responder screens use operational terms. */}
           <a {...link('recovery')}>
@@ -68,7 +72,7 @@ export default function ResidentShell({
             <Icon path={PATHS.user} />
             My profile
           </a>
-        </nav>
+        </ShellNavigation>
 
         <div className="sidebar__user">
           <span className="avatar">{initials(user.full_name)}</span>

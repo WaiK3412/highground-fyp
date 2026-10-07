@@ -34,10 +34,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
         <div className="stack gap-24">
           <div className="input-group">
             <div className="field">
-              <label>
+              <label htmlFor="request-full-name">
                 Full name <Required />
               </label>
               <input
+                id="request-full-name"
                 className="input"
                 type="text"
                 value={data.full_name}
@@ -45,10 +46,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
               />
             </div>
             <div className="field">
-              <label>
+              <label htmlFor="request-household-size">
                 Household members <Required />
               </label>
               <select
+                id="request-household-size"
                 className="input"
                 value={data.household_size}
                 onChange={(e) => set({ household_size: Number(e.target.value) })}
@@ -65,10 +67,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
 
           <div className="input-group">
             <div className="field">
-              <label>
+              <label htmlFor="request-phone">
                 Mobile number <Required />
               </label>
               <input
+                id="request-phone"
                 className="input"
                 type="text"
                 value={data.phone}
@@ -77,10 +80,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
               />
             </div>
             <div className="field">
-              <label>
+              <label htmlFor="request-alt-contact">
                 Alternative contact <span className="text-muted">(optional)</span>
               </label>
               <input
+                id="request-alt-contact"
                 className="input"
                 type="text"
                 value={data.alt_contact}
@@ -102,10 +106,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
         <div className="stack gap-24">
           <div className="input-group">
             <div className="field">
-              <label>
+              <label htmlFor="request-village">
                 Village / area <Required />
               </label>
               <select
+                id="request-village"
                 className="input"
                 value={data.location_code}
                 onChange={(e) => chooseVillage(e.target.value)}
@@ -141,10 +146,11 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
               )}
             </div>
             <div className="field">
-              <label>
+              <label htmlFor="request-address">
                 Address or landmark <Required />
               </label>
               <input
+                id="request-address"
                 className="input"
                 type="text"
                 value={data.address}

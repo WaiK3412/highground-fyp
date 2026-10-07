@@ -103,10 +103,11 @@ export default function StepDamage({ data, set }) {
       <div className="card mb-24">
         <div className="stack gap-24">
           <div className="field">
-            <label>
+            <label htmlFor="request-description">
               Describe the damage and what you need <Required />
             </label>
             <textarea
+              id="request-description"
               className="input"
               rows={5}
               value={data.description}
@@ -144,10 +145,11 @@ export default function StepDamage({ data, set }) {
 
           <div className="input-group">
             <div className="field">
-              <label>
+              <label htmlFor="request-liveability">
                 Is your home currently liveable? <Required />
               </label>
               <select
+                id="request-liveability"
                 className="input"
                 value={data.liveability}
                 onChange={(e) => set({ liveability: e.target.value })}
@@ -160,10 +162,11 @@ export default function StepDamage({ data, set }) {
               </select>
             </div>
             <div className="field">
-              <label>
+              <label htmlFor="request-access">
                 Can vehicles currently reach your home? <Required />
               </label>
               <select
+                id="request-access"
                 className="input"
                 value={data.access_level}
                 onChange={(e) => set({ access_level: e.target.value })}

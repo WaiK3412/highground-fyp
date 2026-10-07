@@ -2,6 +2,8 @@
 
 import { Icon, PATHS } from '../icons'
 import { initials } from '../initials'
+import MobileAccount from '../components/MobileAccount'
+import ShellNavigation from '../components/ShellNavigation'
 
 // counts: { queue, tasks, duplicates }; each is shown when it is a number.
 export default function ResponderShell({
@@ -36,7 +38,9 @@ export default function ResponderShell({
           </span>
         </a>
 
-        <nav className="side-nav">
+        <MobileAccount user={user} onLogout={onLogout} avatarClassName="avatar--info" />
+
+        <ShellNavigation active={active}>
           <a {...link('queue')}>
             <Icon path={PATHS.queue} />
             Case queue
@@ -91,7 +95,7 @@ export default function ResponderShell({
               </span>
             </>
           )}
-        </nav>
+        </ShellNavigation>
 
         <div className="sidebar__user">
           <span className="avatar avatar--info">{initials(user.full_name)}</span>

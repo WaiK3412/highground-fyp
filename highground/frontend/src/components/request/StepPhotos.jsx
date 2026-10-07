@@ -19,7 +19,7 @@ export default function StepPhotos({ data, set }) {
 
       <div className="stack gap-24">
         <div className="field">
-          <label className="btn btn--secondary" style={{ cursor: 'pointer', alignSelf: 'flex-start' }}>
+          <label className="btn btn--secondary request-photo-picker" style={{ cursor: 'pointer', alignSelf: 'flex-start' }}>
             <Icon path={PATHS.camera} />
             Choose photos
             <input
@@ -27,7 +27,7 @@ export default function StepPhotos({ data, set }) {
               accept="image/*"
               multiple
               onChange={addFiles}
-              style={{ display: 'none' }}
+              className="visually-hidden"
               disabled={data.photos.length >= MAX_PHOTOS}
             />
           </label>

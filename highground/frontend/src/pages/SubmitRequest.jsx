@@ -15,17 +15,23 @@ import StepReview from '../components/request/StepReview'
 
 function Stepper({ current }) {
   return (
-    <div className="card card--flat" style={{ marginBottom: '2.4rem', padding: '1.6rem 2.4rem' }}>
-      <div className="stepper">
+    <div className="card card--flat request-stepper" style={{ marginBottom: '2.4rem', padding: '1.6rem 2.4rem' }}>
+      <div className="request-stepper__compact" aria-hidden="true">
+        <p className="text-sm text-strong">Step {current + 1} of {STEPS.length} · {STEPS[current]}</p>
+        <div className="request-stepper__track">
+          <span style={{ width: `${((current + 1) / STEPS.length) * 100}%` }} />
+        </div>
+      </div>
+      <div className="stepper" role="list" aria-label="Request steps">
         {STEPS.map((label, index) => {
           const state = index === current ? ' step--active' : index < current ? ' step--done' : ''
           return (
             <Fragment key={label}>
-              <div className={`step${state}`}>
+              <div className={`step${state}`} role="listitem" aria-current={index === current ? 'step' : undefined}>
                 <span className="step__dot">{index + 1}</span>
                 <span className="step__label">{label}</span>
               </div>
-              {index < STEPS.length - 1 && <span className="step__line" />}
+              {index < STEPS.length - 1 && <span className="step__line" aria-hidden="true" />}
             </Fragment>
           )
         })}
@@ -166,13 +172,13 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel, o
           </div>
         )}
 
-        <div className="row--between">
+        <div className="row--between request-actions">
           <button className="btn btn--secondary" onClick={step === 0 ? onCancel : () => setStep(step - 1)}>
             {step === 0 ? '← Cancel' : '← Back'}
           </button>
 
           <div className="row" style={{ gap: '1.6rem', alignItems: 'center' }}>
-            <span className="text-sm text-muted">
+            <span className="text-sm text-muted request-actions__count">
               Step {step + 1} of {STEPS.length}
             </span>
             {step < STEPS.length - 1 ? (
