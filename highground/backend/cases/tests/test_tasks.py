@@ -7,15 +7,19 @@ Traceability:
   FR6  A responding organisation owns the work it claimed
   FR7  The organisation assigns and updates recovery tasks
   FR8  The household confirms or disputes completion
+  FR13 District queue, map and unclaimed help
+  FR16 Browse, claim and release help
+  NFR3 Security and data protection
   FR20 Every task action enforces role and organisation boundaries
   FR21 Task and lifecycle changes are append-only audit events
 """
 
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
 from cases.models import CaseEventLog, CaseJob, CaseRecord, CaseTask, LocationArea
+from cases.serializers.cases import CaseDetailSerializer
 
 
 class TaskWorkflowTests(TestCase):
@@ -466,7 +470,35 @@ class CaseDetailPrivacyTests(TestCase):
         self.resident = UserAccount.objects.create_user(
             email="privacy-resident@example.my",
             full_name="Privacy Resident",
+            phone="012-3456789",
             password="Recovery2026",
+        )
+        self.other_resident = UserAccount.objects.create_user(
+            email="privacy-other-resident@example.my",
+            full_name="Other Resident",
+            password="Recovery2026",
+        )
+        self.village = LocationArea.objects.get(code="MY0304-V001")
+        other_village = LocationArea.objects.get(code="MY0307-V001")
+        self.officer = UserAccount.objects.create_user(
+            email="privacy-officer@example.my",
+            full_name="District Officer",
+            password="Recovery2026",
+            role=UserAccount.Role.DISASTER_OFFICER,
+            district_id=self.village.parent_id,
+        )
+        self.other_officer = UserAccount.objects.create_user(
+            email="privacy-other-officer@example.my",
+            full_name="Other District Officer",
+            password="Recovery2026",
+            role=UserAccount.Role.DISASTER_OFFICER,
+            district_id=other_village.parent_id,
+        )
+        self.admin = UserAccount.objects.create_user(
+            email="privacy-admin@example.my",
+            full_name="System Administrator",
+            password="Recovery2026",
+            role=UserAccount.Role.SYSTEM_ADMIN,
         )
         self.claiming_responder = UserAccount.objects.create_user(
             email="privacy-owner@example.my",
@@ -488,13 +520,14 @@ class CaseDetailPrivacyTests(TestCase):
             damage_category=CaseRecord.DamageCategory.CLEANUP,
             description="Sensitive household description.",
             village="Kg. Privacy",
+            location_area=self.village,
             address="Exact private address",
             vulnerability_flags=["disability"],
             needs_flags=["medicine"],
             status=CaseRecord.Status.CLAIMED,
             created_at=timezone.now(),
         )
-        CaseJob.objects.create(
+        self.job = CaseJob.objects.create(
             case=self.case, help_type=CaseRecord.DamageCategory.CLEANUP,
             status=CaseJob.Status.CLAIMED, claimed_by_org=self.claiming_org,
         )
@@ -505,6 +538,96 @@ class CaseDetailPrivacyTests(TestCase):
             detail="Sensitive operational note.",
             created_at=timezone.now(),
         )
+
+    def test_household_contact_follows_role_and_district_access(self):
+        contact = {"name": "Privacy Resident", "phone": "012-3456789"}
+        rows = [
+            (self.resident, 200, "full", contact),
+            (self.officer, 200, "full", contact),
+            (self.other_officer, 404, None, None),
+            (self.other_resident, 404, None, None),
+            (self.browsing_responder, 200, "summary", None),
+            (self.claiming_responder, 200, "full", contact),
+            (self.admin, 200, "full", contact),
+        ]
+        for user, status, access, expected in rows:
+            with self.subTest(user=user.email):
+                self.client.force_login(user)
+                response = self.client.get(f"/api/cases/{self.case.pk}/")
+                self.assertEqual(response.status_code, status, response.content)
+                payload = response.json()
+                if status == 404:
+                    self.assertEqual(payload, {"detail": "Not found."})
+                    continue
+                self.assertEqual(payload["detail_access"], access)
+                self.assertEqual(payload["household_contact"], expected)
+                if access == "summary":
+                    self.assertEqual(payload["village"], "Kg. Privacy")
+                    self.assertEqual(payload["location"], {
+                        "precision": "village", "address": "Kg. Privacy",
+                        "latitude": None, "longitude": None,
+                    })
+                    self.assertNotContains(response, self.resident.full_name)
+                    self.assertNotContains(response, self.resident.phone)
+
+    def test_ngo_contact_access_ends_when_its_own_job_finishes(self):
+        # Another organisation's ongoing work must not prolong this org's access.
+        CaseJob.objects.create(
+            case=self.case, help_type=CaseRecord.DamageCategory.REPAIR,
+            status=CaseJob.Status.CLAIMED, claimed_by_org=self.other_org,
+        )
+        contact = {"name": "Privacy Resident", "phone": "012-3456789"}
+        rows = [
+            (CaseJob.Status.CLAIMED, "full", contact),
+            (CaseJob.Status.IN_PROGRESS, "full", contact),
+            (CaseJob.Status.PENDING_CONFIRM, "full", contact),
+            (CaseJob.Status.DONE, "summary", None),
+            (CaseJob.Status.CLOSED_UNCONFIRMED, "summary", None),
+        ]
+        self.client.force_login(self.claiming_responder)
+        for status, access, expected in rows:
+            with self.subTest(job_status=status):
+                self.job.status = status
+                self.job.save(update_fields=["status"])
+                response = self.client.get(f"/api/cases/{self.case.pk}/")
+                self.assertEqual(response.status_code, 200, response.content)
+                payload = response.json()
+                self.assertEqual(payload["detail_access"], access)
+                self.assertEqual(payload["household_contact"], expected)
+
+    def test_releasing_the_job_withholds_household_contact(self):
+        self.job.status = CaseJob.Status.OPEN
+        self.job.claimed_by_org = None
+        self.job.save(update_fields=["status", "claimed_by_org"])
+        self.case.status = CaseRecord.Status.VERIFIED
+        self.case.save(update_fields=["status"])
+        self.client.force_login(self.claiming_responder)
+        response = self.client.get(f"/api/cases/{self.case.pk}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["household_contact"], None)
+        self.assertEqual(response.json()["detail_access"], "summary")
+
+    def test_full_serializer_withholds_contact_without_private_access(self):
+        # Lifecycle actions also use this serializer; detail-view selection is not authorisation.
+        rows = [self.other_resident, self.other_officer, self.browsing_responder]
+        for user in rows:
+            with self.subTest(user=user.email):
+                request = RequestFactory().get(f"/api/cases/{self.case.pk}/")
+                request.user = user
+                payload = CaseDetailSerializer(self.case, context={"request": request}).data
+                self.assertIsNone(payload["household_contact"])
+
+    def test_queue_and_map_never_include_household_contact(self):
+        rows = [self.officer, self.admin, self.claiming_responder, self.browsing_responder]
+        for user in rows:
+            for path in ["/api/cases/", "/api/cases/map/"]:
+                with self.subTest(user=user.email, path=path):
+                    self.client.force_login(user)
+                    response = self.client.get(path)
+                    self.assertEqual(response.status_code, 200, response.content)
+                    self.assertNotContains(response, "household_contact")
+                    self.assertNotContains(response, self.resident.full_name)
+                    self.assertNotContains(response, self.resident.phone)
 
     def test_other_ngo_gets_only_the_coordination_summary(self):
         self.client.force_login(self.browsing_responder)

@@ -42,7 +42,7 @@ function Stepper({ current }) {
 
 // Keep required-step checks outside rendering so continuation validation is easy to inspect.
 const REQUIRED_BY_STEP = [
-  ['full_name', 'phone', 'location_code', 'address'],
+  ['location_code', 'address'],
   ['damage_category', 'description', 'flood_depth', 'liveability', 'access_level'],
   ['urgency'],
   [],
@@ -56,9 +56,6 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel, o
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [data, setData] = useState({
-    full_name: user.full_name || '',
-    phone: user.phone || '',
-    alt_contact: '',
     household_size: 1,
     location_code: '',
     pin: null,
@@ -148,12 +145,12 @@ export default function SubmitRequest({ user, onLogout, onSubmitted, onCancel, o
         <Stepper current={step} />
 
         {step === 0 && (
-          <StepHousehold data={data} set={set} villages={villages} onRetryVillages={retryVillages} />
+          <StepHousehold user={user} data={data} set={set} villages={villages} onRetryVillages={retryVillages} onNavigate={onNavigate} />
         )}
         {step === 1 && <StepDamage data={data} set={set} />}
         {step === 2 && <StepNeeds data={data} set={set} />}
         {step === 3 && <StepPhotos data={data} set={set} />}
-        {step === 4 && <StepReview data={data} goTo={setStep} villages={villages} />}
+        {step === 4 && <StepReview user={user} data={data} goTo={setStep} villages={villages} />}
 
         {error && (
           <div

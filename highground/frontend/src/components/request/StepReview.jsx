@@ -11,7 +11,7 @@ function labelFor(list, value) {
   return list.find((o) => o.value === value)?.label ?? '—'
 }
 
-export default function StepReview({ data, goTo, villages }) {
+export default function StepReview({ user, data, goTo, villages }) {
   const flagLabels = (list, values) =>
     values.length ? values.map((v) => labelFor(list, v)).join(' · ') : 'None'
 
@@ -37,10 +37,9 @@ export default function StepReview({ data, goTo, villages }) {
   return (
     <>
       {section('Household', 0, [
-        ['Full name', data.full_name],
+        ['Full name', user.full_name],
         ['Household members', `${data.household_size}`],
-        ['Mobile number', data.phone],
-        ['Alternative contact', data.alt_contact],
+        ['Mobile number', user.phone],
         ['Village / area', villageLabel(villages.rows, data.location_code)],
         ['Address or landmark', data.address],
         [

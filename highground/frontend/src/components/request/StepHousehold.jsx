@@ -13,7 +13,7 @@ function byDistrict(rows) {
   return [...groups.entries()]
 }
 
-export default function StepHousehold({ data, set, villages, onRetryVillages }) {
+export default function StepHousehold({ user, data, set, villages, onRetryVillages, onNavigate }) {
   const village = villages.rows.find((row) => row.code === data.location_code)
 
   // Clear mismatched village pins to prevent a pair the server would reject.
@@ -28,23 +28,22 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
       <div className="card mb-24">
         <h3 className="mb-4">Who needs help?</h3>
         <p className="text-sm text-muted mb-24">
-          We use this to contact you about your case.
+          These come from your account. To change them, go to{' '}
+          {onNavigate ? (
+            <button type="button" className="link-button text-sm" onClick={() => onNavigate('profile')}>
+              My profile
+            </button>
+          ) : 'My profile'}.
         </p>
 
         <div className="stack gap-24">
+          <dl className="kv">
+            <dt>Full name</dt>
+            <dd>{user.full_name || '—'}</dd>
+            <dt>Mobile number</dt>
+            <dd>{user.phone || '—'}</dd>
+          </dl>
           <div className="input-group">
-            <div className="field">
-              <label htmlFor="request-full-name">
-                Full name <Required />
-              </label>
-              <input
-                id="request-full-name"
-                className="input"
-                type="text"
-                value={data.full_name}
-                onChange={(e) => set({ full_name: e.target.value })}
-              />
-            </div>
             <div className="field">
               <label htmlFor="request-household-size">
                 Household members <Required />
@@ -62,35 +61,6 @@ export default function StepHousehold({ data, set, villages, onRetryVillages }) 
                 ))}
               </select>
               <span className="help">Everyone currently living in the home.</span>
-            </div>
-          </div>
-
-          <div className="input-group">
-            <div className="field">
-              <label htmlFor="request-phone">
-                Mobile number <Required />
-              </label>
-              <input
-                id="request-phone"
-                className="input"
-                type="text"
-                value={data.phone}
-                onChange={(e) => set({ phone: e.target.value })}
-                placeholder="012-345 6789"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="request-alt-contact">
-                Alternative contact <span className="text-muted">(optional)</span>
-              </label>
-              <input
-                id="request-alt-contact"
-                className="input"
-                type="text"
-                value={data.alt_contact}
-                onChange={(e) => set({ alt_contact: e.target.value })}
-                placeholder="A neighbour or relative we can call"
-              />
             </div>
           </div>
         </div>

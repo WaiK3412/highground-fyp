@@ -6,6 +6,14 @@ const list = (flags) => (flags?.length ? flags.map(humanise).join(' · ') : '—
 export default function CaseFacts({ detail, children }) {
   return (
     <dl className="kv">
+      {detail.household_contact && (
+        <>
+          <dt>Household contact</dt>
+          <dd>
+            {detail.household_contact.name}, <a href={`tel:${detail.household_contact.phone}`}>{detail.household_contact.phone}</a>
+          </dd>
+        </>
+      )}
       <dt>Type</dt>
       <dd>{detail.damage_category_display}</dd>
       <dt>Flood depth</dt>

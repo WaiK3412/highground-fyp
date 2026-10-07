@@ -277,9 +277,13 @@ class CaseSummaryDetailSerializer(CaseListSerializer):
 
     detail_access = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
+    household_contact = serializers.SerializerMethodField()
 
     class Meta(CaseListSerializer.Meta):
-        fields = CaseListSerializer.Meta.fields + ["detail_access", "location"]
+        fields = CaseListSerializer.Meta.fields + ["detail_access", "location", "household_contact"]
+
+    def get_household_contact(self, obj):
+        return None
 
     def get_detail_access(self, obj):
         return "summary"
@@ -301,6 +305,7 @@ class CaseDetailSerializer(CaseListSerializer):
     location = serializers.SerializerMethodField()
     detail_access = serializers.SerializerMethodField()
     duplicate_review = serializers.SerializerMethodField()
+    household_contact = serializers.SerializerMethodField()
     # The raw values are enum members like "medical_disrupted"; the model
     # already carries the wording a person should read, so send that too rather
     # than leaving each client to invent its own labels.
@@ -335,7 +340,14 @@ class CaseDetailSerializer(CaseListSerializer):
             "tasks",
             "detail_access",
             "duplicate_review",
+            "household_contact",
         ]
+
+    def get_household_contact(self, obj):
+        request = self.context.get("request")
+        if request is None or not may_see_private_case_details(request.user, obj):
+            return None
+        return {"name": obj.submitted_by_user.full_name, "phone": obj.submitted_by_user.phone}
 
     def get_detail_access(self, obj):
         return "full"
