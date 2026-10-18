@@ -12,7 +12,10 @@ class FastPasswordTestRunner(DiscoverRunner):
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
         self._password_hashers = override_settings(
-            PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"]
+            PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"],
+            # Most tests sign staff in directly with force_login. The two-factor
+            # tests turn this back on (ADR-026).
+            TWO_FACTOR_REQUIRED=False,
         )
         self._password_hashers.enable()
 

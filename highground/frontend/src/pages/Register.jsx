@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import AuthAlert from '../components/auth/AuthAlert'
+import AuthLayout, { AuthLinkButton } from '../components/auth/AuthLayout'
+import ResendConfirmation from '../components/auth/ResendConfirmation'
 
 // The server rejects admin applications to prevent registration from granting platform control.
 const APPLICABLE_ROLES = [
@@ -126,7 +129,7 @@ function IdentityFields({ form, update, fieldError, errors }) {
   )
 }
 
-export default function Register({ onRegistered, onShowLogin }) {
+export default function Register({ onShowLogin }) {
   useDocumentTitle('Create account')
   const [accountType, setAccountType] = useState('resident')
   const [organizations, setOrganizations] = useState([])
@@ -155,6 +158,8 @@ export default function Register({ onRegistered, onShowLogin }) {
   const [agreed, setAgreed] = useState(false)
   const [errors, setErrors] = useState({})
   const [busy, setBusy] = useState(false)
+  // Set once the server has answered; the account waits for its email to be confirmed.
+  const [checkEmail, setCheckEmail] = useState(null)
 
   const applying = accountType === 'organisation'
 
@@ -184,8 +189,8 @@ export default function Register({ onRegistered, onShowLogin }) {
       const payload = applying
         ? { ...form, requested_role: requestedRole, organization: organizationId }
         : form
-      const user = await api.register(payload, applying ? documents : undefined)
-      onRegistered(user)
+      const result = await api.register(payload, applying ? documents : undefined)
+      setCheckEmail(result.detail)
     } catch (err) {
       setErrors(err.fields || { detail: err.message })
       setBusy(false)
@@ -234,202 +239,202 @@ export default function Register({ onRegistered, onShowLogin }) {
     </label>
   )
 
-  return (
-    <div className="auth-scene">
-      <main className="auth-shell auth-shell--wide">
-        <span className="auth-brand">
-          <span className="logo__mark">
-            <svg fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M2.5 12.5L4 11.5 12 5 20 11.5 21.5 12.5 M3 16q3-2 6 0t6 0t6 0 M3 19.5q3-2 6 0t6 0t6 0"
-              />
-            </svg>
-          </span>
-          <span className="name">HighGround</span>
-        </span>
-
-        <h1 className="auth-title">Create an account</h1>
-        <p className="auth-sub">
-          Register once, then submit and track every recovery request for your household.
+  if (checkEmail)
+    return (
+      <AuthLayout title="Check your email" subtitle={`We sent a link to ${form.email}.`}>
+        <div className="auth-card stack" style={{ gap: '1.6rem' }}>
+          <AuthAlert tone="success">
+            {checkEmail} Open the link within 24 hours, then log in. If it does not arrive, check your spam folder.
+          </AuthAlert>
+          <ResendConfirmation email={form.email} />
+        </div>
+        <p className="auth-alt">
+          <AuthLinkButton onClick={onShowLogin}>Back to log in</AuthLinkButton>
         </p>
+      </AuthLayout>
+    )
 
-        <div className="auth-card">
-          <div className="grid-2" style={{ gap: '1.6rem', marginBottom: '3.2rem' }}>
-            <button
-              type="button"
-              className={`radio-card${accountType === 'resident' ? ' radio-card--selected' : ''}`}
-              onClick={() => setAccountType('resident')}
-              style={{ textAlign: 'left', cursor: 'pointer' }}
-            >
-              <HouseIcon />
-              <div>
-                <div className="title">Resident</div>
-                <div className="desc">I need recovery assistance for my household</div>
-              </div>
-            </button>
+  return (
+    <AuthLayout
+      wide
+      decorated={false}
+      title="Create an account"
+      subtitle="Register once, then submit and track every recovery request for your household."
+    >
+      <div className="auth-card">
+        <div className="grid-2" style={{ gap: '1.6rem', marginBottom: '3.2rem' }}>
+          <button
+            type="button"
+            className={`radio-card${accountType === 'resident' ? ' radio-card--selected' : ''}`}
+            onClick={() => setAccountType('resident')}
+            style={{ textAlign: 'left', cursor: 'pointer' }}
+          >
+            <HouseIcon />
+            <div>
+              <div className="title">Resident</div>
+              <div className="desc">I need recovery assistance for my household</div>
+            </div>
+          </button>
 
-            <button
-              type="button"
-              className={`radio-card${accountType === 'organisation' ? ' radio-card--selected' : ''}`}
-              onClick={() => setAccountType('organisation')}
-              style={{ textAlign: 'left', cursor: 'pointer' }}
-            >
-              <BuildingIcon />
-              <div>
-                <div className="title">Organisation</div>
-                <div className="desc">NGO, relief organisation, or disaster office</div>
-              </div>
-            </button>
-          </div>
-
-          {applying ? (
-            <form className="stack gap-24" onSubmit={handleSubmit}>
-              {errorBanner}
-
-              <div className="input-group">
-                <div className="field">
-                  <label htmlFor="requested_role">
-                    Role you are applying for <span className="required">*</span>
-                  </label>
-                  <select
-                    id="requested_role"
-                    className="input"
-                    value={requestedRole}
-                    onChange={(e) => setRequestedRole(e.target.value)}
-                    required
-                  >
-                    <option value="">Select your role</option>
-                    {APPLICABLE_ROLES.map((role) => (
-                      <option key={role.value} value={role.value}>
-                        {role.label}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldError('requested_role')}
-                </div>
-                <div className="field">
-                  <label htmlFor="organization">
-                    Organisation <span className="required">*</span>
-                  </label>
-                  <select
-                    id="organization"
-                    className="input"
-                    value={organizationId}
-                    onChange={(e) => setOrganizationId(e.target.value)}
-                    required
-                  >
-                    <option value="">{organizationsState.loading ? 'Loading organisations…' : 'Select your organisation'}</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name} — {org.type_display}
-                      </option>
-                    ))}
-                  </select>
-                  {organizationsState.error && <p role="alert" className="help">Could not load organisations. <button type="button" onClick={() => { setOrganizationsState({ loading: true, error: null }); setOrganizationsAttempt((n) => n + 1) }}>Retry</button></p>}
-                  {!organizationsState.loading && !organizationsState.error && organizations.length === 0 && <p role="status" className="help">No organisations are available yet. Contact the administrator before applying.</p>}
-                  {fieldError('organization')}
-                </div>
-              </div>
-
-              <div className="field">
-                <label htmlFor="documents">
-                  Supporting documents <span className="required">*</span>
-                </label>
-                <input
-                  id="documents"
-                  className="input"
-                  type="file"
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setDocuments(Array.from(e.target.files))}
-                />
-                {fieldError('documents') || (
-                  <span className="help">
-                    Organisation registration, staff ID, or an authorisation letter.
-                    PDF, JPEG or PNG, up to 5 MB each.
-                  </span>
-                )}
-                {documents.length > 0 && (
-                  <span className="help" style={{ color: 'var(--grey-900)', fontWeight: 600 }}>
-                    {documents.length} file{documents.length === 1 ? '' : 's'} attached:{' '}
-                    {documents.map((file) => file.name).join(', ')}
-                  </span>
-                )}
-              </div>
-
-              <IdentityFields
-                form={form}
-                update={update}
-                fieldError={fieldError}
-                errors={errors}
-              />
-
-              {termsCheckbox}
-
-              <div className="auth-note" style={{ margin: 0, color: 'var(--grey-700)' }}>
-                <span>
-                  <span style={{ color: 'var(--grey-900)', fontWeight: 700, display: 'block' }}>
-                    Your account starts as a resident account.
-                  </span>
-                  A district administrator reviews your documents before the role is granted.
-                  You can sign in and track the application in the meantime.
-                </span>
-              </div>
-
-              <button
-                className="btn btn--primary btn--full"
-                type="submit"
-                disabled={submitDisabled}
-                style={submitStyle}
-              >
-                {busy ? 'Submitting application…' : 'Submit application'}
-              </button>
-            </form>
-          ) : (
-            <form className="stack gap-24" onSubmit={handleSubmit}>
-              {errorBanner}
-
-              <IdentityFields
-                form={form}
-                update={update}
-                fieldError={fieldError}
-                errors={errors}
-              />
-
-              {termsCheckbox}
-
-              <button
-                className="btn btn--primary btn--full"
-                type="submit"
-                disabled={submitDisabled}
-                style={submitStyle}
-              >
-                {busy ? 'Creating account…' : 'Create account'}
-              </button>
-            </form>
-          )}
+          <button
+            type="button"
+            className={`radio-card${accountType === 'organisation' ? ' radio-card--selected' : ''}`}
+            onClick={() => setAccountType('organisation')}
+            style={{ textAlign: 'left', cursor: 'pointer' }}
+          >
+            <BuildingIcon />
+            <div>
+              <div className="title">Organisation</div>
+              <div className="desc">NGO, relief organisation, or disaster office</div>
+            </div>
+          </button>
         </div>
 
-        <p className="auth-alt">
-          Already registered?{' '}
-          <button
-            onClick={onShowLogin}
-            style={{
-              background: 'none',
-              border: 0,
-              padding: 0,
-              cursor: 'pointer',
-              color: 'var(--teal-300)',
-              fontWeight: 600,
-              font: 'inherit',
-            }}
-          >
-            Log in
-          </button>
-        </p>
-      </main>
-    </div>
+        {applying ? (
+          <form className="stack gap-24" onSubmit={handleSubmit}>
+            {errorBanner}
+
+            <div className="input-group">
+              <div className="field">
+                <label htmlFor="requested_role">
+                  Role you are applying for <span className="required">*</span>
+                </label>
+                <select
+                  id="requested_role"
+                  className="input"
+                  value={requestedRole}
+                  onChange={(e) => setRequestedRole(e.target.value)}
+                  required
+                >
+                  <option value="">Select your role</option>
+                  {APPLICABLE_ROLES.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+                {fieldError('requested_role')}
+              </div>
+              <div className="field">
+                <label htmlFor="organization">
+                  Organisation <span className="required">*</span>
+                </label>
+                <select
+                  id="organization"
+                  className="input"
+                  value={organizationId}
+                  onChange={(e) => setOrganizationId(e.target.value)}
+                  required
+                >
+                  <option value="">{organizationsState.loading ? 'Loading organisations…' : 'Select your organisation'}</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name} — {org.type_display}
+                    </option>
+                  ))}
+                </select>
+                {organizationsState.error && <p role="alert" className="help">Could not load organisations. <button type="button" onClick={() => { setOrganizationsState({ loading: true, error: null }); setOrganizationsAttempt((n) => n + 1) }}>Retry</button></p>}
+                {!organizationsState.loading && !organizationsState.error && organizations.length === 0 && <p role="status" className="help">No organisations are available yet. Contact the administrator before applying.</p>}
+                {fieldError('organization')}
+              </div>
+            </div>
+
+            <div className="field">
+              <label htmlFor="documents">
+                Supporting documents <span className="required">*</span>
+              </label>
+              <input
+                id="documents"
+                className="input"
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => setDocuments(Array.from(e.target.files))}
+              />
+              {fieldError('documents') || (
+                <span className="help">
+                  Organisation registration, staff ID, or an authorisation letter.
+                  PDF, JPEG or PNG, up to 5 MB each.
+                </span>
+              )}
+              {documents.length > 0 && (
+                <span className="help" style={{ color: 'var(--grey-900)', fontWeight: 600 }}>
+                  {documents.length} file{documents.length === 1 ? '' : 's'} attached:{' '}
+                  {documents.map((file) => file.name).join(', ')}
+                </span>
+              )}
+            </div>
+
+            <IdentityFields
+              form={form}
+              update={update}
+              fieldError={fieldError}
+              errors={errors}
+            />
+
+            {termsCheckbox}
+
+            <div className="auth-note" style={{ margin: 0, color: 'var(--grey-700)' }}>
+              <span>
+                <span style={{ color: 'var(--grey-900)', fontWeight: 700, display: 'block' }}>
+                  Your account starts as a resident account.
+                </span>
+                A district administrator reviews your documents before the role is granted.
+                You can sign in and track the application in the meantime.
+              </span>
+            </div>
+
+            <button
+              className="btn btn--primary btn--full"
+              type="submit"
+              disabled={submitDisabled}
+              style={submitStyle}
+            >
+              {busy ? 'Submitting application…' : 'Submit application'}
+            </button>
+          </form>
+        ) : (
+          <form className="stack gap-24" onSubmit={handleSubmit}>
+            {errorBanner}
+
+            <IdentityFields
+              form={form}
+              update={update}
+              fieldError={fieldError}
+              errors={errors}
+            />
+
+            {termsCheckbox}
+
+            <button
+              className="btn btn--primary btn--full"
+              type="submit"
+              disabled={submitDisabled}
+              style={submitStyle}
+            >
+              {busy ? 'Creating account…' : 'Create account'}
+            </button>
+          </form>
+        )}
+      </div>
+
+      <p className="auth-alt">
+        Already registered?{' '}
+        <button
+          onClick={onShowLogin}
+          style={{
+            background: 'none',
+            border: 0,
+            padding: 0,
+            cursor: 'pointer',
+            color: 'var(--teal-300)',
+            fontWeight: 600,
+            font: 'inherit',
+          }}
+        >
+          Log in
+        </button>
+      </p>
+    </AuthLayout>
   )
 }

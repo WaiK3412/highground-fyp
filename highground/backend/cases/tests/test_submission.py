@@ -444,3 +444,39 @@ class PinTests(SubmissionTestCase):
         self.assertEqual(payload["points"], [])
         self.assertEqual(payload["areas"][0]["case_count"], 1)
         self.assertNotIn(f"{self.lat:.6f}", response.content.decode())
+
+
+class ReferenceClashTests(SubmissionTestCase):
+    """Two submissions at the same moment can both read the same highest
+    FRC- number. The second retries with a fresh one instead of failing."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.resident)
+
+    def test_reference_clash_retries_with_the_next_number(self):
+        self.post()  # takes the first number
+        taken = CaseRecord.objects.get().reference
+        with patch("cases.views.cases._next_reference", side_effect=[taken, "FRC-9555"]):
+            response = self.post()
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertTrue(CaseRecord.objects.filter(reference="FRC-9555").exists())
+
+    def test_three_clashes_give_a_retry_message(self):
+        self.post()
+        taken = CaseRecord.objects.get().reference
+        with patch("cases.views.cases._next_reference", return_value=taken):
+            response = self.post()
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": "Too many requests at once. Please submit again."})
+        self.assertEqual(CaseRecord.objects.count(), 1)
+
+
+class SharedRateLimitTests(TestCase):
+    def test_rate_limits_use_the_shared_database_cache(self):
+        # Counted in the database, so every server process shares the login limit.
+        from django.conf import settings
+
+        self.assertEqual(
+            settings.CACHES["default"]["BACKEND"], "django.core.cache.backends.db.DatabaseCache"
+        )

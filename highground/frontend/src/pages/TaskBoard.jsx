@@ -24,7 +24,6 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
   const [releaseReason, setReleaseReason] = useState('')
   const [releasing, setReleasing] = useState(false)
   const [completingId, setCompletingId] = useState(null)
-  const [unread, setUnread] = useState(0)
 
   async function loadBoard() {
     const data = await api.taskBoard()
@@ -34,7 +33,6 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
 
   useEffect(() => {
     let cancelled = false
-    api.notifications().then((data) => { if (!cancelled) setUnread(data.unread) }).catch(() => {})
     api.taskBoard()
       .then((data) => {
         if (cancelled) return
@@ -169,7 +167,7 @@ export default function TaskBoard({ user, onLogout, onNavigate }) {
 
   return (
     <ResponderShell
-      user={user} active="tasks" unread={unread}
+      user={user} active="tasks"
       counts={{ tasks: board.tasks.length > 0 ? board.tasks.length : undefined }}
       onNavigate={onNavigate} onLogout={onLogout}
       mainClassName="main main--vp" mainStyle={null}

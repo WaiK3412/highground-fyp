@@ -12,6 +12,8 @@ from django.core.mail import send_mail
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
 
+from accounts.mail import is_placeholder_address
+
 
 class Command(BaseCommand):
     help = "Send one test message through the configured email backend."
@@ -26,7 +28,7 @@ class Command(BaseCommand):
         except ValidationError:
             raise CommandError(f"{to!r} is not a valid email address.")
 
-        if to.rsplit("@", 1)[-1].lower() in settings.EMAIL_SKIP_DOMAINS:
+        if is_placeholder_address(to):
             raise CommandError("That domain is reserved for placeholder addresses; choose a real inbox.")
 
         backend = settings.EMAIL_BACKEND.rsplit(".", 2)[-2]

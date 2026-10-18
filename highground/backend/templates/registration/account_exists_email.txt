@@ -1,0 +1,8 @@
+Hello {{ user.full_name }},
+
+Someone tried to create a HighGround account with this email address, but you already have one.
+
+If it was you, log in at {{ app_origin }}/login
+Forgotten your password? Reset it at {{ app_origin }}/forgot-password
+
+If it was not you, you can ignore this email. Nothing has changed on your account.

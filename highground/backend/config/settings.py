@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    # Authenticator-app codes for staff sign-in (ADR-026).
+    'django_otp',
+    'django_otp.plugins.otp_totp',
     'accounts',
     'cases',
     'priority',
@@ -50,6 +53,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django_otp.middleware.OTPMiddleware',  # adds user.is_verified()
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -147,7 +151,8 @@ AUTH_USER_MODEL = "accounts.UserAccount"
 # exposing data.
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        # Sessions, but a staff session counts only after its authenticator code (ADR-026).
+        "accounts.authentication.VerifiedSessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -155,7 +160,14 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     # Slows password guessing (NFR3). Counted per client IP in the default cache.
-    "DEFAULT_THROTTLE_RATES": {"login": "10/min", "register": "5/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "login": "10/min",
+        "register": "5/min",
+        "password_reset": "5/min",
+        "confirm_email": "5/min",
+        "two_factor": "5/min",
+        "public": "60/min",
+    },
 }
 
 # The SPA runs on its own dev-server origin (Vite :5173, or :5174 when that
@@ -212,3 +224,26 @@ if os.environ.get("EMAIL_HOST"):
     EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", 10))
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# Links in emails (password reset, email confirmation) point here. Set from the
+# environment, never taken from the request's Host header, which a client controls.
+APP_ORIGIN = os.environ.get("APP_ORIGIN", "http://127.0.0.1:5173" if DEBUG else "").rstrip("/")
+PASSWORD_RESET_TIMEOUT = 60 * 60  # one hour, not Django's three days
+
+# Staff sign in with an authenticator-app code after their password (ADR-026).
+# Deliberately not read from .env: only the test runner switches it off, so the
+# existing tests can sign staff in directly; accounts/tests/test_two_factor.py
+# switches it back on.
+TWO_FACTOR_REQUIRED = True
+OTP_TOTP_ISSUER = "HighGround"
+
+# Rate-limit counters (login, register, reset, two-factor) live in the database,
+# so every server process shares one count. Create the table once with
+# `python manage.py createcachetable`; the test runner creates it itself.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "cache_table",
+    }
+}

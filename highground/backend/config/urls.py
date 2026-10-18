@@ -8,8 +8,13 @@ from django.contrib import admin
 from django.urls import path
 
 from accounts import api as accounts_api
+from accounts import email_confirmation, password_reset, two_factor_views
+from accounts.admin_site import HighGroundAdminSite
 from cases import views as case_views
 from cases import private_files
+
+# The admin's own login page asks for the authenticator code as well (ADR-026).
+admin.site.__class__ = HighGroundAdminSite
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -21,6 +26,16 @@ urlpatterns = [
     path("api/auth/login/", accounts_api.login_view),
     path("api/auth/logout/", accounts_api.logout_view),
     path("api/auth/me/", accounts_api.me),
+    path("api/auth/password-reset/", password_reset.password_reset_request),
+    path("api/auth/password-reset/confirm/", password_reset.password_reset_confirm),
+    path("api/auth/confirm-email/", email_confirmation.confirm_email),
+    path("api/auth/confirm-email/resend/", email_confirmation.resend_confirmation),
+    path("api/auth/two-factor/setup/", two_factor_views.two_factor_setup),
+    path("api/auth/two-factor/verify/", two_factor_views.two_factor_verify),
+    path("api/auth/two-factor/", two_factor_views.two_factor_status),
+    path("api/auth/two-factor/enable/", two_factor_views.two_factor_enable),
+    path("api/auth/two-factor/enable/confirm/", two_factor_views.two_factor_enable_confirm),
+    path("api/auth/two-factor/disable/", two_factor_views.two_factor_disable),
     # cases
     path("api/cases/", case_views.CaseListView.as_view()),
     path("api/cases/stats/", case_views.queue_stats),
@@ -54,7 +69,13 @@ urlpatterns = [
     path("api/notifications/read-all/", case_views.mark_all_notifications_read),
     path("api/notifications/<int:pk>/read/", case_views.mark_notification_read),
     # Supply appeals (ADR-021) — replaces the pledge flow.
+    path("api/public/appeals/", case_views.public_appeals),
     path("api/appeals/", case_views.appeals),
     path("api/appeals/<int:pk>/", case_views.appeal_detail),
     path("api/drop-off-points/", case_views.drop_off_points),
+    # Donations to appeals (ADR-025).
+    path("api/appeals/<int:pk>/donations/", case_views.appeal_donations),
+    path("api/donations/", case_views.my_donations),
+    path("api/donations/<int:pk>/cancel/", case_views.cancel_donation),
+    path("api/donations/<int:pk>/receive/", case_views.receive_donation),
 ]

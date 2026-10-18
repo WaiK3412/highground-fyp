@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
 import { useLoad } from '../useLoad'
+import { PATHS } from '../icons'
 import ResidentShell from './ResidentShell'
 import ResponderShell from './ResponderShell'
 
@@ -37,7 +38,15 @@ const EVENT_UI = {
     tone: 'red',
     path: 'M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5',
   },
+  // Donations (ADR-025) concern an appeal, not a case.
+  donation_recorded: { tone: 'teal', path: PATHS.heart },
+  donation_cancelled: { tone: 'amber', path: PATHS.heart },
+  donation_received: { tone: 'green', path: PATHS.heart },
 }
+// Role-application decisions (ADR-027) concern the account itself.
+EVENT_UI.application_approved = EVENT_UI.verified
+EVENT_UI.application_rejected = EVENT_UI.rejected
+EVENT_UI.approval_revoked = EVENT_UI.rejected
 
 const FALLBACK = { tone: 'teal', path: EVENT_UI.verified.path }
 
@@ -53,7 +62,7 @@ function ago(iso) {
   return days === 1 ? 'yesterday' : `${days} days ago`
 }
 
-export default function Notifications({ user, onLogout, onNavigate, onOpenCase, duplicateCount }) {
+export default function Notifications({ user, onLogout, onNavigate, onOpenCase, onOpenAppeals, duplicateCount }) {
   useDocumentTitle('Notifications')
   const [filter, setFilter] = useState('all')
   const [actionError, setActionError] = useState(null)
@@ -162,19 +171,21 @@ export default function Notifications({ user, onLogout, onNavigate, onOpenCase, 
 
                   <div className="notif-body">
                     <div className={`notif-title${row.read_at ? ' notif-title--read' : ''}`}>
-                      {row.event_display} · #{row.case_reference}
+                      {row.event_display}{row.case_reference && ` · #${row.case_reference}`}
                     </div>
                     <div className="notif-desc">{row.detail}</div>
                     <div className="notif-meta">
                       <span className="notif-time">{ago(row.created_at)}</span>
                       <span className="row gap-12">
-                        <button
-                          className="notif-mark-read"
-                          onClick={() => onOpenCase(row.case_id)}
-                          style={{ background: 'none', border: 0, cursor: 'pointer', font: 'inherit' }}
-                        >
-                          View case
-                        </button>
+                        {(row.case_id || row.donation_id) && (
+                          <button
+                            className="notif-mark-read"
+                            onClick={() => (row.donation_id ? onOpenAppeals() : onOpenCase(row.case_id))}
+                            style={{ background: 'none', border: 0, cursor: 'pointer', font: 'inherit' }}
+                          >
+                            {row.donation_id ? 'View appeal' : 'View case'}
+                          </button>
+                        )}
                         {!row.read_at && (
                           <button
                             className="notif-mark-read"

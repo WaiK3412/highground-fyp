@@ -1,6 +1,6 @@
 """Case submission, role-scoped reading, queue ordering and locations."""
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.db.models.functions import Cast, Substr
 from django.utils import timezone
@@ -42,10 +42,9 @@ def _next_reference():
     The highest number is found as a number, not as text: as text "FRC-9999"
     sorts after "FRC-10000", which would stop the series at 10000.
 
-    Known limitation: two simultaneous submissions can read the same maximum.
-    `reference` is unique, so the loser gets an IntegrityError rather than a
-    duplicate reference — noisy, but never wrong. A database sequence is the
-    real fix and is not worth building before submissions are concurrent.
+    Two simultaneous submissions can read the same maximum. `reference` is
+    unique, so the second insert fails rather than duplicating a number, and
+    _save_with_fresh_reference() simply tries again with the next one.
     """
     last = (
         CaseRecord.objects.filter(reference__regex=r"^FRC-[0-9]+$")
@@ -55,6 +54,23 @@ def _next_reference():
         .first()
     )
     return "FRC-1042" if last is None else f"FRC-{last + 1}"
+
+
+REFERENCE_ATTEMPTS = 3
+BUSY = "Too many requests at once. Please submit again."
+
+
+def _save_with_fresh_reference(serializer, **fields):
+    """Save the new case under the next FRC- number, retrying if another
+    submission took that number a moment ago. Returns None if every try clashed."""
+    for _ in range(REFERENCE_ATTEMPTS):
+        try:
+            with transaction.atomic():  # a savepoint: a clash undoes only this insert
+                return serializer.save(reference=_next_reference(), **fields)
+        except IntegrityError as exc:
+            if "reference" not in str(exc):
+                raise
+    return None
 
 
 def _filter_priority_class(queryset, value):
@@ -191,12 +207,14 @@ class CaseListView(ListCreateAPIView):
         ))
 
         with transaction.atomic():
-            case = serializer.save(
+            case = _save_with_fresh_reference(
+                serializer,
                 submitted_by_user=request.user,
-                reference=_next_reference(),
                 status=CaseRecord.Status.SUBMITTED,
                 created_at=timezone.now(),
             )
+            if case is None:
+                return Response({"detail": BUSY}, status=409)
             for upload in cleaned_photos:
                 CasePhoto.objects.create(
                     case=case, file_path=upload, stage=CasePhoto.Stage.RESIDENT,

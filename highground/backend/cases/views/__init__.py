@@ -41,6 +41,13 @@ from .appeals import (
     appeals,
     appeal_detail,
     drop_off_points,
+    public_appeals,
+)
+from .donations import (
+    appeal_donations,
+    my_donations,
+    cancel_donation,
+    receive_donation,
 )
 
 __all__ = [
@@ -72,4 +79,9 @@ __all__ = [
     "appeals",
     "appeal_detail",
     "drop_off_points",
+    "public_appeals",
+    "appeal_donations",
+    "my_donations",
+    "cancel_donation",
+    "receive_donation",
 ]

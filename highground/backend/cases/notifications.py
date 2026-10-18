@@ -19,6 +19,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
+from accounts.mail import is_placeholder_address
 from accounts.models import UserAccount
 
 from .models import CaseEventLog
@@ -161,7 +162,108 @@ def notify(case, event_type, actor, detail="", job=None):
         .order_by("-created_at")
         .first()
     )
+    text = headline(case, event_type)
+    return _address(
+        people,
+        audit_row,
+        copy_fields={
+            "case": case, "actor_user": actor, "event_type": event_type,
+            "detail": detail or text,
+        },
+        subject=f"[HighGround] {text} — {case.reference}",
+        body=_email_body(f"{text}.\n\nCase {case.reference}"),
+    )
 
+
+# ---------------------------------------------------------------------------
+# Donations (ADR-025): the same rows and delivery, about a donation instead.
+#
+#   event               | goes to                                  | why
+#   --------------------|------------------------------------------|------------------------
+#   donation_recorded   | active members of the appeal's org        | items are on their way
+#   donation_cancelled  | active members of the appeal's org        | stop expecting them
+#   donation_received   | the donor                                 | their items arrived
+# ---------------------------------------------------------------------------
+
+DONATION_HEADLINES = {
+    CaseEventLog.EventType.DONATION_RECORDED: "New donation coming for {title}",
+    CaseEventLog.EventType.DONATION_CANCELLED: "A donation for {title} was cancelled",
+    CaseEventLog.EventType.DONATION_RECEIVED: "Your donation to {title} was received",
+}
+
+
+def donation_headline(donation, event_type):
+    return DONATION_HEADLINES[event_type].format(title=donation.appeal.title)
+
+
+def donation_recipients(donation, event_type, actor):
+    if event_type == CaseEventLog.EventType.DONATION_RECEIVED:
+        people = [donation.donor_user]
+    else:
+        people = list(
+            UserAccount.objects.filter(
+                role=UserAccount.Role.NGO_VOLUNTEER,
+                organization_id=donation.appeal.organization_id,
+                is_active=True,
+            ).order_by("id")
+        )
+    return [person for person in people if person != actor]
+
+
+def notify_donation(audit_row):
+    """Address a donation's audit row to the people it concerns, as notify() does for cases."""
+    donation = audit_row.donation
+    people = donation_recipients(donation, audit_row.event_type, audit_row.actor_user)
+    if not people:
+        return []
+    text = donation_headline(donation, audit_row.event_type)
+    return _address(
+        people,
+        audit_row,
+        copy_fields={
+            "donation": donation, "actor_user": audit_row.actor_user,
+            "event_type": audit_row.event_type, "detail": audit_row.detail,
+        },
+        subject=f"[HighGround] {text}",
+        body=_email_body(f"{text}.\n\nItems: {donation.items}"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Role-application decisions (ADR-027): the row is about the recipient's own
+# account, so it has neither a case nor a donation.
+# ---------------------------------------------------------------------------
+
+APPLICATION_HEADLINES = {
+    CaseEventLog.EventType.APPLICATION_APPROVED: "Your {role} application was approved",
+    CaseEventLog.EventType.APPLICATION_REJECTED: "Your {role} application was not approved",
+    CaseEventLog.EventType.APPROVAL_REVOKED: "Your {role} access was removed",
+}
+
+
+def application_headline(user, event_type):
+    return APPLICATION_HEADLINES[event_type].format(role=user.get_requested_role_display())
+
+
+def notify_application_decision(user, event_type, admin, note=""):
+    """Record the decision in the event log and tell the applicant, in the app and by email."""
+    audit_row = CaseEventLog.objects.create(
+        event_type=event_type, actor_user=admin, detail=note, created_at=timezone.now()
+    )
+    text = application_headline(user, event_type)
+    summary = f"{text}.\n\nReason: {note}" if note else f"{text}."
+    return _address(
+        [user], audit_row, copy_fields={}, subject=f"[HighGround] {text}", body=_email_body(summary)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plumbing shared by all of them.
+# ---------------------------------------------------------------------------
+
+
+def _address(people, audit_row, copy_fields, subject, body):
+    """Give each recipient a row (the audit row first, then copies) and email them."""
     rows = []
     for index, user in enumerate(people):
         if index == 0 and audit_row is not None:
@@ -169,21 +271,28 @@ def notify(case, event_type, actor, detail="", job=None):
             row.recipient_user = user
         else:
             row = CaseEventLog.objects.create(
-                case=case,
-                actor_user=actor,
+                **copy_fields,
                 recipient_user=user,
                 notification_copy_of=audit_row,
-                event_type=event_type,
-                detail=detail or headline(case, event_type),
                 created_at=timezone.now(),
             )
-        row.delivery_status = _send_email(user, case, event_type, detail)
+        row.delivery_status = _send_email(user, subject, body)
         row.save(update_fields=["recipient_user", "delivery_status"])
         rows.append(row)
     return rows
 
 
-def _send_email(user, case, event_type, detail):
+def _email_body(summary):
+    return (
+        "Hello,\n\n"
+        f"{summary}\n\n"
+        "Sign in to HighGround to see the details and reply.\n\n"
+        "This message is for information only. If someone is in immediate danger, "
+        "call 999.\n"
+    )
+
+
+def _send_email(user, subject, body):
     """Send the nudge. Returns what to record in delivery_status.
 
     A failure here must never lose the notification: the in-app row is already
@@ -191,30 +300,12 @@ def _send_email(user, case, event_type, detail):
     """
     if not user.email:
         return "no_address"
-
-    domain = user.email.rsplit("@", 1)[-1].lower()
-    if domain in getattr(settings, "EMAIL_SKIP_DOMAINS", set()):
+    if is_placeholder_address(user.email):
         # A seeded demo address on a domain we do not own: record, never send.
         return "skipped_placeholder_address"
 
-    subject = f"[HighGround] {headline(case, event_type)} — {case.reference}"
-    body = (
-        "Hello,\n\n"
-        f"{headline(case, event_type)}.\n\n"
-        f"Case {case.reference}\n\n"
-        f"Sign in to HighGround to see the details and reply.\n\n"
-        f"This message is for information only. If someone is in immediate danger, "
-        f"call 999.\n"
-    )
-
     try:
-        send_mail(
-            subject,
-            body,
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=False,
-        )
+        send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
         return "sent"
     except Exception as exc:  # noqa: BLE001 — any failure is the same to us here
         return f"failed: {type(exc).__name__}"

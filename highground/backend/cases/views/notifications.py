@@ -1,6 +1,7 @@
 """Recipient-scoped notification reads and coordinator priority rules."""
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -20,7 +21,8 @@ def _my_notifications(user):
     """
     rows = CaseEventLog.objects.filter(recipient_user=user)
     if user.role == UserAccount.Role.DISASTER_OFFICER:
-        rows = rows.filter(officer_district_q(user, "case__"))
+        # Rows about their own account (ADR-027) belong to no district.
+        rows = rows.filter(officer_district_q(user, "case__") | Q(event_type__in=CaseEventLog.ACCOUNT_EVENTS))
     return rows
 
 
@@ -32,7 +34,7 @@ def notifications(request):
     No notification table exists: these are the same rows that serve the case
     timeline and the audit trail, selected by recipient.
     """
-    rows = _my_notifications(request.user).select_related("case").order_by("-created_at")[:50]
+    rows = _my_notifications(request.user).select_related("case", "donation__appeal").order_by("-created_at")[:50]
     return Response(
         {
             "unread": _my_notifications(request.user).filter(read_at__isnull=True).count(),

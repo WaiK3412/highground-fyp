@@ -3,6 +3,7 @@
     python manage.py seed_demo --flush
 """
 
+import base64
 import random
 import os
 
@@ -15,10 +16,13 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from django_otp.plugins.otp_totp.models import TOTPDevice
+
 from accounts.models import Organization, UserAccount
+from accounts.two_factor import STAFF_ROLES
 from cases.services import classify_case_record
 from cases.models import (
-    CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask, DropOffPoint, LocationArea, SupplyAppeal, demo_audit_reset,
+    CaseEventLog, CaseJob, CasePhoto, CaseRecord, CaseTask, Donation, DropOffPoint, LocationArea, SupplyAppeal, demo_audit_reset,
 )
 
 DEMO_PASSWORD = "demo"  # short on purpose: typed live during demos
@@ -93,7 +97,8 @@ class Command(BaseCommand):
             self._flush()
         orgs, responding = self._make_organisations()
         resident, officer, volunteer, volunteer2, residents, lead_for = self._make_users(orgs)
-        self._make_drop_off_points_and_appeal(orgs, volunteer)
+        self._enrol_demo_authenticators()
+        self._make_drop_off_points_and_appeal(orgs, volunteer, resident, residents[0])
         villages = self._starter_villages()
         cases, frc, kubang_kerian = self._make_canonical_case(resident, officer, now)
         self._make_queue_cases(cases, villages, residents, officer, responding, orgs, now)
@@ -107,8 +112,12 @@ class Command(BaseCommand):
     def _flush(self):
         self.stdout.write("Flushing existing demo data...")
         with demo_audit_reset():
-            SupplyAppeal.objects.all().delete()
+            # Per-recipient copies protect their original event, events protect the
+            # donations they record, and donations their appeal: delete in that order.
+            CaseEventLog.objects.filter(notification_copy_of__isnull=False).delete()
             CaseEventLog.objects.all().delete()
+            Donation.objects.all().delete()
+            SupplyAppeal.objects.all().delete()
             # Evidence protects its task/uploader; an explicit reset removes it first.
             CasePhoto.objects.all().delete()
             CaseTask.objects.all().delete()
@@ -174,7 +183,28 @@ class Command(BaseCommand):
 
         return resident, officer, volunteer, volunteer2, residents, lead_for
 
-    def _make_drop_off_points_and_appeal(self, orgs, volunteer):
+    def _enrol_demo_authenticators(self):
+        """Give every demo staff account the same authenticator secret (ADR-026).
+
+        With DEMO_TOTP_SECRET set in .env, one entry in an authenticator app signs
+        in as any demo officer or NGO responder, and survives re-seeding. Without
+        it, each demo staff member sets up an app at first sign-in.
+        """
+        secret = os.environ.get("DEMO_TOTP_SECRET", "").strip().lower()
+        if not secret:
+            return
+        try:
+            key = bytes.fromhex(secret)
+        except ValueError:
+            key = b""
+        if len(key) != 20:
+            raise CommandError("DEMO_TOTP_SECRET must be 40 hexadecimal characters.")
+        for user in UserAccount.objects.filter(role__in=STAFF_ROLES):
+            TOTPDevice.objects.create(user=user, name="Demo authenticator", key=secret, confirmed=True)
+        setup_key = base64.b32encode(key).decode().rstrip("=")
+        self.stdout.write(f"  demo staff authenticator — add this setup key to your app once: {setup_key}")
+
+    def _make_drop_off_points_and_appeal(self, orgs, volunteer, resident, neighbour):
         points = [
             DropOffPoint.objects.create(name=name, address=addr, area=area, active=True)
             for name, addr, area in [
@@ -183,13 +213,19 @@ class Command(BaseCommand):
                 ("Masjid Kampung Banggu", "Jalan Kuala Krai", "Kuala Krai"),
             ]
         ]
-        SupplyAppeal.objects.create(
+        appeal = SupplyAppeal.objects.create(
             organization=orgs[0],
             created_by_user=volunteer,
             drop_off_point=points[1],
             title="Cleaning supplies for Pasir Mas households",
             items="Mops, buckets, bleach, rubber boots, heavy-duty rubbish bags",
             needed_until=timezone.localdate() + timedelta(days=10),
+        )
+        # One donation of each kind, so the demo shows both states (ADR-025).
+        Donation.objects.create(appeal=appeal, donor_user=resident, items="2 mops and 3 buckets")
+        Donation.objects.create(
+            appeal=appeal, donor_user=neighbour, items="Box of heavy-duty rubbish bags",
+            status=Donation.Status.RECEIVED, received_at=timezone.now(), received_by_user=volunteer,
         )
 
     def _starter_villages(self):

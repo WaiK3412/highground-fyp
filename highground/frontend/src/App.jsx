@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
+import { homePath, isAllowed, parsePath, pathFor } from './routes'
+import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
+import ConfirmEmail from './pages/ConfirmEmail'
 import CaseQueue from './pages/CaseQueue'
 import TaskBoard from './pages/TaskBoard'
 import ResidentDashboard from './pages/ResidentDashboard'
@@ -22,14 +27,44 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
   const [bootError, setBootError] = useState(null)
-  const [screen, setScreen] = useState('login')
   const [justLoggedIn, setJustLoggedIn] = useState(false)
-  // A small set of resident screens, switched using the existing state pattern.
-  const [residentScreen, setResidentScreen] = useState('recovery')
-  // Officers and NGOs have their own small set of screens.
-  const [responderScreen, setResponderScreen] = useState('queue')
-  const [duplicateId, setDuplicateId] = useState(null)
+  // The address bar decides the screen (routes.js), so Back, Forward and reload work.
+  const [route, setRoute] = useState(() => parsePath(window.location.pathname))
   const [duplicateCount, setDuplicateCount] = useState(null)
+  // Good news to show on the login screen, e.g. after a password reset.
+  const [loginNotice, setLoginNotice] = useState(null)
+
+  function go(path, { replace = false, state = null } = {}) {
+    window.history[replace ? 'replaceState' : 'pushState'](state, '', path)
+    setRoute(parsePath(path))
+  }
+
+  // `returnTo` rides in the history entry: where to go once the person signs in.
+  function navigate(screen, params = {}, { replace = false, returnTo = null } = {}) {
+    go(pathFor(screen, params), { replace, state: returnTo ? { returnTo } : null })
+  }
+
+  useEffect(() => {
+    const onPop = () => setRoute(parsePath(window.location.pathname))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  // Someone at an address their role cannot use is shown where they can go:
+  // signed-out visitors the login (and their address afterwards), everyone
+  // else their home screen. Worked out while rendering; the effect only
+  // corrects the address bar, without adding a history entry.
+  const role = user?.role ?? null
+  const redirect = !checking && !bootError && !isAllowed(role, route.screen)
+    ? (!user && route.screen ? pathFor('login') : homePath(role))
+    : null
+  const current = redirect ? parsePath(redirect) : route
+
+  useEffect(() => {
+    if (!redirect) return
+    const returnTo = !user && redirect === pathFor('login') ? window.location.pathname : null
+    window.history.replaceState(returnTo ? { returnTo } : null, '', redirect)
+  }, [redirect, user])
 
   useEffect(() => {
     if (user?.role !== 'disaster_officer') return undefined
@@ -40,17 +75,7 @@ export default function App() {
       if (!cancelled) setDuplicateCount(null)
     })
     return () => { cancelled = true }
-  }, [user, responderScreen])
-
-  function navigateResponder(next) {
-    if (next === 'duplicates') setDuplicateId(null)
-    setResponderScreen(next)
-  }
-
-  function openDuplicate(id) {
-    setDuplicateId(id)
-    setResponderScreen('duplicates')
-  }
+  }, [user, route.screen])
 
   async function refreshSession() {
     setChecking(true)
@@ -90,16 +115,36 @@ export default function App() {
     }
     setUser(null)
     setJustLoggedIn(false)
-    setScreen('login')
-    setResidentScreen('recovery')
-    setResponderScreen('queue')
-    setDuplicateId(null)
     setDuplicateCount(null)
+    go(pathFor('landing'), { replace: true })
   }
 
   function handleLoggedIn(u) {
+    const returnTo = window.history.state?.returnTo
+    const wanted = returnTo && isAllowed(u.role, parsePath(returnTo).screen) ? returnTo : homePath(u.role)
     setUser(u)
     setJustLoggedIn(true)
+    go(wanted, { replace: true })
+  }
+
+  // The open case of a list screen, kept in the address (/my-cases/42) so the
+  // phone's Back button closes it instead of leaving the screen.
+  function caseRouteFor(listScreen) {
+    return {
+      id: current.screen === listScreen ? current.id : null,
+      open(id) {
+        if (current.id != null) go(pathFor(listScreen, { id }), { replace: true, state: window.history.state })
+        else go(pathFor(listScreen, { id }), { state: { openedFromList: true } })
+      },
+      close() {
+        // Opened from the list: step back to it. Opened from a link: there is nothing to go back to.
+        if (window.history.state?.openedFromList) window.history.back()
+        else go(pathFor(listScreen), { replace: true })
+      },
+      clear() {
+        go(pathFor(listScreen), { replace: true })
+      },
+    }
   }
 
   if (checking) return <main className="auth-shell"><p role="status">Checking your session…</p></main>
@@ -109,6 +154,24 @@ export default function App() {
       <button className="btn btn--primary" onClick={refreshSession}>Retry</button>
     </main>
   )
+
+  const screen = current.screen
+  const show = (next) => navigate(next)
+
+  // Email links open whether or not someone is signed in on this browser.
+  if (screen === 'reset')
+    return (
+      <ResetPassword
+        uid={current.uid}
+        token={current.token}
+        onDone={(notice) => { setLoginNotice(notice); navigate('login', {}, { replace: true }) }}
+        onRequestNewLink={() => navigate('forgot')}
+        onShowLogin={() => navigate('login')}
+      />
+    )
+
+  if (screen === 'confirm')
+    return <ConfirmEmail token={current.token} onShowLogin={() => navigate('login')} />
 
   if (user?.role === 'system_admin') {
     return (
@@ -135,93 +198,117 @@ export default function App() {
   // since ADR-012 leaves them least-privileged until an admin decides — gets
   // their own household screen, not the responder queue.
   if (user?.role === 'community_member') {
-    if (residentScreen === 'submit')
+    if (screen === 'submit')
       return (
         <SubmitRequest
           user={user}
           onLogout={handleLogout}
-          onCancel={() => setResidentScreen('recovery')}
-          onSubmitted={() => setResidentScreen('recovery')}
-          onNavigate={setResidentScreen}
+          onCancel={() => navigate('recovery')}
+          onSubmitted={() => navigate('recovery')}
+          onNavigate={show}
         />
       )
-    if (residentScreen === 'profile')
+    if (screen === 'profile')
       return (
-        <ResidentShell user={user} active="profile" onNavigate={setResidentScreen} onLogout={handleLogout}>
+        <ResidentShell user={user} active="profile" onNavigate={show} onLogout={handleLogout}>
           <Profile user={user} onSaved={setUser} />
         </ResidentShell>
       )
-    if (residentScreen === 'appeals')
+    if (screen === 'appeals')
       return (
-        <ResidentShell user={user} active="appeals" onNavigate={setResidentScreen} onLogout={handleLogout}>
+        <ResidentShell user={user} active="appeals" onNavigate={show} onLogout={handleLogout}>
           <SupplyAppeals user={user} />
         </ResidentShell>
       )
-    if (residentScreen === 'notifications')
+    if (screen === 'notifications')
       return (
         <Notifications
           user={user}
           onLogout={handleLogout}
-          onNavigate={setResidentScreen}
-          onOpenCase={() => setResidentScreen('recovery')}
+          onNavigate={show}
+          onOpenCase={(id) => navigate('recovery', { id })}
+          onOpenAppeals={() => navigate('appeals')}
         />
       )
     return (
       <ResidentDashboard
         user={user}
         onLogout={handleLogout}
-        onSubmitRequest={() => setResidentScreen('submit')}
-        onNavigate={setResidentScreen}
+        onSubmitRequest={() => navigate('submit')}
+        onNavigate={show}
+        caseRoute={caseRouteFor('recovery')}
       />
     )
   }
 
   if (user) {
-    if (responderScreen === 'tasks' && user.role === 'ngo_volunteer')
-      return (
-        <TaskBoard
-          user={user}
-          onLogout={handleLogout}
-          onNavigate={navigateResponder}
-        />
-      )
-    if (responderScreen === 'notifications')
+    if (screen === 'tasks' && user.role === 'ngo_volunteer')
+      return <TaskBoard user={user} onLogout={handleLogout} onNavigate={show} />
+    if (screen === 'notifications')
       return (
         <Notifications
           user={user}
           onLogout={handleLogout}
-          onNavigate={navigateResponder}
-          onOpenCase={() => setResponderScreen('queue')}
+          onNavigate={show}
+          onOpenCase={(id) => navigate('queue', { id })}
+          onOpenAppeals={() => navigate('appeals')}
           duplicateCount={duplicateCount}
         />
       )
     // The rules page has no chrome of its own; it sits in the responder frame.
-    if (responderScreen === 'rules')
+    if (screen === 'rules')
       return (
-        <ResponderShell user={user} active="rules" onNavigate={navigateResponder} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
+        <ResponderShell user={user} active="rules" onNavigate={show} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
           <PriorityRules />
         </ResponderShell>
       )
-    if (responderScreen === 'appeals')
+    if (screen === 'appeals')
       return (
-        <ResponderShell user={user} active="appeals" onNavigate={navigateResponder} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
+        <ResponderShell user={user} active="appeals" onNavigate={show} onLogout={handleLogout} counts={{ duplicates: duplicateCount }}>
           <SupplyAppeals user={user} />
         </ResponderShell>
       )
-    if (responderScreen === 'duplicates' && user.role === 'disaster_officer')
+    if (screen === 'duplicates' && user.role === 'disaster_officer')
       return (
         <DuplicateReview
+          key={current.id ?? 'list'}
           user={user}
-          initialId={duplicateId}
+          initialId={current.id}
           duplicateCount={duplicateCount}
           onCountChange={setDuplicateCount}
-          onNavigate={navigateResponder}
+          onNavigate={show}
           onLogout={handleLogout}
         />
       )
-    return <CaseQueue user={user} onLogout={handleLogout} onNavigate={navigateResponder} onOpenDuplicate={openDuplicate} duplicateCount={duplicateCount} />
+    return (
+      <CaseQueue
+        user={user}
+        onLogout={handleLogout}
+        onNavigate={show}
+        onOpenDuplicate={(id) => navigate('duplicates', { id })}
+        duplicateCount={duplicateCount}
+        caseRoute={caseRouteFor('queue')}
+      />
+    )
   }
+
   if (screen === 'register')
-    return <Register onRegistered={handleLoggedIn} onShowLogin={() => setScreen('login')} />
-  return <Login onLoggedIn={handleLoggedIn} onShowRegister={() => setScreen('register')} />
+    return <Register onShowLogin={() => navigate('login')} />
+  if (screen === 'forgot') return <ForgotPassword onShowLogin={() => navigate('login')} />
+  if (screen === 'landing')
+    return (
+      <Landing
+        onShowLogin={() => navigate('login')}
+        onShowRegister={() => navigate('register')}
+        onDonate={() => navigate('login', {}, { returnTo: pathFor('appeals') })}
+      />
+    )
+  return (
+    <Login
+      notice={loginNotice}
+      onLoggedIn={(u) => { setLoginNotice(null); handleLoggedIn(u) }}
+      onShowRegister={() => navigate('register')}
+      onShowForgot={() => navigate('forgot')}
+    />
+  )
 }

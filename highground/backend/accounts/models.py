@@ -116,6 +116,9 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
     )
 
     email = models.EmailField(max_length=150, unique=True)
+    # Self-registration sets this to False until the emailed link is opened
+    # (ADR-026). The default covers seeded, admin-created and older accounts.
+    email_confirmed = models.BooleanField(default=True)
     full_name = models.CharField(max_length=100)
     phone = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -150,6 +153,7 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
         self.verification_note   = note
 
         self.save(update_fields=["role","verification_status","verified_by_user","verified_at","verification_note"])
+        _tell_applicant(self, "APPLICATION_APPROVED", admin, note)
 
     def reject_application(self,admin,note=""):
 
@@ -166,6 +170,7 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
         self.verification_note   = note
 
         self.save(update_fields=["verification_status","verified_by_user","verified_at","verification_note"])
+        _tell_applicant(self, "APPLICATION_REJECTED", admin, note)
 
     def revoke_approval(self,admin,note=""):
 
@@ -184,6 +189,7 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
         self.verification_note   = note
 
         self.save(update_fields=["role", "verification_status","verified_by_user","verified_at","verification_note"])
+        _tell_applicant(self, "APPROVAL_REVOKED", admin, note)
 
 
 
@@ -226,3 +232,13 @@ class RoleApplication(UserAccount):
 
     def __str__(self):
         return f"{self.full_name} — {self.get_requested_role_display()}"
+
+
+def _tell_applicant(user, event_name, admin, note):
+    """Every decision goes through the three methods above, so they all notify here (ADR-027)."""
+    # Imported here: cases.models imports this module, so a top-level import would be circular.
+    from cases.models import CaseEventLog
+    from cases.notifications import notify_application_decision
+
+    notify_application_decision(user, CaseEventLog.EventType[event_name], admin, note)
+

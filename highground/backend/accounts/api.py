@@ -3,7 +3,7 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
@@ -12,7 +12,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+from .mail import send_account_exists_email, send_confirmation_email
 from .models import Organization, RegistrationDocument, UserAccount
+from .two_factor import confirmed_device, requires_two_factor, start_pending
 from cases.images import UnreadableImage, clean_photo, generated_name
 from cases.upload_validation import has_expected_signature
 
@@ -82,6 +84,20 @@ def login_view(request):
             {"detail": "This account has been deactivated."},
             status=status.HTTP_403_FORBIDDEN,
         )
+    if not user.email_confirmed:
+        # Only someone who knows the password learns the account exists.
+        return Response(
+            {
+                "detail": "Confirm your email address first. We can send the link again.",
+                "code": "email_unconfirmed",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if requires_two_factor(user):
+        # Not signed in yet: the session only remembers who is half-way (ADR-026).
+        start_pending(request, user)
+        return Response({"two_factor": "verify" if confirmed_device(user) else "setup"})
 
     login(request, user)
     return Response(UserSerializer(user).data)
@@ -172,10 +188,9 @@ class RegistrationSerializer(serializers.Serializer):
     )
 
     def validate_email(self, value):
-        value = value.strip().lower()
-        if UserAccount.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("An account with this email already exists.")
-        return value
+        # No "already registered" error: that would tell anyone which addresses
+        # have accounts. register() handles a taken address by email instead.
+        return value.strip().lower()
 
     def validate(self, attrs):
         # Re-checked here as well as in the form: the endpoint is public, so a
@@ -194,6 +209,7 @@ class RegistrationSerializer(serializers.Serializer):
         return value
 
 
+CHECK_EMAIL = {"detail": "Check your email to confirm your account."}
 MAX_DOCUMENT_BYTES = 5 * 1024 * 1024
 MAX_DOCUMENTS = 5
 ALLOWED_DOCUMENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
@@ -208,7 +224,8 @@ def register(request):
 
     Everyone is created as community_member. Applying for anything else stores
     the request in `requested_role` and leaves the account least-privileged
-    until an admin approves it (ADR-012).
+    until an admin approves it (ADR-012). The account cannot sign in until its
+    email address is confirmed (ADR-026).
     """
     rejection = _public_csrf_rejection(request)
     if rejection is not None:
@@ -260,6 +277,23 @@ def register(request):
     except UnreadableImage as exc:
         return Response({"documents": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Same answer for a new and a taken address (ADR-026); only the email differs.
+    existing = UserAccount.objects.filter(email__iexact=data["email"]).first()
+    if existing is not None:
+        send_account_exists_email(existing)  # the uploaded documents are discarded
+        return Response(CHECK_EMAIL, status=status.HTTP_202_ACCEPTED)
+
+    try:
+        user = _create_applicant(data, requested_role, prepared_documents)
+    except IntegrityError:
+        # Registered by a simultaneous request a moment ago: the same as taken.
+        return Response(CHECK_EMAIL, status=status.HTTP_202_ACCEPTED)
+    send_confirmation_email(user)
+    return Response(CHECK_EMAIL, status=status.HTTP_202_ACCEPTED)
+
+
+def _create_applicant(data, requested_role, prepared_documents):
+    """The new, unconfirmed account and any role-application evidence, saved together."""
     with transaction.atomic():
         user = UserAccount.objects.create_user(
             email=data["email"],
@@ -277,15 +311,14 @@ def register(request):
                 if requested_role
                 else UserAccount.VerificationStatus.NOT_REQUIRED
             ),
+            email_confirmed=False,
         )
 
         for upload, label in prepared_documents:
             RegistrationDocument.objects.create(
                 user=user, file=upload, label=label
             )
-
-    login(request, user)
-    return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+    return user
 
 
 class OrganizationSerializer(serializers.Serializer):

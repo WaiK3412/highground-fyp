@@ -146,3 +146,38 @@ class SeedDemoTests(TestCase):
         with self.assertRaisesMessage(CommandError, "only runs in development"):
             call_command("seed_demo", stdout=StringIO())
         self.assertFalse(UserAccount.objects.exists())
+
+    def test_demo_appeal_shows_both_donation_states(self):
+        from cases.models import Donation
+
+        call_command("seed_demo", stdout=StringIO())
+        statuses = sorted(Donation.objects.values_list("status", flat=True))
+        self.assertEqual(statuses, [Donation.Status.RECEIVED, Donation.Status.WAITING])
+        received = Donation.objects.get(status=Donation.Status.RECEIVED)
+        self.assertEqual(received.received_by_user.organization, received.appeal.organization)
+
+    def test_demo_staff_share_the_demo_authenticator_when_configured(self):
+        import os
+        from unittest.mock import patch
+
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+
+        with patch.dict(os.environ, {"DEMO_TOTP_SECRET": "ab" * 20}):
+            call_command("seed_demo", stdout=StringIO())
+        devices = TOTPDevice.objects.filter(confirmed=True)
+        self.assertTrue(devices.exists())
+        self.assertEqual(set(devices.values_list("key", flat=True)), {"ab" * 20})
+        self.assertFalse(devices.filter(user__role="community_member").exists())
+
+    def test_demo_reset_survives_notifications_sent_to_several_people(self):
+        # Real use creates per-recipient copies of an event; a reset must remove them too.
+        from cases.models import CaseEventLog, CaseRecord
+
+        call_command("seed_demo", stdout=StringIO())
+        original = CaseEventLog.objects.filter(case__isnull=False).first()
+        CaseEventLog.objects.create(
+            case=original.case, event_type=original.event_type, notification_copy_of=original,
+            created_at=original.created_at,
+        )
+        call_command("seed_demo", "--flush", stdout=StringIO())
+        self.assertTrue(CaseRecord.objects.exists())

@@ -1,18 +1,23 @@
 /** The shared sidebar and page frame for officers and NGO responders. */
 
 import { Icon, PATHS } from '../icons'
+import { useUnreadCount } from '../useUnreadCount'
+import { pathFor } from '../routes'
 import { initials } from '../initials'
 import MobileAccount from '../components/MobileAccount'
 import ShellNavigation from '../components/ShellNavigation'
 
 // counts: { queue, tasks, duplicates }; each is shown when it is a number.
 export default function ResponderShell({
-  user, active, unread = 0, counts = {}, onNavigate, onLogout,
+  user, active, unread, counts = {}, onNavigate, onLogout,
   mainClassName = 'main', mainStyle = { maxWidth: '92rem' }, children,
 }) {
+  // The notifications screen passes its own live count; elsewhere the shell keeps it fresh.
+  const polledUnread = useUnreadCount({ enabled: unread === undefined })
+  const unreadCount = unread ?? polledUnread
 
   const link = (screen) => ({
-    href: `#${screen}`,
+    href: pathFor(screen),
     className: active === screen ? 'active' : undefined,
     'aria-current': active === screen ? 'page' : undefined,
     onClick: (event) => {
@@ -70,7 +75,7 @@ export default function ResponderShell({
           <a {...link('notifications')}>
             <Icon path={PATHS.bell} />
             Notifications
-            {unread > 0 && <span className="side-nav__count">{unread}</span>}
+            {unreadCount > 0 && <span className="side-nav__count">{unreadCount}</span>}
           </a>
           <a {...link('rules')}>
             <Icon path={PATHS.rules} />

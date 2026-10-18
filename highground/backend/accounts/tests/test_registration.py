@@ -48,12 +48,15 @@ class ResidentRegistrationTests(ThrottleTestCase):
             },
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
 
         user = UserAccount.objects.get(email="siti@test.my")
         self.assertEqual(user.role, R.COMMUNITY_MEMBER)
         self.assertEqual(user.verification_status, S.NOT_REQUIRED)
         self.assertIsNone(user.requested_role)
+        # Not signed in until the email address is confirmed.
+        self.assertFalse(user.email_confirmed)
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 403)
 
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
@@ -87,7 +90,7 @@ class RoleApplicationTests(ThrottleTestCase):
     def test_an_application_is_held_pending_and_grants_nothing(self):
         """The heart of ADR-012: asking for a role does not get you the role."""
         response = self.client.post(URL, self.application())
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
 
         user = UserAccount.objects.get(email="aisyah@test.my")
         self.assertEqual(user.role, R.COMMUNITY_MEMBER)
@@ -104,13 +107,13 @@ class RoleApplicationTests(ThrottleTestCase):
     def test_document_storage_name_is_generated(self):
         """NFR3: PDFs retain their content but never their source storage name."""
         response = self.client.post(URL, self.application(documents=a_pdf("aisyah_address.pdf")))
-        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.status_code, 202, response.content)
         self.assertRegex(RegistrationDocument.objects.get().file.name, r"/[0-9a-f]{32}\.pdf$")
 
     def test_registration_image_is_cleaned(self):
         """NFR3: role evidence images follow the same cleaning as case photos."""
         response = self.client.post(URL, self.application(documents=jpeg_with_gps()))
-        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.status_code, 202, response.content)
         document = RegistrationDocument.objects.get()
         self.assertNotIn("siti", document.file.name)
         with document.file.open("rb") as stored, Image.open(stored) as result:
@@ -145,7 +148,7 @@ class RoleApplicationTests(ThrottleTestCase):
         response = self.client.post(
             URL, self.application(role=R.SYSTEM_ADMIN, is_staff=True, is_superuser=True)
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
 
         user = UserAccount.objects.get(email="aisyah@test.my")
         self.assertEqual(user.role, R.COMMUNITY_MEMBER)

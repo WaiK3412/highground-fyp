@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import ResponderShell from './ResponderShell'
 import { useDocumentTitle } from '../useDocumentTitle'
+import { CASE_NOT_FOUND, useCaseFromAddress } from '../useCaseFromAddress'
 import CaseMap from './CaseMap'
 import CaseCard from '../components/queue/CaseCard'
 import CasePanel from '../components/queue/CasePanel'
@@ -11,8 +12,7 @@ import MapCaseCard from '../components/queue/MapCaseCard'
 import QueueFilters from '../components/queue/QueueFilters'
 import QueueSummary from '../components/queue/QueueSummary'
 
-export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate, duplicateCount }) {
-  const [unread, setUnread] = useState(0)
+export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate, duplicateCount, caseRoute }) {
   useDocumentTitle('Case queue')
   const [cases, setCases] = useState([])
   const [stats, setStats] = useState(null)
@@ -40,7 +40,10 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   function invalidateQueue({ keepDetail = false } = {}) {
     selectionVersion.current += 1
     setMapCase(null)
-    if (!keepDetail) setDetail(null)
+    if (!keepDetail) {
+      setDetail(null)
+      if (caseRoute.id != null) caseRoute.clear()
+    }
     setDetailError(null)
     setDetailLoadingId(null)
     setLoading(true)
@@ -51,13 +54,6 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     setMapData(null)
     setMapError(null)
   }
-
-  useEffect(() => {
-    api
-      .notifications()
-      .then((data) => setUnread(data.unread))
-      .catch(() => setUnread(0))
-  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -107,11 +103,23 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
       const result = await api.caseDetail(id)
       if (selectionVersion.current === version) setDetail(result)
     } catch (err) {
-      if (selectionVersion.current === version) setDetailError({ message: err.message, id })
+      if (selectionVersion.current !== version) return
+      setDetailError({ message: err.status === 404 ? CASE_NOT_FOUND : err.message, id })
+      // A bookmarked case that is gone or out of scope: keep the message, drop it from the address.
+      if (err.status === 404) caseRoute.clear()
     } finally {
       if (selectionVersion.current === version) setDetailLoadingId(null)
     }
   }
+
+  function clearCase() {
+    selectionVersion.current += 1
+    setDetail(null)
+    setDetailLoadingId(null)
+  }
+
+  // The open case is part of the address (/queue/42), so Back closes it.
+  useCaseFromAddress(caseRoute.id, detail?.id ?? null, openCase, clearCase)
   // On the map, a pin opens a card over the map; the side panel is one click on.
   const openMapCase = (id) => {
     const version = selectionVersion.current
@@ -178,7 +186,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
 
   return (
     <ResponderShell
-      user={user} active="queue" unread={unread}
+      user={user} active="queue"
       counts={{ queue: stats?.total, duplicates: duplicateCount }}
       onNavigate={onNavigate} onLogout={onLogout}
       mainClassName="main main--vp" mainStyle={null}
@@ -275,6 +283,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                     onOpen={() => {
                       setDetail(mapCase)
                       setMapCase(null)
+                      caseRoute.open(mapCase.id)
                     }}
                   />
                 )}
@@ -335,7 +344,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                 busy={(item.jobs || []).some((job) => job.id === claimingId)}
                 selected={detail?.id === item.id}
                 onClaim={claimFromCard}
-                onOpen={openCase}
+                onOpen={caseRoute.open}
               />
             ))}
           </div>
@@ -348,7 +357,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                 user={user}
                 onOpenDuplicate={onOpenDuplicate}
                 onDone={refresh}
-                onClose={() => setDetail(null)}
+                onClose={caseRoute.close}
               />
             </div>
           )}

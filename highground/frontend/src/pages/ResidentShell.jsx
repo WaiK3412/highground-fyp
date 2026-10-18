@@ -1,18 +1,23 @@
 /** The shared resident sidebar and page frame. */
 
 import { Icon, PATHS } from '../icons'
+import { useUnreadCount } from '../useUnreadCount'
+import { pathFor } from '../routes'
 import { initials } from '../initials'
 import MobileAccount from '../components/MobileAccount'
 import ShellNavigation from '../components/ShellNavigation'
 
 export default function ResidentShell({
-  user, active, unread = 0, casesCount = 0, onNavigate, onLogout,
+  user, active, unread, casesCount = 0, onNavigate, onLogout,
   mainClassName = 'main', mainStyle = { maxWidth: '92rem' }, children,
 }) {
+  // The notifications screen passes its own live count; elsewhere the shell keeps it fresh.
+  const polledUnread = useUnreadCount({ enabled: unread === undefined })
+  const unreadCount = unread ?? polledUnread
 
   // `target` lets "My cases" open My Recovery, where the case list lives.
   const link = (screen, target = screen) => ({
-    href: `#${screen}`,
+    href: pathFor(target),
     className: active === screen ? 'active' : undefined,
     'aria-current': active === screen ? 'page' : undefined,
     onClick: (event) => {
@@ -58,7 +63,7 @@ export default function ResidentShell({
             Notifications
             {/* Counts are teal-tinted, never red — red is reserved for status
                 (DESIGN-GUIDE §4, Navigation). */}
-            {unread > 0 && <span className="side-nav__count">{unread}</span>}
+            {unreadCount > 0 && <span className="side-nav__count">{unreadCount}</span>}
           </a>
 
           <span className="side-nav__label">Community</span>

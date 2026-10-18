@@ -53,3 +53,18 @@ class SupplyAppealSerializer(serializers.ModelSerializer):
         if value < timezone.localdate():
             raise serializers.ValidationError("That date has already passed.")
         return value
+
+
+class PublicAppealSerializer(serializers.ModelSerializer):
+    """What a visitor who is not signed in sees: the need and where to bring it (ADR-025)."""
+
+    organization = serializers.CharField(source="organization.name", read_only=True)
+    organization_contact = serializers.CharField(source="organization.contact_no", read_only=True)
+    drop_off_point = DropOffPointSerializer(read_only=True)
+
+    class Meta:
+        model = SupplyAppeal
+        fields = [
+            "id", "title", "items", "needed_until",
+            "organization", "organization_contact", "drop_off_point",
+        ]

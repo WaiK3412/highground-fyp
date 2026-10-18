@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { useDocumentTitle } from '../useDocumentTitle'
+import TwoFactorSettings from '../components/auth/TwoFactorSettings'
 
 export default function Profile({ user, onSaved }) {
   useDocumentTitle('My profile')
@@ -53,6 +54,7 @@ export default function Profile({ user, onSaved }) {
         {message && <p role="status" className="text-sm">{message}</p>}
         <button className="btn btn--primary btn--sm" style={{ alignSelf: 'flex-start' }} disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
       </form>
+      <TwoFactorSettings />
     </>
   )
 }

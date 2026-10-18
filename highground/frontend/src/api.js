@@ -67,8 +67,30 @@ export const api = {
   organizations: () => request('/api/organizations/'),
   login: (email, password) =>
     request('/api/auth/login/', { method: 'POST', body: { email, password } }),
+  // Staff: the code step after the password (ADR-026).
+  twoFactorSetup: () => request('/api/auth/two-factor/setup/', { method: 'POST' }),
+  twoFactorVerify: (code) =>
+    request('/api/auth/two-factor/verify/', { method: 'POST', body: { code } }),
+  // A resident's own choice to use two-step sign-in (staff always have it).
+  twoFactorStatus: () => request('/api/auth/two-factor/'),
+  enableTwoFactor: () => request('/api/auth/two-factor/enable/', { method: 'POST' }),
+  confirmTwoFactor: (code) =>
+    request('/api/auth/two-factor/enable/confirm/', { method: 'POST', body: { code } }),
+  disableTwoFactor: (code) =>
+    request('/api/auth/two-factor/disable/', { method: 'POST', body: { code } }),
   logout: () => request('/api/auth/logout/', { method: 'POST' }),
   me: () => request('/api/auth/me/'),
+  confirmEmail: (token) =>
+    request('/api/auth/confirm-email/', { method: 'POST', body: { token } }),
+  resendConfirmation: (email) =>
+    request('/api/auth/confirm-email/resend/', { method: 'POST', body: { email } }),
+  requestPasswordReset: (email) =>
+    request('/api/auth/password-reset/', { method: 'POST', body: { email } }),
+  confirmPasswordReset: (uid, token, password1, password2) =>
+    request('/api/auth/password-reset/confirm/', {
+      method: 'POST',
+      body: { uid, token, new_password1: password1, new_password2: password2 },
+    }),
   cases: (params = {}) => {
     const query = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v),
@@ -136,6 +158,15 @@ export const api = {
   updateAppeal: (id, payload) =>
     request(`/api/appeals/${id}/`, { method: 'PATCH', body: payload }),
   dropOffPoints: () => request('/api/drop-off-points/'),
+  // The landing page's list, readable without signing in (ADR-025).
+  publicAppeals: () => request('/api/public/appeals/'),
+  // Donations (ADR-025): residents record them, the appeal's NGO confirms receipt.
+  donate: (appealId, items) =>
+    request(`/api/appeals/${appealId}/donations/`, { method: 'POST', body: { items } }),
+  appealDonations: (appealId) => request(`/api/appeals/${appealId}/donations/`),
+  myDonations: () => request('/api/donations/'),
+  cancelDonation: (id) => request(`/api/donations/${id}/cancel/`, { method: 'POST' }),
+  receiveDonation: (id) => request(`/api/donations/${id}/receive/`, { method: 'POST' }),
   replyToCase: (id, payload) =>
     request(`/api/cases/${id}/reply/`, { method: 'POST', body: payload }),
   overridePriority: (id, priorityClass, reason) =>

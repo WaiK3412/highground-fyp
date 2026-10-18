@@ -10,15 +10,17 @@ not a production deployment.
 
 | Role | Main features |
 |---|---|
-| **Resident** (household) | Register; submit a recovery request in five steps (household, home and damage, safety and needs, photos, review) with a village and a map pin; follow each case's status, priority class and the reasons for it; answer an officer's request for more information; confirm finished work, or report it incomplete, for each type of help, with the responder's before/after photos; see supplies NGOs are asking for; notifications; profile. |
-| **Disaster officer** | Case queue as a list or map with filters; verify, ask for more information or reject; change a priority class with a reason the household can see; review possible duplicates side by side; see help no organisation has taken yet; close finished work when the household cannot confirm, with a recorded reason. |
-| **NGO responder** | Case queue; claim one type of help (a "job") on a case; release it; task board with one accountable lead per task, a safety acknowledgement before starting, progress notes and before/after photos; mark work complete; post supply appeals with a drop-off point. |
-| **Administrator** | Django Admin: approve or reject officer and NGO role applications, manage accounts and reference data, correct a case's location. |
+| **Visitor** (not signed in) | Landing page with how it works, sourced flood figures and the supply appeals open now. |
+| **Resident** (household) | Register and confirm the email address; reset a forgotten password; optionally turn on two-step sign-in in the profile; submit a recovery request in five steps (household, home and damage, safety and needs, photos, review) with a village and a map pin; follow each case's status, priority class and the reasons for it; answer an officer's request for more information; confirm finished work, or report it incomplete, for each type of help, with the responder's before/after photos; record what they will bring to a supply appeal and see when the NGO receives it; notifications; profile. |
+| **Disaster officer** | Signs in with password and an authenticator-app code. Case queue as a list or map with filters; verify, ask for more information or reject; change a priority class with a reason the household can see; review possible duplicates side by side; see help no organisation has taken yet; close finished work when the household cannot confirm, with a recorded reason. |
+| **NGO responder** | Signs in with password and an authenticator-app code. Case queue; claim one type of help (a "job") on a case; release it; task board with one accountable lead per task, a safety acknowledgement before starting, progress notes and before/after photos; mark work complete; post supply appeals with a drop-off point, see who is bringing what, and mark each donation received. |
+| **Administrator** | Django Admin (password and authenticator code): approve or reject officer and NGO role applications, manage accounts and reference data, correct a case's location. |
 
 ## How it works
 
 - **Frontend:** a React single-page app (Vite). Screens call the API through
-  `src/api.js`, which sends the session cookie and CSRF token.
+  `src/api.js`, which sends the session cookie and CSRF token. Each screen has
+  its own address (`src/routes.js`), so the browser's Back button and reload work.
 - **Backend:** Django REST Framework views check permissions and validate input,
   then call services that change the database inside transactions.
 - **Database:** PostgreSQL. Every status change writes a row to an append-only
@@ -68,12 +70,13 @@ Paths are relative to `highground/backend` unless noted.
 | Duplicate rules | `cases/duplicate_rules.py`; shared normalisation in `cases/normalise.py` |
 | Database changes (transactions, audit rows) | `cases/services.py`; duplicate scan and review in `cases/duplicate_services.py` |
 | Role and household privacy rules | `accounts/permissions.py` |
-| Data, validation and JSON shapes | `cases/models.py`, `accounts/models.py`; `cases/serializers/` by topic (cases, submission, tasks, decisions, notifications, duplicates, appeals), matching `cases/views/` |
+| Sign-in security | `accounts/password_reset.py`, `email_confirmation.py` and `tokens.py`; two-factor rules in `two_factor.py`, its endpoints in `two_factor_views.py`, enforced by `authentication.py` and `admin_site.py`; account emails in `mail.py` |
+| Data, validation and JSON shapes | `cases/models.py`, `accounts/models.py`; `cases/serializers/` by topic (cases, submission, tasks, decisions, notifications, duplicates, appeals, donations), matching `cases/views/` |
 | Photo cleaning | `cases/images.py` (Pillow) |
-| API views by topic | `cases/views/` (cases, verification, jobs, tasks, duplicates, notifications, appeals); routes in `config/urls.py` |
-| Screens | `highground/frontend/src/pages/`; parts of larger screens in `src/components/` (`queue/`, `request/`, `resident/`, `tasks/`, `CaseFacts.jsx`) |
-| Shared frontend helpers | `highground/frontend/src/api.js`, `useLoad.js` (loading and retry), `initials.js`, `icons.jsx` |
-| Styles | `highground/frontend/src/styles/`: `tokens.css` and `styles.css` from the design prototype, `app.css` for app additions |
+| API views by topic | `cases/views/` (cases, verification, jobs, tasks, duplicates, notifications, appeals, donations); routes in `config/urls.py` |
+| Screens | `highground/frontend/src/pages/`; parts of larger screens in `src/components/` (`queue/`, `request/`, `resident/`, `tasks/`, `appeals/`, `auth/`, `landing/`, `CaseFacts.jsx`) |
+| Shared frontend helpers | `highground/frontend/src/api.js`, `routes.js` (screen addresses), `useLoad.js` (loading and retry), `useRowAction.js`, `useUnreadCount.js`, `useCaseFromAddress.js`, `dates.js`, `initials.js`, `icons.jsx` |
+| Styles | `highground/frontend/src/styles/`: `tokens.css` and `styles.css` from the design prototype, `app.css` for app additions, `landing.css` for the landing page |
 
 ### Reading the code
 
@@ -117,6 +120,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python manage.py migrate
+python manage.py createcachetable   # shared rate-limit counters
 python manage.py runserver
 ```
 
@@ -132,6 +136,21 @@ This creates demo organisations, accounts and cases, and prints the demo logins.
 `--flush` deletes existing demo data first. It only runs with `DJANGO_DEBUG=1`,
 because the demo accounts share a known password (defined in
 `cases/management/commands/seed_demo.py`).
+
+### Two-factor sign-in for demo staff
+
+Officers, NGO responders and administrators enter a code from an authenticator
+app (Google or Microsoft Authenticator) after their password. For demos, put one
+shared secret in `highground/backend/.env` before seeding:
+
+```powershell
+python -c "import secrets; print('DEMO_TOTP_SECRET=' + secrets.token_hex(20))"
+```
+
+`seed_demo --flush` then prints a setup key; add it to your authenticator app
+once and it signs in as any demo staff account. Without the secret, each staff
+member scans a QR code at their first sign-in. A lost phone:
+`python manage.py reset_two_factor <email>`.
 
 ### 4. Frontend
 
@@ -160,7 +179,8 @@ See Brevo's
 [SMTP setup instructions](https://help.brevo.com/hc/en-us/articles/7924908994450-Send-transactional-emails-using-Brevo-SMTP)
 or [Google's App Password instructions](https://support.google.com/mail/answer/185833?hl=en).
 Check delivery with `python manage.py send_test_email you@example.com`, and restart
-the backend after changing settings. Demo `@hg.my` accounts are skipped
+the backend after changing settings. Password-reset and email-confirmation
+links point at `APP_ORIGIN` (default `http://127.0.0.1:5173`). Demo `@hg.my` accounts are skipped
 (`EMAIL_SKIP_DOMAINS=hg.my`); to receive demo mail, set `DEMO_RESIDENT_EMAIL` /
 `DEMO_OFFICER_EMAIL` before running `seed_demo --flush`.
 
@@ -178,26 +198,37 @@ Django's default.
 Frontend, from `highground/frontend`:
 
 ```powershell
-npm test         # API client and initials helper tests
+npm test         # API client, routes and helper tests
 npm run lint
 npm run build
+npm run e2e      # end-to-end tests in Chrome (see below)
 ```
+
+`npm run e2e` drives the real app in the installed Chrome through three flows:
+a request from submission to the household confirming the work, a donation
+confirmed by the NGO, a resident turning on two-step sign-in, and access and
+Back-button checks. **It resets the demo
+database first** (`seed_demo --flush`), and it needs `DEMO_TOTP_SECRET` in
+`highground/backend/.env`. It starts the Django and Vite servers if they are not
+already running. The HTML report is saved in `frontend/playwright-report/`.
 
 ## Main API routes
 
 | Area | Routes |
 |---|---|
 | Accounts | `GET /api/auth/csrf/`, `POST /api/auth/register/`, `POST /api/auth/login/`, `POST /api/auth/logout/`, `GET/PATCH /api/auth/me/` |
+| Account security | `POST /api/auth/password-reset/`, `/password-reset/confirm/`, `/confirm-email/`, `/confirm-email/resend/`; `GET /api/auth/two-factor/setup/`, `POST /api/auth/two-factor/verify/`; resident settings `GET /api/auth/two-factor/`, `POST /api/auth/two-factor/enable/`, `/enable/confirm/`, `/disable/` |
+| Donations | `GET/POST /api/appeals/<id>/donations/`, `GET /api/donations/`, `POST /api/donations/<id>/cancel/`, `/receive/` |
 | Cases | `GET/POST /api/cases/`, `GET /api/cases/<id>/`, `GET /api/cases/stats/`, `GET /api/cases/map/`, `GET /api/locations/` |
 | Officer decisions | `POST /api/cases/<id>/verify/`, `/priority-override/`, `/close/`; resident answer `POST /api/cases/<id>/reply/` |
 | Jobs | `POST /api/jobs/<id>/claim/`, `/release/`, `/complete/`, `/confirm/`; `GET /api/jobs/unmet/` |
 | Tasks | `GET /api/tasks/`, `GET/POST /api/cases/<id>/tasks/`, `PATCH /api/tasks/<id>/`, `POST /api/tasks/<id>/photos/` |
 | Duplicates | `GET /api/duplicates/`, `GET /api/duplicates/<id>/`, `POST /api/duplicates/<id>/decide/` |
-| Other | `/api/notifications/`, `/api/appeals/`, `/api/drop-off-points/`, `/api/priority-rules/` |
+| Other | `/api/notifications/`, `/api/appeals/`, `/api/public/appeals/` (no sign-in), `/api/drop-off-points/`, `/api/priority-rules/` |
 
 ## Not included
 
-- Password reset, an AI assistant, aid-package tracking, volunteer sign-up and
-  in-app pledges of goods (NGO supply appeals replace pledges).
+- An AI assistant, aid-package tracking, volunteer sign-up, stock tracking or
+  quantities for donations, and backup codes or SMS for two-factor sign-in.
 - Production deployment (HTTPS hosting, real host settings, backups).
 - Real email delivery needs SMTP settings (see Email above).

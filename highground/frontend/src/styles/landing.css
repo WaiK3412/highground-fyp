@@ -1,0 +1,51 @@
+/* Screen 01 — landing page. Page-specific styles from design-prototype-v2/screens/01-landing.html. */
+
+.landing .hero { background: var(--sand-100); padding: var(--sp-96) 0 var(--sp-64); position: relative; overflow: hidden; }
+.landing .hero .container { display: grid; grid-template-columns: 1.05fr 1fr; gap: var(--sp-64); align-items: center; position: relative; }
+.landing .hero h1 { font-size: var(--fs-44); font-weight: 800; line-height: 1.12; margin-bottom: var(--sp-24); }
+.landing .hero h1 .accent { color: var(--teal-700); }
+/* Ambient contour rings — HighGround elevation motif */
+.landing .hero-contours { position: absolute; right: -14rem; top: -16rem; width: 58rem; height: 58rem; pointer-events: none; }
+.landing .hero p.sub { font-size: var(--fs-18); color: var(--grey-500); margin-bottom: var(--sp-32); max-width: 52rem; }
+.landing .hero-scene { position: relative; }
+.landing .hero-chip { position: absolute; box-shadow: var(--shadow-lg); padding: 1.4rem; }
+.landing .how { padding: var(--sp-32) 0 var(--sp-96); }
+.landing .how-step { text-align: center; padding: 0 var(--sp-16); }
+.landing .how-step__num {
+  width: 5.6rem; height: 5.6rem;
+  border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--teal-100); color: var(--teal-800);
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-bottom: var(--sp-20);
+}
+.landing .how-step__num span { transform: rotate(45deg); font-size: var(--fs-24); font-weight: 700; }
+.landing .roles { background: var(--white); padding: var(--sp-96) 0; border-top: 1px solid var(--grey-200); }
+.landing .community { background: var(--sand-100); padding: var(--sp-96) 0; border-top: 1px solid var(--grey-200); }
+.landing .cta-band { background: var(--teal-900); color: var(--white); padding: var(--sp-64) 0; text-align: center; }
+.landing .cta-band h2 { color: var(--white); margin-bottom: var(--sp-12); }
+.landing .eyebrow { font-size: var(--fs-14); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--clay-700); display: block; margin-bottom: var(--sp-12); }
+/* styles.css moves .logo after the sidebar nav on narrow screens; the landing header keeps it first. */
+.landing .site-header .logo { order: 0; }
+.landing .site-nav .btn { white-space: nowrap; }
+.landing .section-head { text-align: center; margin-bottom: 4.8rem; }
+.landing .stat-source { display: block; margin-top: 0.6rem; font-size: var(--fs-12); color: var(--grey-500); }
+.landing .stat-source a { color: inherit; text-decoration: underline; }
+
+@media (max-width: 900px) {
+  .landing .hero .container { grid-template-columns: 1fr; gap: var(--sp-32); }
+  .landing .hero { padding: var(--sp-48) 0 var(--sp-32); }
+  .landing .site-nav .site-nav__section { display: none; }
+}
+
+@media (max-width: 600px) {
+  .landing .container { padding: 0 1.6rem; }
+  .landing .hero h1 { font-size: var(--fs-30); }
+  .landing .hero-scene { display: none; }  /* the illustration needs width; the text carries the page */
+  .landing .site-nav { gap: var(--sp-8); }
+  .landing .site-nav .btn { padding-left: 1.2rem; padding-right: 1.2rem; }
+  .landing .logo { padding: 0; }
+  .landing .stat-strip { flex-wrap: wrap; }
+  .landing .stat-strip__item { flex: 1 1 50%; border-bottom: 1px solid var(--grey-100); }
+  .landing .stat-strip__item--hero .stat-strip__value { font-size: var(--fs-30); }
+  .landing .roles, .landing .community, .landing .how { padding: var(--sp-48) 0; }
+}

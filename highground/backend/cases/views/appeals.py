@@ -2,12 +2,13 @@
 
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.response import Response
 from accounts.permissions import IsNgoVolunteer
 from ..models import DropOffPoint, SupplyAppeal
-from ..serializers.appeals import DropOffPointSerializer, SupplyAppealSerializer
+from ..serializers.appeals import DropOffPointSerializer, PublicAppealSerializer, SupplyAppealSerializer
 
 
 def _is_ngo_responder(request):
@@ -38,9 +39,7 @@ def appeals(request):
         )
     else:
         # An out-of-date appeal drops off on its own; nobody has to close it.
-        queryset = queryset.filter(
-            status=SupplyAppeal.Status.OPEN, needed_until__gte=timezone.localdate()
-        )
+        queryset = queryset.open_now()
     return Response({"results": SupplyAppealSerializer(queryset, many=True).data})
 
 
@@ -70,6 +69,23 @@ def appeal_detail(request, pk):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(serializer.data)
+
+
+class PublicReadThrottle(AnonRateThrottle):
+    scope = "public"
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])  # the landing page, for visitors not signed in (ADR-025)
+@throttle_classes([PublicReadThrottle])
+def public_appeals(request):
+    """The few most urgent open appeals, with only what a visitor needs to help."""
+    appeals = (
+        SupplyAppeal.objects.open_now()
+        .select_related("organization", "drop_off_point")
+        .order_by("needed_until", "pk")[:6]
+    )
+    return Response({"results": PublicAppealSerializer(appeals, many=True).data})
 
 
 @api_view(["GET"])

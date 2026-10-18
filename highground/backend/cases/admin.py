@@ -14,6 +14,7 @@ from .models import (
     CasePhoto,
     CaseRecord,
     CaseTask,
+    Donation,
     DropOffPoint,
     DuplicateCaseMatch,
     LocationArea,
@@ -200,7 +201,7 @@ class CaseRecordAdmin(admin.ModelAdmin):
 class CaseEventLogAdmin(admin.ModelAdmin):
     """Canonical actions appear once and cannot be edited through admin."""
 
-    list_display = ("created_at", "case", "event_type", "actor_user", "detail")
+    list_display = ("created_at", "case", "donation", "event_type", "actor_user", "detail")
     list_filter = ("event_type",)
     search_fields = ("case__reference", "detail")
     date_hierarchy = "created_at"
@@ -334,6 +335,24 @@ class SupplyAppealAdmin(admin.ModelAdmin):
     list_display = ("title", "organization", "drop_off_point", "needed_until", "status")
     list_filter = ("status", "organization")
     search_fields = ("title", "items")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Donation)
+class DonationAdmin(admin.ModelAdmin):
+    """Read-only: residents record donations and NGOs confirm them in the app."""
+
+    list_display = ("appeal", "donor_user", "items", "status", "created_at", "received_at")
+    list_filter = ("status",)
+    search_fields = ("appeal__title", "items", "donor_user__email")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False

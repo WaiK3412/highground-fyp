@@ -12,6 +12,7 @@ from django.db import models
 from django.db.models.functions import Greatest, Least
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from django.utils import timezone
 
 from accounts.models import Organization, UserAccount
 
@@ -468,8 +469,27 @@ class CaseEventLog(models.Model):
         DUPLICATE_DISMISSED = "duplicate_dismissed", "Duplicate dismissed"
         DUPLICATE_SUPERSEDED = "duplicate_superseded", "Duplicate review superseded"
         DUPLICATE_CLOSED = "duplicate_closed", "Closed as a duplicate"
+        # Donations to supply appeals (ADR-025). These rows have no case.
+        DONATION_RECORDED = "donation_recorded", "Donation recorded"
+        DONATION_CANCELLED = "donation_cancelled", "Donation cancelled"
+        DONATION_RECEIVED = "donation_received", "Donation received"
+        # Decisions on a role application (ADR-027). These rows have neither a
+        # case nor a donation: they are about the recipient's own account.
+        APPLICATION_APPROVED = "application_approved", "Application approved"
+        APPLICATION_REJECTED = "application_rejected", "Application not approved"
+        APPROVAL_REVOKED = "approval_revoked", "Approval revoked"
 
-    case = models.ForeignKey(CaseRecord, on_delete=models.CASCADE, related_name="events")
+    ACCOUNT_EVENTS = (EventType.APPLICATION_APPROVED, EventType.APPLICATION_REJECTED, EventType.APPROVAL_REVOKED)
+
+    # Every row is about exactly one thing: a case, a donation (ADR-025), or the
+    # recipient's own account (ADR-027).
+    case = models.ForeignKey(
+        CaseRecord, on_delete=models.CASCADE, null=True, blank=True, related_name="events"
+    )
+    # PROTECT keeps a donation with history from being deleted (no signal needed).
+    donation = models.ForeignKey(
+        "Donation", on_delete=models.PROTECT, null=True, blank=True, related_name="events"
+    )
     task = models.ForeignKey(
         CaseTask, on_delete=models.SET_NULL, null=True, blank=True, related_name="events"
     )
@@ -505,9 +525,28 @@ class CaseEventLog(models.Model):
     class Meta:
         db_table = "case_event_log"
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(case__isnull=False, donation__isnull=True)
+                    | models.Q(case__isnull=True, donation__isnull=False)
+                    | models.Q(case__isnull=True, donation__isnull=True, event_type__in=(
+                        # ACCOUNT_EVENTS, spelled out: Meta cannot see the class body.
+                        "application_approved", "application_rejected", "approval_revoked",
+                    ))
+                ),
+                name="case_event_log_one_subject",
+            )
+        ]
 
     def __str__(self):
-        return f"{self.case.reference}: {self.get_event_type_display()}"
+        if self.case_id:
+            subject = self.case.reference
+        elif self.donation_id:
+            subject = self.donation.appeal.title
+        else:
+            subject = "Account"
+        return f"{subject}: {self.get_event_type_display()}"
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
@@ -543,6 +582,12 @@ def protect_audit_task(sender, instance, **kwargs):
         raise ValueError("Tasks with audit actions cannot be deleted.")
 
 
+class SupplyAppealQuerySet(models.QuerySet):
+    def open_now(self):
+        """Open and not past its date: what residents see and may donate to."""
+        return self.filter(status=SupplyAppeal.Status.OPEN, needed_until__gte=timezone.localdate())
+
+
 class SupplyAppeal(models.Model):
     """An NGO's notice of the relief items it needs (ADR-021).
 
@@ -571,9 +616,53 @@ class SupplyAppeal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
 
+    objects = SupplyAppealQuerySet.as_manager()
+
     class Meta:
         db_table = "supply_appeal"
         ordering = ["needed_until", "pk"]
 
     def __str__(self):
         return f"{self.organization.name}: {self.title}"
+
+    def is_open_now(self):
+        # Appeals due today stay open; dates that have passed close on their own (ADR-021).
+        return self.status == self.Status.OPEN and self.needed_until >= timezone.localdate()
+
+
+class Donation(models.Model):
+    """What a resident says they will bring to a supply appeal (ADR-025).
+
+    Supersedes ADR-021's "nothing is pledged": the supervisor asked for the
+    NGO to confirm receipt in the app. Two steps only — waiting, then received
+    (or cancelled by the donor) — with no quantities or stock tracking.
+    """
+
+    class Status(models.TextChoices):
+        WAITING = "waiting", "Waiting for drop-off"
+        RECEIVED = "received", "Received"
+        CANCELLED = "cancelled", "Cancelled"
+
+    appeal = models.ForeignKey(SupplyAppeal, on_delete=models.PROTECT, related_name="donations")
+    donor_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="donations"
+    )
+    items = models.TextField(max_length=500)
+    status = models.CharField(max_length=10, choices=Status, default=Status.WAITING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+    received_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="donations_received",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "donation"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.appeal.title}: {self.items[:40]}"

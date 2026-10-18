@@ -1,14 +1,19 @@
-/** ADR-021: NGOs post needs/drop-off points; others read them, without pledging goods in the app. */
+/**
+ * ADR-021: NGOs post needs and drop-off points. ADR-025: residents record what
+ * they will bring, and the appeal's NGO marks each donation received.
+ */
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { formatDay } from '../dates'
 import { useDocumentTitle } from '../useDocumentTitle'
 import { useLoad } from '../useLoad'
+import { useRowAction } from '../useRowAction'
+import AppealDonations from '../components/appeals/AppealDonations'
+import DonationForm from '../components/appeals/DonationForm'
+import MyDonations from '../components/appeals/MyDonations'
 
-const fmtDate = (iso) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
-
-function AppealCard({ appeal, canManage, onClose, onEdit, busy }) {
+function AppealCard({ appeal, canManage, onClose, onEdit, busy, children }) {
   return (
     <li className="card" style={{ listStyle: 'none', padding: 'var(--sp-16)' }}>
       <div className="row--between">
@@ -18,7 +23,7 @@ function AppealCard({ appeal, canManage, onClose, onEdit, busy }) {
         </span>
       </div>
       <p className="text-sm text-muted" style={{ margin: '0.4rem 0 1rem' }}>
-        {appeal.organization} · {appeal.organization_contact} · needed until {fmtDate(appeal.needed_until)}
+        {appeal.organization} · {appeal.organization_contact} · needed until {formatDay(appeal.needed_until)}
       </p>
       <p className="text-sm" style={{ whiteSpace: 'pre-line' }}>{appeal.items}</p>
       <p className="text-sm" style={{ marginTop: '1rem' }}>
@@ -32,6 +37,7 @@ function AppealCard({ appeal, canManage, onClose, onEdit, busy }) {
           </button>
         </div>
       )}
+      {children}
     </li>
   )
 }
@@ -105,28 +111,26 @@ function AppealForm({ appeal, onSaved, onCancel }) {
 export default function SupplyAppeals({ user }) {
   useDocumentTitle(user.role === 'ngo_volunteer' ? 'Our supply appeals' : 'Supplies needed')
   const canManage = user.role === 'ngo_volunteer'
-  const [actionError, setActionError] = useState(null)
+  const canDonate = user.role === 'community_member'
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [busyId, setBusyId] = useState(null)
+  const [donatingTo, setDonatingTo] = useState(null)
 
   const { data: rows, setData: setRows, loading, error: loadError, reload } = useLoad(
     () => api.appeals(canManage ? { mine: '1' } : {}).then((data) => data.results),
     [canManage],
     [],
   )
+  const { data: donations, setData: setDonations } = useLoad(
+    () => (canDonate ? api.myDonations().then((data) => data.results) : Promise.resolve([])),
+    [canDonate],
+    [],
+  )
+  const { busyId, error: actionError, run } = useRowAction(setRows)
 
-  async function closeAppeal(id) {
-    setBusyId(id)
-    setActionError(null)
-    try {
-      const updated = await api.updateAppeal(id, { status: 'closed' })
-      setRows((current) => current.map((row) => (row.id === id ? updated : row)))
-    } catch (err) {
-      setActionError(err.message)
-    } finally {
-      setBusyId(null)
-    }
+  function recorded(donation) {
+    setDonations((current) => [donation, ...current])
+    setDonatingTo(null)
   }
 
   return (
@@ -136,8 +140,8 @@ export default function SupplyAppeals({ user }) {
           <h1>{canManage ? 'Our supply appeals' : 'Supplies needed'}</h1>
           <p className="text-sm text-muted">
             {canManage
-              ? 'Tell the community what your organisation needs and where to bring it. Appeals disappear from the signed-in list after their date.'
-              : 'Relief organisations are asking for these items. Take them to the drop-off point shown; you do not need to register anything here.'}
+              ? 'Tell the community what your organisation needs and where to bring it. Mark each donation received when it arrives.'
+              : 'Relief organisations are asking for these items. Record what you will bring, then take it to the drop-off point shown.'}
           </p>
         </div>
         {canManage && !showForm && (
@@ -153,6 +157,8 @@ export default function SupplyAppeals({ user }) {
           onSaved={(appeal) => { setRows((current) => editing ? current.map((row) => row.id === appeal.id ? appeal : row) : [appeal, ...current]); setShowForm(false); setEditing(null) }}
         />
       )}
+
+      {canDonate && <MyDonations donations={donations} setDonations={setDonations} />}
 
       {actionError && <p role="alert" className="text-sm">Could not update the appeal: {actionError}</p>}
 
@@ -170,7 +176,23 @@ export default function SupplyAppeals({ user }) {
       ) : (
         <ul className="stack" style={{ gap: 'var(--sp-12)', padding: 0 }}>
           {rows.map((appeal) => (
-            <AppealCard key={appeal.id} appeal={appeal} canManage={canManage} busy={busyId === appeal.id} onClose={closeAppeal} onEdit={(row) => { setEditing(row); setShowForm(true) }} />
+            <AppealCard
+              key={appeal.id}
+              appeal={appeal}
+              canManage={canManage}
+              busy={busyId === appeal.id}
+              onClose={(id) => run(id, () => api.updateAppeal(id, { status: 'closed' }))}
+              onEdit={(row) => { setEditing(row); setShowForm(true) }}
+            >
+              {canManage && <AppealDonations appeal={appeal} />}
+              {canDonate && (donatingTo === appeal.id ? (
+                <DonationForm appeal={appeal} onDonated={recorded} onCancel={() => setDonatingTo(null)} />
+              ) : (
+                <button className="btn btn--primary btn--sm" style={{ marginTop: '1rem' }} onClick={() => setDonatingTo(appeal.id)}>
+                  I'll donate
+                </button>
+              ))}
+            </AppealCard>
           ))}
         </ul>
       )}

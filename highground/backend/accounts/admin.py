@@ -331,16 +331,5 @@ class RoleApplicationAdmin(UserAccountAdmin):
         return False
 
 
-# ---------------------------------------------------------------------------
-# ADR-024: Django Admin is the platform administrator's console. Its case and
-# account screens are not district-scoped, so an officer must not get in even
-# if someone grants them is_staff or model permissions.
-# ---------------------------------------------------------------------------
-_staff_has_permission = admin.site.has_permission
-
-
-def _platform_admins_only(request):
-    return _staff_has_permission(request) and request.user.role == UserAccount.Role.SYSTEM_ADMIN
-
-
-admin.site.has_permission = _platform_admins_only
+# Who may open the admin at all (platform administrators, after the
+# authenticator code) is decided by accounts.admin_site.HighGroundAdminSite.
