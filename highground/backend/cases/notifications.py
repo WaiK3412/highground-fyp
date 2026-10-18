@@ -68,16 +68,20 @@ TO_CLAIMING_ORGANISATION = {
 }
 
 
-def recipients_for(case, event_type, actor, job=None):
-    """Who should be told about this event. Returns a list of users."""
-    # Completion decisions are made by the household, so the organisation
-    # that did that job needs the notification, not the person who pressed it.
-    if (
+def tells_organisation(case, event_type, actor, job):
+    """Completion decisions are made by the household, so the organisation
+    that did that job needs the notification, not the person who pressed it."""
+    return (
         event_type in TO_CLAIMING_ORGANISATION
         and actor == case.submitted_by_user
         and job is not None
-        and job.claimed_by_org_id
-    ):
+        and bool(job.claimed_by_org_id)
+    )
+
+
+def recipients_for(case, event_type, actor, job=None):
+    """Who should be told about this event. Returns a list of users."""
+    if tells_organisation(case, event_type, actor, job):
         return list(
             UserAccount.objects.filter(
                 role=UserAccount.Role.NGO_VOLUNTEER,
@@ -131,7 +135,15 @@ HEADLINES = {
 }
 
 
-def headline(case, event_type):
+# The same events, worded for the organisation that did the job: it is not their case.
+ORGANISATION_HEADLINES = {
+    CaseEventLog.EventType.CLOSED: "A resident confirmed the work is complete",
+}
+
+
+def headline(case, event_type, to_organisation=False):
+    if to_organisation and event_type in ORGANISATION_HEADLINES:
+        return ORGANISATION_HEADLINES[event_type]
     text = HEADLINES.get(event_type, "Your case was updated")
     if event_type == CaseEventLog.EventType.VERIFIED and case.priority_class is not None:
         # Fold the class in rather than sending a second, near-identical
@@ -162,7 +174,7 @@ def notify(case, event_type, actor, detail="", job=None):
         .order_by("-created_at")
         .first()
     )
-    text = headline(case, event_type)
+    text = headline(case, event_type, to_organisation=tells_organisation(case, event_type, actor, job))
     return _address(
         people,
         audit_row,
@@ -241,6 +253,9 @@ APPLICATION_HEADLINES = {
 }
 
 
+ADMIN_NOTE = "Note from the administrator: "
+
+
 def application_headline(user, event_type):
     return APPLICATION_HEADLINES[event_type].format(role=user.get_requested_role_display())
 
@@ -251,7 +266,7 @@ def notify_application_decision(user, event_type, admin, note=""):
         event_type=event_type, actor_user=admin, detail=note, created_at=timezone.now()
     )
     text = application_headline(user, event_type)
-    summary = f"{text}.\n\nReason: {note}" if note else f"{text}."
+    summary = f"{text}.\n\n{ADMIN_NOTE}{note}" if note else f"{text}."
     return _address(
         [user], audit_row, copy_fields={}, subject=f"[HighGround] {text}", body=_email_body(summary)
     )

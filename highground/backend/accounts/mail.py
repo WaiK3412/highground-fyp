@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 
+from .models import UserAccount
 from .tokens import make_confirmation_token
 
 
@@ -40,3 +41,12 @@ def send_account_exists_email(user):
     return send_account_email(
         user, "Someone tried to register with your email", "registration/account_exists_email.txt"
     )
+
+
+def send_new_application_emails(applicant):
+    """Tell every platform administrator that a role application is waiting (ADR-027)."""
+    admins = UserAccount.objects.filter(role=UserAccount.Role.SYSTEM_ADMIN, is_active=True).order_by("id")
+    role = applicant.get_requested_role_display()
+    for admin in admins:
+        send_account_email(admin, f"New {role} application", "registration/new_application_email.txt", role=role)
+

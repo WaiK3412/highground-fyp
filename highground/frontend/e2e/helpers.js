@@ -19,6 +19,10 @@ export function backendEnv(name) {
   return line ? line.slice(name.length + 1).trim() : undefined
 }
 
+// Django keeps variables that are already set over .env, so an empty EMAIL_HOST
+// makes test runs print emails instead of sending them through real SMTP.
+export const CONSOLE_EMAIL_ENV = { ...process.env, EMAIL_HOST: '' }
+
 // Seeded by manage.py seed_demo; all share its short demo password.
 const DEMO_PASSWORD = 'demo'
 export const ACCOUNTS = {

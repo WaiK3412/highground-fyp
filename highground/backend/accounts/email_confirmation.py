@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from .api import LoginRateThrottle, _public_csrf_rejection
-from .mail import send_confirmation_email
+from .mail import send_confirmation_email, send_new_application_emails
 from .models import UserAccount
 from .tokens import read_confirmation_token
 
@@ -30,6 +30,9 @@ def confirm_email(request):
     if not user.email_confirmed:
         user.email_confirmed = True
         user.save(update_fields=["email_confirmed"])
+        # Only now is the application real (a confirmed address), so only now are admins told.
+        if user.verification_status == UserAccount.VerificationStatus.PENDING:
+            send_new_application_emails(user)
     return Response({"detail": "Email confirmed. You can now log in."})
 
 

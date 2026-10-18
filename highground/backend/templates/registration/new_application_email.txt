@@ -1,0 +1,7 @@
+Hello {{ user.full_name }},
+
+A new {{ role }} application is waiting for review on HighGround.
+
+Review it in the admin: {{ app_origin }}/admin/accounts/roleapplication/
+
+The applicant's details and documents are on that page, after you sign in.

@@ -6,7 +6,7 @@ from accounts.models import UserAccount
 from accounts.permissions import may_see_private_case_details, visible_cases
 
 from ..models import CaseEventLog, CaseRecord
-from ..notifications import application_headline, donation_headline
+from ..notifications import ADMIN_NOTE, application_headline, donation_headline
 from ..privacy import safe_case_text
 
 
@@ -42,7 +42,7 @@ class NotificationSerializer(serializers.Serializer):
         if user is None or obj.recipient_user_id != user.pk:
             return "Account updated. Sign in to view it."
         text = application_headline(user, obj.event_type)
-        return f"{text}. Reason: {obj.detail}" if obj.detail else f"{text}."
+        return f"{text}. {ADMIN_NOTE}{obj.detail}" if obj.detail else f"{text}."
 
     def _donation_detail(self, obj, user):
         donation = obj.donation

@@ -8,12 +8,12 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { ACCOUNTS, BACKEND, FIXTURE_FILE } from './helpers.js'
+import { ACCOUNTS, BACKEND, CONSOLE_EMAIL_ENV, FIXTURE_FILE } from './helpers.js'
 
 const PYTHON = path.join(BACKEND, '.venv', 'Scripts', 'python.exe')
 
 function manage(...args) {
-  return execFileSync(PYTHON, ['manage.py', ...args], { cwd: BACKEND, encoding: 'utf8' })
+  return execFileSync(PYTHON, ['manage.py', ...args], { cwd: BACKEND, encoding: 'utf8', env: CONSOLE_EMAIL_ENV })
 }
 
 const FIND_VILLAGE = `

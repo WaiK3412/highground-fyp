@@ -1,8 +1,10 @@
 import path from 'node:path'
 import { defineConfig } from '@playwright/test'
+import { CONSOLE_EMAIL_ENV } from './e2e/helpers.js'
 
 // End-to-end tests drive the real app in Chrome against the demo database.
 // They reset it first (e2e/global-setup.js), so run them one at a time.
+// A backend you already started is reused as it is: stop it first if it sends real email.
 const PYTHON = path.join('.venv', 'Scripts', 'python.exe')
 
 export default defineConfig({
@@ -21,6 +23,7 @@ export default defineConfig({
     {
       command: `${PYTHON} manage.py runserver 127.0.0.1:8000`,
       cwd: '../backend',
+      env: CONSOLE_EMAIL_ENV,
       url: 'http://127.0.0.1:8000/api/auth/csrf/',
       reuseExistingServer: true,
     },
