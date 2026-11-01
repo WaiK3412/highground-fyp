@@ -1,7 +1,9 @@
 /** What relief organisations need right now, readable without signing in (ADR-025). */
 
 import { api } from '../../api'
+import { deadlineLabel } from '../../appeals'
 import { formatDay } from '../../dates'
+import ItemList from '../appeals/ItemList'
 import { useLoad } from '../../useLoad'
 
 export default function PublicAppeals({ onDonate }) {
@@ -22,9 +24,9 @@ export default function PublicAppeals({ onDonate }) {
         <article key={appeal.id} className="card stack" style={{ gap: '0.8rem' }}>
           <h3 style={{ margin: 0 }}>{appeal.title}</h3>
           <p className="text-xs text-muted" style={{ margin: 0 }}>
-            {appeal.organization} · needed until {formatDay(appeal.needed_until)}
+            {appeal.organization} · needed until {formatDay(appeal.needed_until)} · {deadlineLabel(appeal.needed_until)}
           </p>
-          <p className="text-sm" style={{ margin: 0, whiteSpace: 'pre-line' }}>{appeal.items}</p>
+          <ItemList items={appeal.items} />
           <p className="text-sm" style={{ margin: 0 }}>
             <strong>Drop off at:</strong> {appeal.drop_off_point.name}, {appeal.drop_off_point.area}
           </p>

@@ -18,6 +18,7 @@ export default function TaskCard({ task, responders, currentUserId, onChanged })
   const [panel, setPanel] = useState(null)
   const [leadId, setLeadId] = useState(task.lead?.id ? String(task.lead.id) : '')
   const [note, setNote] = useState('')
+  const [shareNote, setShareNote] = useState(false)
   const [photos, setPhotos] = useState([])
   const [photoStage, setPhotoStage] = useState('before')
   const [caption, setCaption] = useState('')
@@ -48,9 +49,10 @@ export default function TaskCard({ task, responders, currentUserId, onChanged })
     let photosSaved = false
     try {
       if (note.trim()) {
-        await api.updateTask(task.id, { note })
+        await api.updateTask(task.id, shareNote ? { note, share_with_household: true } : { note })
         noteSaved = true
         setNote('')
+        setShareNote(false)
       }
       if (photos.length) {
         await api.addTaskPhotos(task.id, photoStage, photos, caption)
@@ -264,6 +266,7 @@ export default function TaskCard({ task, responders, currentUserId, onChanged })
       {panel === 'note' && !locked && (
         <ProgressPanel
           task={task} updates={updates} note={note} setNote={setNote}
+          shareNote={shareNote} setShareNote={setShareNote}
           photoStage={photoStage} setPhotoStage={setPhotoStage} photos={photos}
           caption={caption} setCaption={setCaption} busy={busy}
           pickPhotos={pickPhotos} postProgress={postProgress} setPanel={setPanel}

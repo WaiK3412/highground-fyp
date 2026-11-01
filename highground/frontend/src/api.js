@@ -71,6 +71,9 @@ export const api = {
   twoFactorSetup: () => request('/api/auth/two-factor/setup/', { method: 'POST' }),
   twoFactorVerify: (code) =>
     request('/api/auth/two-factor/verify/', { method: 'POST', body: { code } }),
+  // A one-time backup code in place of the app (lost or broken phone).
+  twoFactorVerifyBackup: (backupCode) =>
+    request('/api/auth/two-factor/verify/', { method: 'POST', body: { backup_code: backupCode } }),
   // A resident's own choice to use two-step sign-in (staff always have it).
   twoFactorStatus: () => request('/api/auth/two-factor/'),
   enableTwoFactor: () => request('/api/auth/two-factor/enable/', { method: 'POST' }),
@@ -78,6 +81,8 @@ export const api = {
     request('/api/auth/two-factor/enable/confirm/', { method: 'POST', body: { code } }),
   disableTwoFactor: (code) =>
     request('/api/auth/two-factor/disable/', { method: 'POST', body: { code } }),
+  newBackupCodes: (code) =>
+    request('/api/auth/two-factor/backup-codes/', { method: 'POST', body: { code } }),
   logout: () => request('/api/auth/logout/', { method: 'POST' }),
   me: () => request('/api/auth/me/'),
   confirmEmail: (token) =>

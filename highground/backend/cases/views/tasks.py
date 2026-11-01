@@ -375,6 +375,18 @@ def _record_task_update(task, user, lead_changed, old_status, note):
     )
 
 
+def _record_shared_note(task, user, note):
+    """FR18: a note the responder chose to share; the household reads it in its history."""
+    CaseEventLog.objects.create(
+        case=task.case,
+        task=task,
+        actor_user=user,
+        event_type=CaseEventLog.EventType.PROGRESS_SHARED,
+        detail=note,
+        created_at=timezone.now(),
+    )
+
+
 @api_view(["PATCH"])
 @permission_classes([IsNgoVolunteer])
 def update_task(request, pk):
@@ -415,12 +427,21 @@ def update_task(request, pk):
         if error is not None:
             return error
         note = validated.get("note", "").strip()
+        shared = validated.get("share_with_household", False)
         if not lead_changed and not status_changed and not note:
             return Response({"detail": "Nothing changed."}, status=400)
 
         _save_task_progress(task, target_status, lead_changed, status_changed)
         _record_safety_acknowledgement(task, request.user, starting)
         _advance_job(task, target_status)
-        _record_task_update(task, request.user, lead_changed, old_status, note)
+        if lead_changed or status_changed or not shared:
+            _record_task_update(task, request.user, lead_changed, old_status, "" if shared else note)
+        if shared:
+            _record_shared_note(task, request.user, note)
 
+    if shared:
+        # After the commit, as for every other notice: a failed e-mail must not undo the update.
+        from ..notifications import notify
+
+        notify(task.case, CaseEventLog.EventType.PROGRESS_SHARED, request.user, note, job=task.job)
     return Response(CaseTaskBoardSerializer(task, context={"request": request}).data)

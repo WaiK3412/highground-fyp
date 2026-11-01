@@ -5,6 +5,7 @@ reasons are kept so a reader can see both.
 """
 
 from django.test import Client
+from django.utils import timezone
 
 from cases.models import CaseEventLog, CaseRecord
 from cases.tests.test_lifecycle import LifecycleTestCase
@@ -33,10 +34,14 @@ class OverrideTests(LifecycleTestCase):
         self.assertIn("no rule for Class 1 or 2 applied", self.case.priority_reasons)
 
     def test_the_change_is_audited_with_old_and_new_class(self):
+        before = timezone.now()
         self.override(self.officer, {"priority_class": 1, "reason": "Dialysis patient."})
+        after = timezone.now()
         event = CaseEventLog.objects.get(event_type=CaseEventLog.EventType.SCORE_OVERRIDDEN)
         self.assertIn("from 3 (Standard) to 1 (Health-critical)", event.detail)
         self.assertEqual(event.actor_user, self.officer)
+        # FR14: the record says when the class changed, not only who changed it.
+        self.assertTrue(before <= event.created_at <= after)
 
     def test_a_second_override_replaces_the_first_officer_reason(self):
         self.override(self.officer, {"priority_class": 2, "reason": "First."})

@@ -120,6 +120,15 @@ class ReadingTests(AppealTestCase):
         rows = self.client.get("/api/appeals/", {"mine": "1"}).json()["results"]
         self.assertEqual({row["id"] for row in rows}, {own_open.pk, own_closed.pk})
 
+    def test_mine_keeps_appeals_whose_date_has_passed(self):
+        # FR19: an appeal leaves the shared list after its date, not the organisation's own
+        # list, so donations still on their way can be confirmed.
+        expired = self.make(days=-3)
+        self.login(self.mercy_lead)
+        rows = self.client.get("/api/appeals/", {"mine": "1"}).json()["results"]
+        self.assertEqual([row["id"] for row in rows], [expired.pk])
+        self.assertEqual(self.resident_list(), [])
+
     def test_mine_is_for_ngo_responders_only(self):
         self.login(self.resident)
         self.assertEqual(self.client.get("/api/appeals/", {"mine": "1"}).status_code, 403)

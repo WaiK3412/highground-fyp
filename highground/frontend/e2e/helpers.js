@@ -1,5 +1,6 @@
 /** Shared pieces for the end-to-end tests: demo accounts, sign-in, authenticator codes. */
 
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -33,6 +34,21 @@ export const ACCOUNTS = {
 
 export function fixture() {
   return JSON.parse(fs.readFileSync(FIXTURE_FILE, 'utf8'))
+}
+
+/**
+ * Empty the rate-limit counters. Every spec signs in from 127.0.0.1, so a run
+ * soon uses up the per-IP budget; the limits themselves have backend tests.
+ */
+export function resetRateLimits() {
+  djangoShell('from django.core.cache import cache; cache.clear()')
+}
+
+/** Run Python in the backend's Django shell; returns what it prints. */
+export function djangoShell(code) {
+  return execFileSync(path.join(BACKEND, '.venv', 'Scripts', 'python.exe'), [
+    'manage.py', 'shell', '-c', code,
+  ], { cwd: BACKEND, env: CONSOLE_EMAIL_ENV, encoding: 'utf8' })
 }
 
 /** RFC 6238 authenticator code (SHA-1, 30-second steps) from a hex secret. */

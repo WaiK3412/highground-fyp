@@ -15,7 +15,7 @@ from django.test import override_settings
 from django_otp.oath import totp
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from accounts.models import UserAccount
+from accounts.models import BackupCode, UserAccount
 from accounts.two_factor import PENDING_KEY
 from .throttle_helpers import ThrottleTestCase
 
@@ -185,12 +185,17 @@ class ResidentOptInTests(ThrottleTestCase):
         return setup, device, response
 
     def test_status_starts_off_and_optional(self):
-        self.assertEqual(self.client.get("/api/auth/two-factor/").json(), {"enabled": False, "required": False})
+        self.assertEqual(
+            self.client.get("/api/auth/two-factor/").json(),
+            {"enabled": False, "required": False, "backup_codes_left": 0},
+        )
 
     def test_turning_it_on_keeps_this_session_signed_in(self):
         setup, device, response = self.enable()
         self.assertTrue(setup["qr_data_uri"].startswith("data:image/svg+xml;base64,"))
-        self.assertEqual(response.json(), {"enabled": True, "required": False})
+        body = response.json()
+        self.assertEqual(len(body.pop("backup_codes")), 10)
+        self.assertEqual(body, {"enabled": True, "required": False, "backup_codes_left": 10})
         device.refresh_from_db()
         self.assertTrue(device.confirmed)
         self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)
@@ -223,7 +228,8 @@ class ResidentOptInTests(ThrottleTestCase):
         device.last_t -= 1  # let the next code in this 30-second window count as new
         device.save()
         response = self.post("/api/auth/two-factor/disable/", {"code": code_for(device)})
-        self.assertEqual(response.json(), {"enabled": False, "required": False})
+        self.assertEqual(response.json(), {"enabled": False, "required": False, "backup_codes_left": 0})
+        self.assertFalse(BackupCode.objects.filter(user=self.resident).exists())
         self.assertFalse(TOTPDevice.objects.filter(user=self.resident).exists())
 
     def test_staff_cannot_turn_it_off(self):
@@ -235,7 +241,10 @@ class ResidentOptInTests(ThrottleTestCase):
         self.client.logout()
         self.client.post("/api/auth/login/", {"email": officer.email, "password": PASSWORD}, content_type="application/json")
         self.post("/api/auth/two-factor/verify/", {"code": code_for(device)})
-        self.assertEqual(self.client.get("/api/auth/two-factor/").json(), {"enabled": True, "required": True})
+        self.assertEqual(
+            self.client.get("/api/auth/two-factor/").json(),
+            {"enabled": True, "required": True, "backup_codes_left": 0},
+        )
         response = self.post("/api/auth/two-factor/disable/", {"code": code_for(device)})
         self.assertEqual(response.status_code, 403)
 

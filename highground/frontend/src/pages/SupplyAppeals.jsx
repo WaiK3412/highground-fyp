@@ -5,11 +5,13 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { deadlineLabel, directionsUrl } from '../appeals'
 import { formatDay } from '../dates'
 import { useDocumentTitle } from '../useDocumentTitle'
 import { useLoad } from '../useLoad'
 import { useRowAction } from '../useRowAction'
 import AppealDonations from '../components/appeals/AppealDonations'
+import ItemList from '../components/appeals/ItemList'
 import DonationForm from '../components/appeals/DonationForm'
 import MyDonations from '../components/appeals/MyDonations'
 
@@ -24,10 +26,13 @@ function AppealCard({ appeal, canManage, onClose, onEdit, busy, children }) {
       </div>
       <p className="text-sm text-muted" style={{ margin: '0.4rem 0 1rem' }}>
         {appeal.organization} · {appeal.organization_contact} · needed until {formatDay(appeal.needed_until)}
+        {appeal.status === 'open' && <> · <strong>{deadlineLabel(appeal.needed_until)}</strong></>}
       </p>
-      <p className="text-sm" style={{ whiteSpace: 'pre-line' }}>{appeal.items}</p>
+      <ItemList items={appeal.items} />
       <p className="text-sm" style={{ marginTop: '1rem' }}>
         <strong>Drop off at:</strong> {appeal.drop_off_point.name}, {appeal.drop_off_point.address} ({appeal.drop_off_point.area})
+        {' · '}
+        <a href={directionsUrl(appeal.drop_off_point)} target="_blank" rel="noreferrer">Directions</a>
       </p>
       {canManage && appeal.status === 'open' && (
         <div className="row gap-8">

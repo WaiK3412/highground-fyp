@@ -23,6 +23,7 @@ const TITLES = {
   claimed: 'An organisation took on your case',
   task_assigned: 'A team was assigned',
   task_updated: 'Work updated',
+  progress_shared: 'An update from the team doing the work',
   escalated: 'Escalated for a decision',
   closed: 'Case closed',
   reopened: 'Case reopened',

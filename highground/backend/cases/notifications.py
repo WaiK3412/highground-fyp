@@ -38,6 +38,7 @@ from .models import CaseEventLog
 #   rejected              | the household                     | with the reason given
 #   claimed / released    | the household                     | who is (or is no longer) helping
 #   completion_requested  | the household                     | they confirm each job
+#   progress_shared       | the household                     | a responder shared a note with them
 #   closed / dup. closed  | the household                     | it is finished
 #   closed / reopened     | the organisation that did the job | when the household confirms or
 #                         |                                   | reports incomplete work
@@ -52,6 +53,7 @@ TO_HOUSEHOLD = {
     CaseEventLog.EventType.CLAIMED,
     CaseEventLog.EventType.RELEASED,
     CaseEventLog.EventType.COMPLETION_REQUESTED,
+    CaseEventLog.EventType.PROGRESS_SHARED,
     CaseEventLog.EventType.CLOSED,
     CaseEventLog.EventType.DUPLICATE_CLOSED,
 }
@@ -128,6 +130,7 @@ HEADLINES = {
     CaseEventLog.EventType.CLAIMED: "An organisation is taking on your case",
     CaseEventLog.EventType.RELEASED: "Your case is available to response organisations again",
     CaseEventLog.EventType.COMPLETION_REQUESTED: "Please confirm whether the recovery work is complete",
+    CaseEventLog.EventType.PROGRESS_SHARED: "The team working on your request shared an update",
     CaseEventLog.EventType.CLOSED: "Your case has been closed",
     CaseEventLog.EventType.DUPLICATE_CLOSED: "Your request was closed as a duplicate",
     CaseEventLog.EventType.REOPENED: "A resident reported that work is incomplete",

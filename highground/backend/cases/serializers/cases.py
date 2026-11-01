@@ -198,6 +198,7 @@ class CaseEventSerializer(serializers.Serializer):
         CaseEventLog.EventType.RELEASED,
         CaseEventLog.EventType.TASK_ASSIGNED,
         CaseEventLog.EventType.COMPLETION_REQUESTED,
+        CaseEventLog.EventType.PROGRESS_SHARED,
         CaseEventLog.EventType.CLOSED,
         CaseEventLog.EventType.REOPENED,
         CaseEventLog.EventType.DUPLICATE_CLOSED,

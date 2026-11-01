@@ -36,6 +36,7 @@ urlpatterns = [
     path("api/auth/two-factor/enable/", two_factor_views.two_factor_enable),
     path("api/auth/two-factor/enable/confirm/", two_factor_views.two_factor_enable_confirm),
     path("api/auth/two-factor/disable/", two_factor_views.two_factor_disable),
+    path("api/auth/two-factor/backup-codes/", two_factor_views.two_factor_backup_codes),
     # cases
     path("api/cases/", case_views.CaseListView.as_view()),
     path("api/cases/stats/", case_views.queue_stats),

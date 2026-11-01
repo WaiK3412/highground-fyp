@@ -77,7 +77,7 @@ export function SafetyPanel({ task, safetyChecked, setSafetyChecked, busy, updat
   )
 }
 
-export function ProgressPanel({ task, updates, note, setNote, photoStage, setPhotoStage, photos, caption, setCaption, busy, pickPhotos, postProgress, setPanel }) {
+export function ProgressPanel({ task, updates, note, setNote, shareNote, setShareNote, photoStage, setPhotoStage, photos, caption, setCaption, busy, pickPhotos, postProgress, setPanel }) {
   return (
     <div className="task-card__panel">
       {updates.length > 0 && (
@@ -85,6 +85,7 @@ export function ProgressPanel({ task, updates, note, setNote, photoStage, setPho
           {updates.map((update_, index) => (
             <p className="meta" key={`${update_.created_at}-${index}`}>
               <span className="text-strong">{update_.actor || 'The team'}</span> ·{' '}
+              {update_.shared && <span className="text-muted">Shared with the household · </span>}
               {update_.detail}
             </p>
           ))}
@@ -103,6 +104,16 @@ export function ProgressPanel({ task, updates, note, setNote, photoStage, setPho
           onChange={(event) => setNote(event.target.value)}
         />
         <p className="help">Notes are added, never edited, and stamped with who wrote them.</p>
+        <label className="text-sm">
+          <input
+            type="checkbox"
+            checked={shareNote}
+            disabled={busy}
+            onChange={(event) => setShareNote(event.target.checked)}
+          />{' '}
+          Share this note with the household. Leave it unticked for anything only your team should read,
+          such as access arrangements.
+        </label>
       </div>
       <div className="field">
         <label htmlFor={`photo-stage-${task.id}`}>Photo stage</label>

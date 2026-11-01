@@ -7,13 +7,22 @@ import qrcode
 import qrcode.image.svg
 from django.contrib.auth import login
 from django_otp import login as otp_login
-from django_otp.plugins.otp_totp.models import TOTPDevice
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .api import LoginRateThrottle, UserSerializer, _public_csrf_rejection
-from .two_factor import clear_pending, confirmed_device, is_staff_account, pending_user, setup_device
+from .two_factor import (
+    backup_codes_left,
+    clear_pending,
+    confirmed_device,
+    is_staff_account,
+    new_backup_codes,
+    pending_user,
+    remove_two_factor,
+    setup_device,
+    use_backup_code,
+)
 
 PENDING_EXPIRED = {
     "detail": "Your sign-in timed out. Enter your password again.",
@@ -21,6 +30,10 @@ PENDING_EXPIRED = {
 }
 INVALID_CODE = {
     "detail": "That code is not right. Check your authenticator app and try again.",
+    "code": "invalid_code",
+}
+INVALID_BACKUP_CODE = {
+    "detail": "That backup code is not right, or it has already been used.",
     "code": "invalid_code",
 }
 
@@ -49,7 +62,7 @@ def two_factor_setup(request):
 @permission_classes([AllowAny])
 @throttle_classes([TwoFactorRateThrottle])
 def two_factor_verify(request):
-    """Check the 6-digit code; only now is the staff member signed in."""
+    """Check the 6-digit code, or a backup code; only now is the person signed in."""
     rejection = _public_csrf_rejection(request)
     if rejection is not None:
         return rejection
@@ -57,18 +70,31 @@ def two_factor_verify(request):
     if user is None:
         return Response(PENDING_EXPIRED, status=403)
 
-    device = confirmed_device(user) or setup_device(user)
-    # verify_token also refuses a code that was already used, and slows repeated failures.
-    if not device.verify_token(str(request.data.get("code", "")).strip()):
-        return Response(INVALID_CODE, status=400)
-    if not device.confirmed:
-        device.confirmed = True
-        device.save(update_fields=["confirmed"])
+    backup_code = str(request.data.get("backup_code", "")).strip()
+    device = confirmed_device(user)
+    if backup_code:
+        # Only once an app is set up: a backup code cannot skip the first setup.
+        if device is None or not use_backup_code(user, backup_code):
+            return Response(INVALID_BACKUP_CODE, status=400)
+        first_setup = False
+    else:
+        device = device or setup_device(user)
+        # verify_token also refuses a code that was already used, and slows repeated failures.
+        if not device.verify_token(_code(request)):
+            return Response(INVALID_CODE, status=400)
+        first_setup = not device.confirmed
+        if first_setup:
+            device.confirmed = True
+            device.save(update_fields=["confirmed"])
 
     clear_pending(request)
-    user.otp_device = device  # django-otp records the verified device on login
+    # django-otp records the verified device on login; a backup code stands in for the app.
+    user.otp_device = device
     login(request, user)
-    return Response(UserSerializer(user).data)
+    data = UserSerializer(user).data
+    if first_setup:
+        data["backup_codes"] = new_backup_codes(user)
+    return Response(data)
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +104,11 @@ def two_factor_verify(request):
 
 
 def _status(user):
-    return {"enabled": confirmed_device(user) is not None, "required": is_staff_account(user)}
+    return {
+        "enabled": confirmed_device(user) is not None,
+        "required": is_staff_account(user),
+        "backup_codes_left": backup_codes_left(user),
+    }
 
 
 def _code(request):
@@ -114,7 +144,23 @@ def two_factor_enable_confirm(request):
     device.save(update_fields=["confirmed"])
     # This session has just proved the code, so it stays signed in.
     otp_login(request, device)
-    return Response(_status(user))
+    codes = new_backup_codes(user)
+    return Response({**_status(user), "backup_codes": codes})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@throttle_classes([TwoFactorRateThrottle])
+def two_factor_backup_codes(request):
+    """New backup codes in place of the old ones; needs a current code from the app."""
+    user = request.user
+    device = confirmed_device(user)
+    if device is None:
+        return Response({"detail": "Turn on two-step sign-in first."}, status=409)
+    if not device.verify_token(_code(request)):
+        return Response(INVALID_CODE, status=400)
+    codes = new_backup_codes(user)
+    return Response({**_status(user), "backup_codes": codes})
 
 
 @api_view(["POST"])
@@ -130,7 +176,7 @@ def two_factor_disable(request):
         return Response(_status(user))
     if not device.verify_token(_code(request)):
         return Response(INVALID_CODE, status=400)
-    TOTPDevice.objects.filter(user=user).delete()
+    remove_two_factor(user)
     return Response(_status(user))
 
 

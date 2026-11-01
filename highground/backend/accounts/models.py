@@ -216,6 +216,27 @@ class RegistrationDocument(models.Model):
         return f"{self.label} — {self.user.email}"
 
 
+class BackupCode(models.Model):
+    """A one-time code that stands in for the authenticator app (lost or broken phone).
+
+    Only a salted password hash is stored (ADR-028), so a copy of the database
+    does not reveal working codes; the plain codes are shown once, when made.
+    """
+
+    user = models.ForeignKey(
+        "UserAccount", on_delete=models.CASCADE, related_name="backup_codes"
+    )
+    salt = models.CharField(max_length=32)
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "backup_code"
+
+    def __str__(self):
+        return f"Backup code — {self.user.email}"
+
+
 class RoleApplication(UserAccount):
     """The same rows as UserAccount, shown as a review queue.
 

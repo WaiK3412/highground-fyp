@@ -9,14 +9,19 @@ import { useDocumentTitle } from '../useDocumentTitle'
 import AuthAlert from '../components/auth/AuthAlert'
 import AuthLayout, { AuthLinkButton } from '../components/auth/AuthLayout'
 import ResendConfirmation from '../components/auth/ResendConfirmation'
+import BackupCodeEntry from '../components/auth/BackupCodeEntry'
+import BackupCodes from '../components/auth/BackupCodes'
 import TwoFactorCode from '../components/auth/TwoFactorCode'
 import TwoFactorSetup from '../components/auth/TwoFactorSetup'
 
-// Staff sign in in two steps (ADR-026): the password, then an authenticator code.
+// Staff sign in in two steps (ADR-026): the password, then an authenticator code
+// or, without the phone, a backup code (ADR-028).
 const STEP_TITLES = {
   password: 'Welcome back',
   verify: 'Enter your code',
+  backup: 'Use a backup code',
   setup: 'Set up two-step sign-in',
+  codes: 'Save your backup codes',
 }
 
 export default function Login({ onLoggedIn, onShowRegister, onShowForgot, notice }) {
@@ -27,6 +32,7 @@ export default function Login({ onLoggedIn, onShowRegister, onShowForgot, notice
   const [busy, setBusy] = useState(false)
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [step, setStep] = useState('password')
+  const [newCodes, setNewCodes] = useState(null)
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -54,14 +60,48 @@ export default function Login({ onLoggedIn, onShowRegister, onShowForgot, notice
     setError(message)
   }
 
+  // The first setup returns the backup codes with the account: show them before going in.
+  function verified({ backup_codes, ...user }) {
+    if (backup_codes) {
+      setNewCodes({ codes: backup_codes, user })
+      setStep('codes')
+    } else {
+      onLoggedIn(user)
+    }
+  }
+
+  function switchLink(label, nextStep) {
+    return (
+      <p className="text-sm" style={{ margin: '1.6rem 0 0', textAlign: 'center' }}>
+        <button type="button" className="link-button" style={{ color: 'var(--teal-700)', fontWeight: 600 }} onClick={() => setStep(nextStep)}>
+          {label}
+        </button>
+      </p>
+    )
+  }
+
   return (
     <AuthLayout
       title={STEP_TITLES[step]}
       subtitle={step === 'password' ? 'One shared view of every recovery case — for residents, NGOs, and district officers.' : null}
     >
       <div className="auth-card">
-        {step === 'verify' && <TwoFactorCode onVerified={onLoggedIn} onTimedOut={backToPassword} />}
-        {step === 'setup' && <TwoFactorSetup onVerified={onLoggedIn} onTimedOut={backToPassword} />}
+        {step === 'verify' && (
+          <>
+            <TwoFactorCode onVerified={verified} onTimedOut={backToPassword} />
+            {switchLink('Lost your phone? Use a backup code', 'backup')}
+          </>
+        )}
+        {step === 'backup' && (
+          <>
+            <BackupCodeEntry onVerified={verified} onTimedOut={backToPassword} />
+            {switchLink('Use your authenticator app instead', 'verify')}
+          </>
+        )}
+        {step === 'setup' && <TwoFactorSetup onVerified={verified} onTimedOut={backToPassword} />}
+        {step === 'codes' && (
+          <BackupCodes codes={newCodes.codes} onDone={() => onLoggedIn(newCodes.user)} doneLabel="I have saved my codes — continue" />
+        )}
         {step === 'password' && (
           <form className="stack" style={{ gap: '2.0rem' }} onSubmit={handleSubmit}>
             {notice && <AuthAlert tone="success">{notice}</AuthAlert>}

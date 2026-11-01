@@ -77,7 +77,9 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
             event
             for event in obj.events.all()
             if event.notification_copy_of_id is None
-            and event.event_type == CaseEventLog.EventType.TASK_UPDATED
+            and event.event_type in {
+                CaseEventLog.EventType.TASK_UPDATED, CaseEventLog.EventType.PROGRESS_SHARED,
+            }
         ]
         rows.sort(key=lambda event: event.created_at)
         return [
@@ -89,6 +91,7 @@ class CaseTaskBoardSerializer(CaseTaskSummarySerializer):
                 ),
                 "actor": event.actor_user.full_name if event.actor_user else None,
                 "created_at": event.created_at,
+                "shared": event.event_type == CaseEventLog.EventType.PROGRESS_SHARED,
             }
             for event in rows[-5:]
         ]
@@ -142,6 +145,16 @@ class CaseTaskUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=CaseTask.Status.choices, required=False)
     note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
     safety_acknowledged = serializers.BooleanField(required=False)
+    # Progress notes are internal unless the responder shares one: they can
+    # carry operational detail the household should not read by accident.
+    share_with_household = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        if attrs.get("share_with_household") and not attrs.get("note", "").strip():
+            raise serializers.ValidationError(
+                {"share_with_household": ["Only a progress note can be shared with the household."]}
+            )
+        return attrs
 
 
 class TaskPhotoUploadSerializer(serializers.Serializer):

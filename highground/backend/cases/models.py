@@ -454,6 +454,7 @@ class CaseEventLog(models.Model):
         RELEASED = "released", "Released"
         TASK_ASSIGNED = "task_assigned", "Task assigned"
         TASK_UPDATED = "task_updated", "Task updated"
+        PROGRESS_SHARED = "progress_shared", "Progress update shared with the household"
         SAFETY_ACKNOWLEDGED = "safety_acknowledged", "Safety note acknowledged"
         COMPLETION_REQUESTED = "completion_requested", "Completion requested"
         ESCALATED = "escalated", "Escalated"

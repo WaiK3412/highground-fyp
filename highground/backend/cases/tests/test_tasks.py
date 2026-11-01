@@ -867,3 +867,63 @@ class TaskSafetyTests(TestCase):
         self.assertEqual(self.patch_task(task, {"note": "No access"}).status_code, 403)
         self.client.force_login(self.other_resident)
         self.assertEqual(self.client.get(f"/api/cases/{self.case.pk}/tasks/").status_code, 404)
+
+
+class SharedProgressNoteTests(TestCase):
+    """FR4/FR18: a responder may share a progress note with the household.
+
+    Notes stay internal unless the responder says so, because they can carry
+    operational detail such as access keys or the state of neighbouring houses.
+    """
+
+    def setUp(self):
+        TaskWorkflowTests.setUp(self)
+        self.task = TaskWorkflowTests.create_task(self, status=CaseTask.Status.IN_PROGRESS)
+        self.client.force_login(self.responder)
+
+    def patch_task(self, payload):
+        return self.client.patch(
+            f"/api/tasks/{self.task.pk}/", payload, content_type="application/json"
+        )
+
+    def resident_events(self):
+        self.client.force_login(self.resident)
+        return self.client.get(f"/api/cases/{self.case.pk}/").json()["events"]
+
+    def test_shared_note_reaches_the_household(self):
+        note = "The kitchen floor is clear; we return on Monday for the walls."
+        response = self.patch_task({"note": note, "share_with_household": True})
+        self.assertEqual(response.status_code, 200)
+
+        shared = [e for e in self.resident_events() if e["event_type"] == "progress_shared"]
+        self.assertEqual([e["detail"] for e in shared], [note])
+        notice = CaseEventLog.objects.get(
+            case=self.case, event_type=CaseEventLog.EventType.PROGRESS_SHARED
+        )
+        self.assertEqual(notice.recipient_user, self.resident)
+
+    def test_unshared_note_stays_internal(self):
+        response = self.patch_task({"note": "Spare key is under the blue pot."})
+        self.assertEqual(response.status_code, 200)
+
+        events = self.resident_events()
+        self.assertNotIn("progress_shared", [e["event_type"] for e in events])
+        update = next(e for e in events if e["event_type"] == "task_updated")
+        self.assertEqual(update["detail"], "")
+        self.assertFalse(
+            CaseEventLog.objects.filter(case=self.case, recipient_user=self.resident).exists()
+        )
+
+    def test_only_a_note_can_be_shared(self):
+        for payload in (
+            {"share_with_household": True},
+            {"note": "   ", "share_with_household": True},
+            {"status": "done", "share_with_household": True},
+        ):
+            with self.subTest(payload=payload):
+                response = self.patch_task(payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("share_with_household", response.json())
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, CaseTask.Status.IN_PROGRESS)
+        self.assertFalse(CaseEventLog.objects.filter(task=self.task).exists())
