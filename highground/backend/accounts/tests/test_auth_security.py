@@ -30,7 +30,7 @@ class AuthSecurityTests(ThrottleTestCase):
         form = {
             "full_name": "Second Resident", "email": "second@example.test",
             "phone": "012-000 0000", "password": "ValidTestPass2026",
-            "password_confirm": "ValidTestPass2026",
+            "password_confirm": "ValidTestPass2026", "consent": True,
         }
         self.assertEqual(client.post("/api/auth/register/", form).status_code, 403)
         self.assertFalse(UserAccount.objects.filter(email=form["email"]).exists())

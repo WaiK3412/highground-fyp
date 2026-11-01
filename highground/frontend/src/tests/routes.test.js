@@ -57,3 +57,12 @@ test('home paths', () => {
   assert.equal(homePath('ngo_volunteer'), '/queue')
   assert.equal(homePath('system_admin'), '/')
 })
+
+test('the terms and the privacy notice are open to everyone', () => {
+  assert.equal(parsePath('/terms').screen, 'terms')
+  assert.equal(parsePath('/privacy').screen, 'privacy')
+  for (const role of [null, 'community_member', 'disaster_officer', 'ngo_volunteer', 'system_admin']) {
+    assert.equal(isAllowed(role, 'terms'), true, role)
+    assert.equal(isAllowed(role, 'privacy'), true, role)
+  }
+})

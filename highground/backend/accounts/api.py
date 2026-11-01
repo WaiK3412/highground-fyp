@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.middleware.csrf import CsrfViewMiddleware, get_token
+from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -186,6 +187,16 @@ class RegistrationSerializer(serializers.Serializer):
     organization = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.all(), required=False, allow_null=True
     )
+    # The terms of use and the privacy notice: required, and checked here
+    # because a checkbox in the browser alone proves nothing.
+    consent = serializers.BooleanField()
+
+    def validate_consent(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "Agree to the terms of use and the privacy notice to create an account."
+            )
+        return value
 
     def validate_email(self, value):
         # No "already registered" error: that would tell anyone which addresses
@@ -312,6 +323,7 @@ def _create_applicant(data, requested_role, prepared_documents):
                 else UserAccount.VerificationStatus.NOT_REQUIRED
             ),
             email_confirmed=False,
+            consent_at=timezone.now(),
         )
 
         for upload, label in prepared_documents:

@@ -186,9 +186,10 @@ export default function Register({ onShowLogin }) {
     try {
       await api.primeCsrf()
       // Applications need role/organisation/evidence; resident registration stays plain JSON.
+      // consent is checked again by the server, which records when it was given.
       const payload = applying
-        ? { ...form, requested_role: requestedRole, organization: organizationId }
-        : form
+        ? { ...form, consent: agreed, requested_role: requestedRole, organization: organizationId }
+        : { ...form, consent: agreed }
       const result = await api.register(payload, applying ? documents : undefined)
       setCheckEmail(result.detail)
     } catch (err) {
@@ -233,10 +234,18 @@ export default function Register({ onShowLogin }) {
         onChange={(e) => setAgreed(e.target.checked)}
       />
       <span className="text-sm">
-        I agree to the terms of use and consent to my information being shared with
-        authorised responders for recovery coordination.
+        I agree to the{' '}
+        <a href="/terms" target="_blank" rel="noopener">terms of use</a> and consent to my
+        information being used and shared with authorised responders as the{' '}
+        <a href="/privacy" target="_blank" rel="noopener">privacy notice</a> describes.
       </span>
     </label>
+  )
+  const termsBlock = (
+    <>
+      {termsCheckbox}
+      {fieldError('consent')}
+    </>
   )
 
   if (checkEmail)
@@ -372,7 +381,7 @@ export default function Register({ onShowLogin }) {
               errors={errors}
             />
 
-            {termsCheckbox}
+            {termsBlock}
 
             <div className="auth-note" style={{ margin: 0, color: 'var(--grey-700)' }}>
               <span>
@@ -404,7 +413,7 @@ export default function Register({ onShowLogin }) {
               errors={errors}
             />
 
-            {termsCheckbox}
+            {termsBlock}
 
             <button
               className="btn btn--primary btn--full"

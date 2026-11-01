@@ -1230,3 +1230,10 @@ a.map-kpi:hover { border-color: var(--teal-600); }
 /* A priority class shown as its label and its number together. */
 .priority-tag { display: inline-flex; align-items: center; gap: var(--sp-8); }
 .priority-tag__label { font-size: var(--fs-12); font-weight: 600; color: var(--grey-700); }
+
+/* Terms of use and privacy notice: readable headings and bulleted points. */
+.policy h2 { font-size: var(--fs-18); margin: 0 0 var(--sp-8); color: var(--grey-900); }
+.policy ul { list-style: disc; margin: 0; padding-left: 2rem; font-size: var(--fs-14); color: var(--grey-700); }
+.policy li { margin-bottom: var(--sp-4); line-height: 1.55; }
+.policy__note { margin: 0; }
+.check-row a { color: var(--teal-700); font-weight: 600; text-decoration: underline; }

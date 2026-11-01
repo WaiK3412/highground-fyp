@@ -23,7 +23,7 @@ RESENT = {"detail": "If that address needs confirming, we've emailed a new link.
 def form(email="new@example.my", **overrides):
     data = {
         "full_name": "New Resident", "email": email, "phone": "012-000 0000",
-        "password": "Recovery2026", "password_confirm": "Recovery2026",
+        "password": "Recovery2026", "password_confirm": "Recovery2026", "consent": True,
     }
     data.update(overrides)
     return data

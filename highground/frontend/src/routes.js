@@ -27,18 +27,22 @@ const ROUTES = [
   { screen: 'duplicates', pattern: '/duplicates' },
   { screen: 'duplicates', pattern: '/duplicates/:id' },
   { screen: 'rules', pattern: '/rules' },
+  { screen: 'terms', pattern: '/terms' },
+  { screen: 'privacy', pattern: '/privacy' },
 ]
 
 // Email links work whatever state the browser is in.
 const FROM_EMAIL = ['reset', 'confirm']
+// The terms and the privacy notice are open to everyone, signed in or not.
+const POLICIES = ['terms', 'privacy']
 
 const ALLOWED = {
-  signedOut: ['landing', 'login', 'register', 'forgot', ...FROM_EMAIL],
-  community_member: ['recovery', 'submit', 'notifications', 'appeals', 'profile', ...FROM_EMAIL],
-  disaster_officer: ['queue', 'notifications', 'rules', 'appeals', 'duplicates', ...FROM_EMAIL],
-  ngo_volunteer: ['queue', 'tasks', 'notifications', 'rules', 'appeals', ...FROM_EMAIL],
+  signedOut: ['landing', 'login', 'register', 'forgot', ...FROM_EMAIL, ...POLICIES],
+  community_member: ['recovery', 'submit', 'notifications', 'appeals', 'profile', ...FROM_EMAIL, ...POLICIES],
+  disaster_officer: ['queue', 'notifications', 'rules', 'appeals', 'duplicates', ...FROM_EMAIL, ...POLICIES],
+  ngo_volunteer: ['queue', 'tasks', 'notifications', 'rules', 'appeals', ...FROM_EMAIL, ...POLICIES],
   // Administrators work in the Django admin; the app only shows them a link to it.
-  system_admin: ['landing', ...FROM_EMAIL],
+  system_admin: ['landing', ...FROM_EMAIL, ...POLICIES],
 }
 
 const HOME = {

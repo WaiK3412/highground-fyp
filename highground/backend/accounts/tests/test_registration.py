@@ -45,6 +45,7 @@ class ResidentRegistrationTests(ThrottleTestCase):
                 "phone": "012-345 6789",
                 "password": "Recovery2026",
                 "password_confirm": "Recovery2026",
+                "consent": True,
             },
             content_type="application/json",
         )
@@ -80,6 +81,7 @@ class RoleApplicationTests(ThrottleTestCase):
             "phone": "016-220 9931",
             "password": "Recovery2026",
             "password_confirm": "Recovery2026",
+            "consent": True,
             "requested_role": R.NGO_VOLUNTEER,
             "organization": self.org.pk,
             "documents": a_pdf(),
@@ -163,3 +165,41 @@ class RoleApplicationTests(ThrottleTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(UserAccount.objects.filter(email="aisyah@test.my").exists())
+
+
+class ConsentTests(ThrottleTestCase):
+    """The registration form's consent, recorded by the server (2 Nov 2026).
+
+    The examiner's FYP1 feedback named consent as missing; a checkbox only in
+    the browser proves nothing, so the server requires it and keeps the time.
+    """
+
+    def payload(self, **overrides):
+        payload = {
+            "full_name": "Nurul Huda", "email": "nurul@test.my", "phone": "019-111 2233",
+            "password": "Recovery2026", "password_confirm": "Recovery2026",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_registration_without_consent_is_refused_and_creates_nothing(self):
+        for consent in ({}, {"consent": False}):
+            with self.subTest(consent=consent):
+                response = self.client.post(URL, self.payload(**consent), content_type="application/json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("consent", response.json())
+                self.assertFalse(UserAccount.objects.filter(email="nurul@test.my").exists())
+
+    def test_the_time_of_consent_is_recorded(self):
+        response = self.client.post(URL, self.payload(consent=True), content_type="application/json")
+        self.assertEqual(response.status_code, 202)
+        self.assertIsNotNone(UserAccount.objects.get(email="nurul@test.my").consent_at)
+
+    def test_an_existing_address_keeps_its_original_consent(self):
+        # The same answer for a taken address (ADR-026); the stored record is untouched.
+        existing = UserAccount.objects.create_user(
+            email="nurul@test.my", full_name="Nurul", password="Recovery2026", phone="019-111 2233",
+        )
+        self.client.post(URL, self.payload(consent=True), content_type="application/json")
+        existing.refresh_from_db()
+        self.assertIsNone(existing.consent_at)

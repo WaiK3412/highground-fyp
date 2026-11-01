@@ -7,6 +7,7 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import ConfirmEmail from './pages/ConfirmEmail'
+import PolicyPage from './pages/PolicyPage'
 import CaseQueue from './pages/CaseQueue'
 import TaskBoard from './pages/TaskBoard'
 import ResidentDashboard from './pages/ResidentDashboard'
@@ -172,6 +173,17 @@ export default function App() {
 
   if (screen === 'confirm')
     return <ConfirmEmail token={current.token} onShowLogin={() => navigate('login')} />
+
+  // The terms and the privacy notice read the same for everyone. Registration
+  // opens them in a new tab, so "Back" there would leave the app: go home instead.
+  if (screen === 'terms' || screen === 'privacy')
+    return (
+      <PolicyPage
+        kind={screen}
+        backLabel="Back to HighGround"
+        onBack={() => (window.history.length > 1 ? window.history.back() : window.location.assign(homePath(user?.role)))}
+      />
+    )
 
   if (user?.role === 'system_admin') {
     return (

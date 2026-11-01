@@ -122,6 +122,9 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
     full_name = models.CharField(max_length=100)
     phone = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
+    # When the person agreed to the terms of use and the privacy notice at
+    # registration. Empty for seeded and administrator-created accounts.
+    consent_at = models.DateTimeField(null=True, blank=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)  # gates access to /admin
