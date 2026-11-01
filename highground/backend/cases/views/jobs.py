@@ -71,10 +71,7 @@ def claim_job(request, pk):
                 return _job_response(request, case)
             raise AlreadyClaimed(f"Already claimed by {job.claimed_by_org.name}.")
 
-        if case.status not in {
-            CaseRecord.Status.VERIFIED, CaseRecord.Status.CLAIMED,
-            CaseRecord.Status.IN_PROGRESS, CaseRecord.Status.PENDING_CONFIRM,
-        } or job.status != CaseJob.Status.OPEN:
+        if case.status not in CaseRecord.CLAIMABLE or job.status != CaseJob.Status.OPEN:
             return Response({"detail": "Only open jobs on verified cases can be claimed."}, status=409)
 
         job.claimed_by_org = request.user.organization
@@ -259,10 +256,7 @@ def unmet_help(request):
             # Only this officer's district (ADR-024).
             officer_district_q(request.user, "case__"),
             status=CaseJob.Status.OPEN,
-            case__status__in=[
-                CaseRecord.Status.VERIFIED, CaseRecord.Status.CLAIMED,
-                CaseRecord.Status.IN_PROGRESS, CaseRecord.Status.PENDING_CONFIRM,
-            ],
+            case__status__in=CaseRecord.CLAIMABLE,
         )
         .values("help_type")
         .annotate(

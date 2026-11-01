@@ -1,10 +1,19 @@
+// One compact row: three lists and a search, so the queue or map keeps the screen.
 const STATUS_FILTERS = [
   { value: '', label: 'All' },
+  { value: 'submitted', label: 'Submitted', officerOnly: true },
   { value: 'verified', label: 'Verified' },
   { value: 'claimed', label: 'Claimed' },
   { value: 'in_progress', label: 'In progress' },
-  { value: 'submitted', label: 'Submitted' },
-  { value: 'pending_confirm', label: 'Awaiting confirmation', officerOnly: true },
+  { value: 'pending_confirm', label: 'Awaiting the household' },
+]
+
+// classes-1.0 (priority/classes.py): the class number is the filter value.
+const PRIORITY_FILTERS = [
+  { value: '', label: 'All' },
+  { value: '1', label: '1 Health-critical' },
+  { value: '2', label: '2 At risk' },
+  { value: '3', label: '3 Standard' },
 ]
 
 const HELP_FILTERS = [
@@ -16,85 +25,53 @@ const HELP_FILTERS = [
   { value: 'other', label: 'Other' },
 ]
 
-// classes-1.0 (priority/classes.py): the class number is the filter value.
-const PRIORITY_FILTERS = [
-  { value: '', label: 'All' },
-  { value: '1', label: '1 Health-critical' },
-  { value: '2', label: '2 At risk' },
-  { value: '3', label: '3 Standard' },
-]
+const SCOPES = { open_help: 'Help not yet taken', mine: 'Held by your organisation' }
 
-export default function QueueFilters({ user, status, priority, help, search, invalidateQueue, setStatus, setPriority, setHelp, setSearch }) {
+function Select({ id, label, value, options, onChange }) {
+  return (
+    <label className="queue-select" htmlFor={id}>
+      <span>{label}</span>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+export default function QueueFilters({ user, current, apply, setSearch, shown, total }) {
+  const { status, priority, help, scope, search } = current
+  const change = (name) => (value) => apply({ status, priority, help, scope, [name]: value })
+  const filtered = Boolean(status || priority || help || scope || search)
+  const statuses = STATUS_FILTERS.filter((option) => !option.officerOnly || user.role === 'disaster_officer')
+
   return (
     <>
-        <div className="case-queue__filters">
-          <div className="case-queue__filter-group" role="group" aria-label="Case status">
-            <span className="case-queue__filter-label" aria-hidden="true">Status</span>
-            {STATUS_FILTERS.filter((filter) => !filter.officerOnly || user.role === 'disaster_officer').map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${status === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={status === filter.value}
-                onClick={() => {
-                  if (status === filter.value) return
-                  invalidateQueue()
-                  setStatus(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <div className="case-queue__filter-group" role="group" aria-label="Priority class">
-            <span className="case-queue__filter-label" aria-hidden="true">Priority</span>
-            {PRIORITY_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${priority === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={priority === filter.value}
-                onClick={() => {
-                  if (priority === filter.value) return
-                  invalidateQueue()
-                  setPriority(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <div className="case-queue__filter-group" role="group" aria-label="Type of help">
-            <span className="case-queue__filter-label" aria-hidden="true">Help</span>
-            {HELP_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter-chip${help === filter.value ? ' filter-chip--active' : ''}`}
-                aria-pressed={help === filter.value}
-                onClick={() => {
-                  if (help === filter.value) return
-                  invalidateQueue()
-                  setHelp(filter.value)
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <input
-            className="input"
-            style={{ maxWidth: '24rem' }}
-            aria-label="Search cases by reference or village"
-            placeholder="Search reference, village…"
-            value={search}
-            onChange={(e) => {
-              invalidateQueue()
-              setSearch(e.target.value)
-            }}
-          />
-        </div>
-        {priority && <p className="case-queue__filter-note">Cases awaiting verification appear under Priority: All.</p>}
+      <div className="case-queue__filters">
+        <Select id="queue-status" label="Status" value={status} options={statuses} onChange={change('status')} />
+        <Select id="queue-priority" label="Priority" value={priority} options={PRIORITY_FILTERS} onChange={change('priority')} />
+        <Select id="queue-help" label="Help" value={help} options={HELP_FILTERS} onChange={change('help')} />
+        <input
+          className="input case-queue__search"
+          aria-label="Search cases by reference or village"
+          placeholder="Search reference, village…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {filtered && (
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setSearch(''); apply({}) }}>
+            Clear filters
+          </button>
+        )}
+        {total != null && (
+          <span className="case-queue__shown" role="status">
+            {scope && <strong>{SCOPES[scope]} · </strong>}
+            {filtered ? `${shown ?? '…'} of ${total} cases` : `${total} ${total === 1 ? 'case' : 'cases'}`}
+          </span>
+        )}
+      </div>
+      {priority && <p className="case-queue__filter-note">Cases awaiting verification appear under Priority: All.</p>}
     </>
   )
 }

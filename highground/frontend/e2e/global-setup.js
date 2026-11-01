@@ -8,7 +8,7 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { ACCOUNTS, BACKEND, CONSOLE_EMAIL_ENV, FIXTURE_FILE } from './helpers.js'
+import { ACCOUNTS, BACKEND, CONSOLE_EMAIL_ENV, FIXTURE_FILE, resetRateLimits } from './helpers.js'
 
 const PYTHON = path.join(BACKEND, '.venv', 'Scripts', 'python.exe')
 
@@ -29,6 +29,8 @@ print(json.dumps({"villageCode": village.code}))
 
 export default function globalSetup() {
   manage('seed_demo', '--flush')
+  // flush empties the model tables only; the rate-limit counters live in the cache table.
+  resetRateLimits()
   const output = manage('shell', '-c', FIND_VILLAGE).trim().split(/\r?\n/).pop()
   fs.writeFileSync(FIXTURE_FILE, output)
 }

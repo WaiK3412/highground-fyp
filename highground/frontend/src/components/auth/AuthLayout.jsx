@@ -56,7 +56,9 @@ export function AuthLinkButton({ onClick, children }) {
       style={{
         background: 'none',
         border: 0,
-        padding: 0,
+        // At least 24 px tall, the WCAG 2.2 minimum target size.
+        padding: '0.2rem 0',
+        minHeight: '2.4rem',
         cursor: 'pointer',
         color: 'var(--teal-300)',
         fontWeight: 600,

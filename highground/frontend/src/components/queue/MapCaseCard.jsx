@@ -1,4 +1,5 @@
-import { PriorityChip, JobChips } from './CaseCard'
+import { PriorityChip, JobChips, StatusBadge } from './CaseCard'
+import { waitingText } from './caseHelpers'
 
 /** Screen 10 keeps the map visible and uses the same role-filtered detail as the side panel. */
 export default function MapCaseCard({ detail, user, onOpen, onClose, onOpenDuplicate }) {
@@ -13,16 +14,14 @@ export default function MapCaseCard({ detail, user, onOpen, onClose, onOpenDupli
             {detail.damage_category_display} · {detail.village}
           </div>
         </div>
-        <PriorityChip item={detail} />
+        <PriorityChip item={detail} withLabel />
       </div>
       <div className="row wrap gap-8">
-        <span className="badge badge--verified">{detail.status_display}</span>
+        <StatusBadge status={detail.status} label={detail.status_display} />
         {user.role === 'disaster_officer' && detail.has_open_duplicate && (
           <span className="badge badge--duplicate">Possible duplicate</span>
         )}
-        <span className="text-xs text-muted">
-          waiting {detail.days_waiting} {detail.days_waiting === 1 ? 'day' : 'days'}
-        </span>
+        {waitingText(detail) && <span className="text-xs text-muted">{waitingText(detail)}</span>}
       </div>
       <JobChips jobs={detail.jobs} caseStatus={detail.status} />
       <div className="text-xs text-muted">

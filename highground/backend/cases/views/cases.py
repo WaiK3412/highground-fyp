@@ -73,6 +73,28 @@ def _save_with_fresh_reference(serializer, **fields):
     return None
 
 
+def _flag(request, name):
+    """An on/off list filter: absent or blank is off, "1" is on, anything else is refused."""
+    value = request.query_params.get(name, "")
+    if value not in ("", "1"):
+        raise ValidationError({name: ["Use 1 to apply this filter."]})
+    return value == "1"
+
+
+def _cases_with_help_waiting():
+    """Cases with a type of help an organisation could claim now and no one has."""
+    return CaseJob.objects.filter(
+        status=CaseJob.Status.OPEN, case__status__in=CaseRecord.CLAIMABLE
+    ).values("case_id")
+
+
+def _cases_held_by(organization):
+    """Cases on which this organisation holds work that is not yet finished."""
+    return CaseJob.objects.filter(
+        claimed_by_org=organization, status__in=CaseJob.ACTIVE
+    ).values("case_id")
+
+
 def _filter_priority_class(queryset, value):
     """Filter by classes-1.0 priority class; blank means all, unclassified included."""
     if value in ("", None):
@@ -132,6 +154,13 @@ def _queue_queryset(request):
             .values("case_id")
         )
     queryset = _filter_priority_class(queryset, request.query_params.get("priority", ""))
+    if _flag(request, "open_help"):
+        # The overview's "help waiting" count, opened as a list.
+        queryset = queryset.filter(pk__in=_cases_with_help_waiting())
+    if _flag(request, "mine"):
+        if request.user.role != UserAccount.Role.NGO_VOLUNTEER:
+            raise ValidationError({"mine": ["Only an NGO responder's organisation holds work."]})
+        queryset = queryset.filter(pk__in=_cases_held_by(request.user.organization))
     # Class first, then first come, first served; unverified cases last, with
     # self-reported health-critical requests at the front of that tail.
     return queryset.distinct().annotate(
@@ -292,17 +321,22 @@ def case_detail(request, pk):
 def queue_stats(request):
     """Header strip counts. Plain COUNTs — no chart library (ADR C10.8)."""
     queryset = _queue_queryset(request)
-    return Response(
-        {
-            "total": queryset.count(),
-            "health_critical": queryset.filter(priority_class=1).count(),
-            # Cases with at least one type of help no organisation has taken.
-            "unclaimed": queryset.filter(
-                pk__in=CaseJob.objects.filter(status=CaseJob.Status.OPEN).values("case_id")
-            ).count(),
-            "in_progress": queryset.filter(status="in_progress").count(),
-        }
-    )
+    counts = {
+        "total": queryset.count(),
+        "health_critical": queryset.filter(priority_class=1).count(),
+        # Cases with at least one type of help no organisation has taken.
+        "unclaimed": queryset.filter(
+            pk__in=CaseJob.objects.filter(status=CaseJob.Status.OPEN).values("case_id")
+        ).count(),
+        "in_progress": queryset.filter(status="in_progress").count(),
+        # The overview row (FR13, FR16): each count matches a filter of the list.
+        "to_verify": queryset.filter(status=CaseRecord.Status.SUBMITTED).count(),
+        "help_waiting": queryset.filter(pk__in=_cases_with_help_waiting()).count(),
+        "awaiting_household": queryset.filter(status=CaseRecord.Status.PENDING_CONFIRM).count(),
+    }
+    if request.user.role == UserAccount.Role.NGO_VOLUNTEER:
+        counts["ours"] = queryset.filter(pk__in=_cases_held_by(request.user.organization)).count()
+    return Response(counts)
 
 
 @api_view(["GET"])

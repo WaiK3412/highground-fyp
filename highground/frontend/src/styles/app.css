@@ -26,7 +26,7 @@ button { font-family: inherit; }
 /* The prototype's "⋮" promises an account menu the app does not have. */
 .sidebar__user::after { content: none; }
 
-.link-button { background: none; border: 0; padding: 0; cursor: pointer; }
+.link-button { background: none; border: 0; padding: 0; cursor: pointer; min-height: 2.4rem; }
 
 .panel-title { font-size: var(--fs-20); margin: 0; }
 
@@ -86,9 +86,18 @@ button { font-family: inherit; }
   .mobile-account__panel .btn { margin-top: var(--sp-8); }
   .side-nav {
     min-width: 0; max-width: 100%; flex-wrap: nowrap; overflow-x: auto;
-    padding: var(--sp-4); scrollbar-width: thin;
+    padding: var(--sp-4) var(--sp-32) var(--sp-4) var(--sp-4); scrollbar-width: thin;
+    /* Fade the right edge, so a cut-off tab reads as "scroll for more". */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3.2rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 3.2rem), transparent);
   }
   .side-nav a, .side-nav__item--static { flex: 0 0 auto; white-space: nowrap; }
+  /* Queue filters: the three lists side by side, the search under them. */
+  .case-queue__filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .queue-select { flex-direction: column; align-items: stretch; gap: var(--sp-4); }
+  .queue-select select.input { width: 100%; }
+  .case-queue__search.input, .case-queue__filters > .btn { grid-column: 1 / -1; width: 100%; }
+  .case-queue__shown { grid-column: 1 / -1; margin-left: 0; }
   .side-nav a { gap: var(--sp-8); padding: var(--sp-8) var(--sp-12); }
 
   .request-stepper { position: relative; }

@@ -1,4 +1,10 @@
-import { openJobsFor, confirmationDays } from './caseHelpers'
+import { openJobsFor, confirmationDays, waitingText } from './caseHelpers'
+import { STATUS_UI } from '../resident/caseStatus'
+
+// The same status colours the household sees, so "Needs info" never looks like "Verified".
+export function StatusBadge({ status, label }) {
+  return <span className={`badge ${STATUS_UI[status]?.badge || 'badge--new'}`}>{label}</span>
+}
 
 // One line per type of help: who holds it, or that it is still waiting.
 export function JobChips({ jobs, caseStatus }) {
@@ -26,8 +32,8 @@ function priorityChipClass(priorityClass) {
   return 'score score--neutral score--sm'
 }
 
-export function PriorityChip({ item }) {
-  return (
+export function PriorityChip({ item, withLabel = false }) {
+  const chip = (
     <span
       className={priorityChipClass(item.priority_class)}
       title={item.priority_label || 'Not yet classified'}
@@ -38,6 +44,14 @@ export function PriorityChip({ item }) {
       }
     >
       {item.priority_class ?? '—'}
+    </span>
+  )
+  if (!withLabel) return chip
+  // The label beside the number, so the class is readable without hovering.
+  return (
+    <span className="priority-tag">
+      <span className="priority-tag__label" aria-hidden="true">{item.priority_label || 'Not yet classified'}</span>
+      {chip}
     </span>
   )
 }
@@ -52,14 +66,15 @@ export default function CaseCard({ item, onOpen, onClaim, selected, user, busy }
     <div className={`ops-card${selected ? ' ops-card--selected' : ''}`}>
       <div className="row--between">
         <span className="title">#{item.reference}</span>
-        <PriorityChip item={item} />
+        <PriorityChip item={item} withLabel />
       </div>
       <span className="meta">
-        {item.damage_category_display} · {item.village} · household of {item.household_size} ·
-        waiting {item.days_waiting} {item.days_waiting === 1 ? 'day' : 'days'}
+        {[item.damage_category_display, item.village, `household of ${item.household_size}`, waitingText(item)]
+          .filter(Boolean)
+          .join(' · ')}
       </span>
       <div className="row wrap gap-8">
-        <span className="badge badge--verified">{item.status_display}</span>
+        <StatusBadge status={item.status} label={item.status_display} />
         {user.role === 'disaster_officer' && item.has_open_duplicate && (
           <span className="badge badge--duplicate">Possible duplicate</span>
         )}

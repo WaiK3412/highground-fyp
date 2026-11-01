@@ -164,6 +164,9 @@ class CaseRecord(models.Model):
         PENDING_CONFIRM = "pending_confirm", "Pending confirmation"
         CLOSED = "closed", "Closed"
 
+    # Verified and not yet closed: an open job on such a case may be claimed.
+    CLAIMABLE = (Status.VERIFIED, Status.CLAIMED, Status.IN_PROGRESS, Status.PENDING_CONFIRM)
+
     reference = models.CharField(max_length=20, unique=True)
 
     submitted_by_user = models.ForeignKey(

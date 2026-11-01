@@ -12,13 +12,26 @@ import MapCaseCard from '../components/queue/MapCaseCard'
 import QueueFilters from '../components/queue/QueueFilters'
 import QueueSummary from '../components/queue/QueueSummary'
 
+// The list and map share one set of filters, as the API's query parameters.
+function queueParams(status, priority, help, scope, search) {
+  return {
+    status, priority, help, q: search,
+    open_help: scope === 'open_help' ? '1' : '',
+    mine: scope === 'mine' ? '1' : '',
+  }
+}
+
 export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate, duplicateCount, caseRoute }) {
   useDocumentTitle('Case queue')
   const [cases, setCases] = useState([])
-  const [stats, setStats] = useState(null)
+  // Counts over the whole visible queue; `shown` is how many the current filters leave.
+  const [overview, setOverview] = useState(null)
+  const [shown, setShown] = useState(null)
   const [status, setStatus] = useState('')
   const [priority, setPriority] = useState('')
   const [help, setHelp] = useState('')
+  // An overview count's own filter: help no one has taken, or the organisation's own work.
+  const [scope, setScope] = useState('')
   const [unmet, setUnmet] = useState(null)
   const [search, setSearch] = useState('')
   const [listError, setListError] = useState(null)
@@ -37,6 +50,20 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   const [mapCase, setMapCase] = useState(null)
   const selectionVersion = useRef(0)
 
+  // Set every list filter at once (absent means All); the search box is kept.
+  function apply(filters) {
+    invalidateQueue()
+    setStatus(filters.status || '')
+    setPriority(filters.priority || '')
+    setHelp(filters.help || '')
+    setScope(filters.scope || '')
+  }
+
+  function changeSearch(value) {
+    invalidateQueue()
+    setSearch(value)
+  }
+
   function invalidateQueue({ keepDetail = false } = {}) {
     selectionVersion.current += 1
     setMapCase(null)
@@ -48,7 +75,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     setDetailLoadingId(null)
     setLoading(true)
     setListError(null)
-    setStats(null)
+    setShown(null)
     setCases([])
     setMapLoading(view === 'map')
     setMapData(null)
@@ -57,19 +84,23 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
 
   useEffect(() => {
     let cancelled = false
-    const params = { status, priority, help, q: search }
-    Promise.all([api.cases(params), api.stats(params)])
-      .then(([list, s]) => {
+    api
+      .cases(queueParams(status, priority, help, scope, search))
+      .then((list) => {
         if (cancelled) return
         setCases(list.results)
-        setStats(s)
+        setShown(list.count)
       })
       .catch((err) => !cancelled && setListError(err.message))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [status, priority, help, search, reloadKey])
+  }, [status, priority, help, scope, search, reloadKey])
+
+  useEffect(() => {
+    api.stats().then(setOverview).catch(() => setOverview(null))
+  }, [reloadKey])
 
   // Officers: which types of help no organisation has taken (ADR-020).
   useEffect(() => {
@@ -82,7 +113,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     if (view !== 'map') return undefined
     let cancelled = false
     api
-      .caseMap({ status, priority, help, q: search })
+      .caseMap(queueParams(status, priority, help, scope, search))
       .then((data) => {
         if (cancelled) return
         setMapData(data)
@@ -93,7 +124,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
     return () => {
       cancelled = true
     }
-  }, [view, status, priority, help, search, reloadKey])
+  }, [view, status, priority, help, scope, search, reloadKey])
 
   const openCase = async (id) => {
     const version = ++selectionVersion.current
@@ -187,7 +218,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
   return (
     <ResponderShell
       user={user} active="queue"
-      counts={{ queue: stats?.total, duplicates: duplicateCount }}
+      counts={{ queue: overview?.total, duplicates: duplicateCount }}
       onNavigate={onNavigate} onLogout={onLogout}
       mainClassName="main main--vp" mainStyle={null}
     >
@@ -195,9 +226,10 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           <div>
             <h1>Case queue</h1>
             <p>
-              Recovery cases visible to you as{' '}
-              {user.role === 'ngo_volunteer' ? 'an NGO responder' : `a ${user.role_display.toLowerCase()}`}. Cases are ordered by
-              priority class, then by submission time.
+              {user.role === 'disaster_officer'
+                ? `Requests in ${user.district || 'your district'}`
+                : "Verified requests, and your organisation's own"}
+              , in priority-class order, then by submission time.
             </p>
           </div>
           <div className="view-toggle" role="group" aria-label="Queue view">
@@ -226,12 +258,14 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           </div>
         </div>
 
-        <QueueSummary stats={stats} unmet={unmet} />
+        <QueueSummary
+          user={user} overview={overview} unmet={unmet} apply={apply}
+          current={{ status, priority, help, scope }}
+        />
 
         <QueueFilters
-          user={user} status={status} priority={priority} help={help} search={search}
-          invalidateQueue={invalidateQueue} setStatus={setStatus}
-          setPriority={setPriority} setHelp={setHelp} setSearch={setSearch}
+          user={user} current={{ status, priority, help, scope, search }} apply={apply}
+          setSearch={changeSearch} shown={shown} total={overview?.total}
         />
 
         {/* Keep header/filters pinned while queue/detail columns scroll independently. */}
