@@ -181,12 +181,12 @@ DEV_CSRF_ORIGINS = [
     "http://127.0.0.1:5174",
     "http://localhost:5174",
 ]
-CSRF_TRUSTED_ORIGINS = (
-    DEV_CSRF_ORIGINS if DEBUG else [
-        origin.strip() for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
-        if origin.strip()
-    ]
-)
+# In development the same variable can add an origin, such as the laptop's Wi-Fi
+# address when testers use their own phones (Appendix L).
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+] + (DEV_CSRF_ORIGINS if DEBUG else [])
 
 # All media is private and is only served through permission-checked endpoints.
 MEDIA_URL = "media/"

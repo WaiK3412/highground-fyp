@@ -71,7 +71,7 @@ const BANNER_NEXT = {
   pending_confirm: 'Open the case and confirm the finished work',
 }
 
-export default function CaseStatusBanner({ cases }) {
+export default function CaseStatusBanner({ cases, openCaseId = null, onOpen }) {
   const item = focusCase(cases)
   if (!item) return null
 
@@ -104,6 +104,16 @@ export default function CaseStatusBanner({ cases }) {
         )}
         {BANNER_NEXT[item.status]} · {waited}.
       </span>
+      {/* The banner names a case, so it should lead straight to it; hidden once it is open. */}
+      {onOpen && openCaseId !== item.id && (
+        <button
+          type="button"
+          className="btn btn--secondary btn--sm banner__action"
+          onClick={() => onOpen(item.id)}
+        >
+          Open #{item.reference}
+        </button>
+      )}
     </div>
   )
 }

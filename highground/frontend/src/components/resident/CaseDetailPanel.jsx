@@ -47,7 +47,7 @@ export default function CaseDetailPanel({ detail, onClose, onCompletionDecision,
       {detail.priority_class != null && (
         <div className="meta-rail__section" aria-label="Priority">
           <div className="card__header">
-            <h3>Why this priority</h3>
+            <h2 className="h3">Why this priority</h2>
             <span
               className={priorityChipClass(detail.priority_class)}
               aria-label={`Priority class ${detail.priority_class}: ${detail.priority_label}`}
@@ -71,7 +71,7 @@ export default function CaseDetailPanel({ detail, onClose, onCompletionDecision,
 
       <div className="meta-rail__section">
         <div className="card__header">
-          <h3>Case details</h3>
+          <h2 className="h3">Case details</h2>
         </div>
         <CaseFacts detail={detail}>
           <dt>Address</dt>
@@ -86,7 +86,7 @@ export default function CaseDetailPanel({ detail, onClose, onCompletionDecision,
 
       {detail.tasks?.length > 0 && (
         <div className="meta-rail__section">
-          <div className="card__header"><h3>Recovery tasks</h3></div>
+          <div className="card__header"><h2 className="h3">Recovery tasks</h2></div>
           <div className="stack gap-8">
             {detail.tasks.map((task) => (
               <div key={task.id} className="row--between gap-10">
@@ -107,7 +107,7 @@ export default function CaseDetailPanel({ detail, onClose, onCompletionDecision,
       {(detail.jobs || []).length > 0 && (
         <div className="meta-rail__section" aria-label="Help on this request">
           <div className="card__header">
-            <h3>Help on this request</h3>
+            <h2 className="h3">Help on this request</h2>
           </div>
           <ul className="text-sm" style={{ margin: 0, paddingLeft: '1.6rem' }}>
             {detail.jobs.map((job) => (

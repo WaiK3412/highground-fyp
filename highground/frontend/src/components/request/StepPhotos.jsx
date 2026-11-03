@@ -12,7 +12,7 @@ export default function StepPhotos({ data, set }) {
 
   return (
     <div className="card mb-24">
-      <h3 className="mb-4">Photos of the damage</h3>
+      <h2 className="h3 mb-4">Photos of the damage</h2>
       <p className="text-sm text-muted mb-24">
         Optional, but photos help an officer verify your case faster. Up to {MAX_PHOTOS}.
       </p>

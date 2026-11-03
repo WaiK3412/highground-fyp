@@ -234,13 +234,12 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           </div>
           <div className="view-toggle" role="group" aria-label="Queue view">
             {[['list', 'List'], ['map', 'Map']].map(([key, label]) => (
-              <a
+              <button
+                type="button"
                 key={key}
-                href={`#${key}`}
                 className={view === key ? 'active' : undefined}
                 aria-pressed={view === key}
-                onClick={(e) => {
-                  e.preventDefault()
+                onClick={() => {
                   if (view === key) return
                   selectionVersion.current += 1
                   setMapCase(null)
@@ -253,7 +252,7 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
                 }}
               >
                 {label}
-              </a>
+              </button>
             ))}
           </div>
         </div>
@@ -270,7 +269,9 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
 
         {/* Keep header/filters pinned while queue/detail columns scroll independently. */}
         <div
-          className={`vp-fill case-queue__workspace${detail ? ' case-queue__workspace--split' : ''}`}
+          // Split as soon as a case is being opened, so the list does not narrow (and its
+          // cards reflow) only when the detail arrives.
+          className={`vp-fill case-queue__workspace${detail || detailLoadingId ? ' case-queue__workspace--split' : ''}`}
           style={{
             display: 'grid',
             gap: 'var(--sp-16)',
@@ -365,7 +366,6 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
             )}
             {loading && <p className="text-muted">Loading cases…</p>}
             {listError && <p role="alert" className="text-sm text-danger">Could not load the queue: {listError} <button className="btn btn--ghost btn--sm" onClick={() => { invalidateQueue(); setReloadKey((n) => n + 1) }}>Retry</button></p>}
-            {detailLoadingId && <p role="status" className="text-sm text-muted">Loading case detail…</p>}
             {detailError && <p role="alert" className="text-sm">Could not open case: {detailError.message} <button className="btn btn--ghost btn--sm" onClick={() => openCase(detailError.id)}>Retry</button></p>}
             {!loading && !listError && cases.length === 0 && (
               <p className="text-muted">No cases match this filter.</p>
@@ -384,6 +384,11 @@ export default function CaseQueue({ user, onLogout, onNavigate, onOpenDuplicate,
           </div>
           )}
 
+          {!detail && detailLoadingId && (
+            <div className="stack vp-scroll scroll-pane gap-12">
+              <p role="status" className="text-sm text-muted">Loading case detail…</p>
+            </div>
+          )}
           {detail && (
             <div className="stack vp-scroll scroll-pane gap-12">
               <CasePanel

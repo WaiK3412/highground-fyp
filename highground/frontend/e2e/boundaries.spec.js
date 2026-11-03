@@ -35,6 +35,21 @@ test('Back closes an open case, then returns to the previous screen', async ({ b
   await expect(resident).toHaveURL(/\/appeals$/)
 })
 
+test('the status banner opens the case it names, and My Recovery is the only case list', async ({ browser }) => {
+  const resident = await signedIn(browser, ACCOUNTS.resident)
+  await resident.goto('/my-cases')
+  // The seeded household has a request waiting for its answer, so the banner names it.
+  await expect(resident.getByText(/needs more information from you/)).toBeVisible()
+  const openButton = resident.getByRole('button', { name: /^Open #FRC-\d+$/ })
+  const reference = (await openButton.textContent()).replace('Open ', '')
+  await openButton.click()
+  await expect(resident).toHaveURL(/\/my-cases\/\d+$/)
+  await expect(resident.locator('.text-strong.case-reference')).toHaveText(reference)
+  await expect(resident.getByText('Your answer')).toBeVisible()
+  await expect(openButton).toHaveCount(0)
+  await expect(resident.getByRole('link', { name: /^My cases/ })).toHaveCount(0)
+})
+
 test('authenticator codes follow RFC 6238', () => {
   // The RFC's SHA-1 test vector: secret "12345678901234567890", time 59 s.
   const secret = Buffer.from('12345678901234567890').toString('hex')

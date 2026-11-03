@@ -1,6 +1,38 @@
 /* App additions stay outside the frozen design CSS (ADR-001).
    Important declarations preserve the precedence of the inline styles they replace. */
 
+/* Contrast fixes from the Lighthouse audit (3 Nov 2026), WCAG 2.2 AA needs 4.5:1 for
+   small text. The design's muted grey passed on white but not on the sand and grey
+   tints (4.4:1); status badges used the 600 shade on its own 100 tint (2.9-4.2:1). */
+:root {
+  --grey-500: #6B645D;   /* 5.0:1 on sand-100, 5.8:1 on white */
+  --ops-muted: #6B645D;
+  --badge-danger-text: #B91C1C;   /* 5.3:1 on danger-100 */
+  --badge-warning-text: #92400E;  /* 6.4:1 on warning-100 */
+  --badge-success-text: #166534;  /* 6.5:1 on success-100 */
+  --badge-info-text: #1D4ED8;     /* 5.5:1 on info-100 */
+}
+.badge--progress, .badge--assigned, .avatar--info { color: var(--badge-info-text); }
+.badge--resolved, .badge--low, .btn--success-soft { color: var(--badge-success-text); }
+.badge--escalated, .badge--high, .btn--danger-soft { color: var(--badge-danger-text); }
+.badge--duplicate, .badge--medium { color: var(--badge-warning-text); }
+
+/* Headings keep their level in order (h1, then h2) for screen readers, as Lighthouse
+   asked on 3 Nov 2026; these h2s keep the design's h3 look. */
+h2.h3 { font-size: var(--fs-20); font-weight: 600; }
+.card__header h2.h3 {
+  font-size: var(--fs-12); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--grey-500);
+}
+
+/* The list/map switch is a pair of toggle buttons (aria-pressed), not links. */
+.view-toggle button {
+  padding: 0.6rem 1.4rem; font-size: var(--fs-14); font-weight: 500; color: var(--grey-500);
+  background: none; border: 0; cursor: pointer;
+}
+.view-toggle button.active { background-color: var(--teal-50); color: var(--teal-800); font-weight: 600; }
+.view-toggle button + button { border-left: 1px solid var(--grey-300); }
+
 .mb-24 { margin-bottom: 2.4rem !important; }
 .gap-8 { gap: 0.8rem !important; }
 .gap-24 { gap: 2.4rem !important; }
@@ -38,6 +70,9 @@ button { font-family: inherit; }
 }
 
 .mobile-account, .request-stepper__compact, .resident-case-back { display: none; }
+
+/* A banner that names a case carries a button that opens it, kept to the right. */
+.banner__action { margin-left: auto; align-self: center; flex-shrink: 0; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
@@ -45,7 +80,10 @@ button { font-family: inherit; }
 
 /* Phone layouts must shrink their content, rather than hide sideways overflow. */
 @media (max-width: 600px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
+  /* The header row keeps its own height: with grid rows left to share the screen, a page
+     still loading stretched the header, which snapped back when the content arrived
+     (the main cause of layout shift on phones, Lighthouse 3 Nov 2026). */
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
   .main, .sidebar, .auth-shell, .card, .panel, .field, .board-col,
   .case-map, .case-map__stage, .case-map__canvas, .scroll-pane,
   .grid-2 > *, .grid-3 > *, .grid-4 > *, .panel__grid > * { min-width: 0; }
@@ -69,6 +107,10 @@ button { font-family: inherit; }
   .card__header, .panel__header { gap: var(--sp-8); flex-wrap: wrap; }
   .page-header, .page-header > * { max-width: 100%; min-width: 0; }
   .resident-home-header > .btn { width: 100%; }
+  /* The text stays beside the icon; the button takes the next line, under the text. */
+  .banner { flex-wrap: wrap; }
+  .banner .body { flex: 1 1 calc(100% - 3.4rem); }  /* icon 2.2rem + gap 1.2rem */
+  .banner__action { margin-left: 3.4rem; }
 
   .sidebar { gap: var(--sp-8); }
   .sidebar .logo { min-width: 0; padding: 0; }
@@ -98,7 +140,9 @@ button { font-family: inherit; }
   .queue-select select.input { width: 100%; }
   .case-queue__search.input, .case-queue__filters > .btn { grid-column: 1 / -1; width: 100%; }
   .case-queue__shown { grid-column: 1 / -1; margin-left: 0; }
-  .side-nav a { gap: var(--sp-8); padding: var(--sp-8) var(--sp-12); }
+  /* A fixed height: the unread count arriving after load made the row grow and pushed
+     the page down (Lighthouse layout shift, 3 Nov 2026). 44 px is also a full touch target. */
+  .side-nav a { gap: var(--sp-8); padding: var(--sp-8) var(--sp-12); min-height: 4.4rem; }
 
   .request-stepper { position: relative; }
   .request-stepper__compact { display: block; }

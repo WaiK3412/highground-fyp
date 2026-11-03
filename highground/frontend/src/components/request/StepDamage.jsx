@@ -49,7 +49,7 @@ export default function StepDamage({ data, set }) {
   return (
     <>
       <div className="card mb-24">
-        <h3 className="mb-4">What kind of help do you need?</h3>
+        <h2 className="h3 mb-4">What kind of help do you need?</h2>
         <p className="text-sm text-muted mb-24">
           Pick the closest match. An officer will confirm the details.
         </p>

@@ -26,7 +26,7 @@ export default function StepHousehold({ user, data, set, villages, onRetryVillag
   return (
     <>
       <div className="card mb-24">
-        <h3 className="mb-4">Who needs help?</h3>
+        <h2 className="h3 mb-4">Who needs help?</h2>
         <p className="text-sm text-muted mb-24">
           These come from your account. To change them, go to{' '}
           {onNavigate ? (
@@ -67,7 +67,7 @@ export default function StepHousehold({ user, data, set, villages, onRetryVillag
       </div>
 
       <div className="card mb-24">
-        <h3 className="mb-4">Where is your home?</h3>
+        <h2 className="h3 mb-4">Where is your home?</h2>
         <p className="text-sm text-muted mb-24">
           Pick your village, then drop a pin on your house — kampung addresses can be hard to find, and
           an accurate pin helps teams reach you faster.

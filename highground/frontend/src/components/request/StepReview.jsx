@@ -18,7 +18,7 @@ export default function StepReview({ user, data, goTo, villages }) {
   const section = (title, step, rows) => (
     <div className="card mb-24">
       <div className="row--between" style={{ marginBottom: '1.6rem' }}>
-        <h3>{title}</h3>
+        <h2 className="h3">{title}</h2>
         <button className="btn btn--ghost btn--sm" onClick={() => goTo(step)}>
           Edit
         </button>

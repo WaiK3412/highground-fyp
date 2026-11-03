@@ -33,7 +33,9 @@ def clean_photo(upload):
         # Refuse the warning threshold too, before decoding large pixel buffers.
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(upload) as opened:
+            # Only the declared format's decoder may run: Pillow's other decoders
+            # (TIFF, PDF, EPS…) carry most of its published advisories.
+            with Image.open(upload, formats=[pillow_format]) as opened:
                 if opened.format != pillow_format:
                     raise UnreadableImage(f"{upload.name} is not a valid {pillow_format} image.")
                 # Apply orientation before discarding EXIF so phone photos stay upright.

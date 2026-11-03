@@ -8,21 +8,20 @@ import MobileAccount from '../components/MobileAccount'
 import ShellNavigation from '../components/ShellNavigation'
 
 export default function ResidentShell({
-  user, active, unread, casesCount = 0, onNavigate, onLogout,
+  user, active, unread, onNavigate, onLogout,
   mainClassName = 'main', mainStyle = { maxWidth: '92rem' }, children,
 }) {
   // The notifications screen passes its own live count; elsewhere the shell keeps it fresh.
   const polledUnread = useUnreadCount({ enabled: unread === undefined })
   const unreadCount = unread ?? polledUnread
 
-  // `target` lets "My cases" open My Recovery, where the case list lives.
-  const link = (screen, target = screen) => ({
-    href: pathFor(target),
+  const link = (screen) => ({
+    href: pathFor(screen),
     className: active === screen ? 'active' : undefined,
     'aria-current': active === screen ? 'page' : undefined,
     onClick: (event) => {
       event.preventDefault()
-      onNavigate(target)
+      onNavigate(screen)
     },
   })
 
@@ -53,11 +52,8 @@ export default function ResidentShell({
             <Icon path={PATHS.request} />
             Submit a request
           </a>
-          <a {...link('cases', 'recovery')}>
-            <Icon path={PATHS.folder} />
-            My cases
-            {casesCount > 0 && <span className="side-nav__count">{casesCount}</span>}
-          </a>
+          {/* No separate "My cases" item (unlike the design prototype): the case list
+              lives on My Recovery, so a second link to the same screen looked broken. */}
           <a {...link('notifications')}>
             <Icon path={PATHS.bell} />
             Notifications

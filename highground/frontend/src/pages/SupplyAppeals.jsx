@@ -19,7 +19,7 @@ function AppealCard({ appeal, canManage, onClose, onEdit, busy, children }) {
   return (
     <li className="card" style={{ listStyle: 'none', padding: 'var(--sp-16)' }}>
       <div className="row--between">
-        <h3 style={{ margin: 0 }}>{appeal.title}</h3>
+        <h2 className="h3" style={{ margin: 0 }}>{appeal.title}</h2>
         <span className={`badge ${appeal.status === 'open' ? 'badge--verified' : 'badge--resolved'}`}>
           {appeal.status_display}
         </span>
@@ -126,7 +126,7 @@ export default function SupplyAppeals({ user }) {
     [canManage],
     [],
   )
-  const { data: donations, setData: setDonations } = useLoad(
+  const { data: donations, setData: setDonations, loading: donationsLoading } = useLoad(
     () => (canDonate ? api.myDonations().then((data) => data.results) : Promise.resolve([])),
     [canDonate],
     [],
@@ -163,11 +163,15 @@ export default function SupplyAppeals({ user }) {
         />
       )}
 
-      {canDonate && <MyDonations donations={donations} setDonations={setDonations} />}
+      {/* Shown with the appeals, not before them: two lists arriving at different moments
+          pushed the page down on phones (layout shift, Lighthouse 3 Nov 2026). */}
+      {canDonate && !loading && !donationsLoading && (
+        <MyDonations donations={donations} setDonations={setDonations} />
+      )}
 
       {actionError && <p role="alert" className="text-sm">Could not update the appeal: {actionError}</p>}
 
-      {loading ? (
+      {loading || donationsLoading ? (
         <p role="status" className="text-sm text-muted">Loading appeals…</p>
       ) : loadError ? (
         <p role="alert" className="text-sm">

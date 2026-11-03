@@ -84,7 +84,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
   const firstName = user.full_name.split(' ')[0]
   return (
     <ResidentShell
-      user={user} active="recovery" casesCount={cases.length}
+      user={user} active="recovery"
       onNavigate={(screen) => screen === 'submit' ? onSubmitRequest() : onNavigate(screen)}
       onLogout={onLogout} mainClassName="main main--vp" mainStyle={null}
     >
@@ -101,10 +101,17 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
 
         <div className="stack" style={{ gap: 'var(--sp-12)', marginBottom: '1.6rem' }}>
           <ApplicationBanner user={user} />
-          {!loading && <CaseStatusBanner cases={cases} />}
+          {!loading && (
+            <CaseStatusBanner cases={cases} openCaseId={detail?.id ?? null} onOpen={caseRoute.open} />
+          )}
         </div>
 
-        {/* Scroll case/detail columns independently so long panels do not stretch the page. */}
+        {/* Banner and lists appear together once the cases arrive: drawing the lists first
+            and the banner above them later pushed the page down (layout shift on phones). */}
+        {loading ? (
+          <p role="status" className="text-sm text-muted">Loading your cases…</p>
+        ) : (
+        /* Scroll case/detail columns independently so long panels do not stretch the page. */
         <div
           className={`grid-2 vp-fill resident-workspace${detail ? ' resident-workspace--selected' : ''}`}
           style={{
@@ -115,7 +122,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
           <div ref={caseList} className="stack vp-scroll scroll-pane resident-case-list" style={{ gap: '1.6rem' }}>
           <div className="card">
             <div className="card__header">
-              <h3>My cases</h3>
+              <h2 className="h3">My cases</h2>
               {cases.length > 0 && (
                 <span className="text-xs text-muted">Select a case to see its detail</span>
               )}
@@ -132,9 +139,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
             )}
             {detailLoadingId && <p role="status" className="text-sm text-muted">Loading case detail…</p>}
 
-            {loading ? (
-              <p className="text-sm text-muted">Loading your cases…</p>
-            ) : loadError ? (
+            {loadError ? (
               <p role="alert" className="text-sm">Could not load your cases. <button className="btn btn--ghost btn--sm" onClick={reload}>Retry</button></p>
             ) : cases.length === 0 ? (
               <p className="text-sm text-muted">
@@ -158,9 +163,9 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
             <div className="card" style={{ background: 'var(--sand-100)' }}>
               <div className="row--between" style={{ gap: '1.6rem', flexWrap: 'wrap' }}>
                 <div>
-                  <h3 className="mb-4">
+                  <h2 className="h3 mb-4">
                     Not affected this season? Your neighbours could use a hand.
-                  </h3>
+                  </h2>
                   <p className="text-sm text-muted">
                     Relief organisations post the supplies they need and where to drop them
                     off. Goods only, never money.
@@ -185,6 +190,7 @@ export default function ResidentDashboard({ user, onLogout, onSubmitRequest, onN
             </div>
           )}
         </div>
+        )}
     </ResidentShell>
   )
 }

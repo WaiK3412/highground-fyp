@@ -21,7 +21,7 @@ export default function StepNeeds({ data, set }) {
       </div>
 
       <div className="card mb-24">
-        <h3 className="mb-4">Safety and urgent needs</h3>
+        <h2 className="h3 mb-4">Safety and urgent needs</h2>
         <p className="text-sm text-muted mb-24">
           This is what decides how quickly your case is looked at.
         </p>
