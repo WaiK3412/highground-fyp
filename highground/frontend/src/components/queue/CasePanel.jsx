@@ -187,7 +187,7 @@ export default function CasePanel({ detail, onClose, user, onDone, onOpenDuplica
         </div>
       )}
 
-      <CaseActions detail={detail} user={user} onDone={onDone} onOpenDuplicate={onOpenDuplicate} />
+      <CaseActions key={detail.id} detail={detail} user={user} onDone={onDone} onOpenDuplicate={onOpenDuplicate} />
     </aside>
   )
 }
